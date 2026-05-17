@@ -1,0 +1,176 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <meta name="description" content="FloodGuard by Jenix - Real-time RUB flood monitoring, local alarms, mobile alerts, and audit-grade control logs.">
+  <meta name="theme-color" content="#1d4ed8">
+  <title>FloodGuard by Jenix | RUB Flood Monitoring</title>
+  <link rel="manifest" href="./manifest.webmanifest">
+  <link rel="icon" href="./icon.svg" type="image/svg+xml">
+  <link rel="stylesheet" href="./site.css">
+</head>
+<body>
+  <header class="top-nav">
+    <div class="site-shell">
+      <div class="brand-block">
+        <div class="brand-name">FloodGuard by Jenix</div>
+        <div class="brand-sub">RUB Water Level Monitoring and Alarm System</div>
+      </div>
+      <button class="menu-button" data-menu-button type="button" aria-label="Toggle menu">Menu</button>
+      <nav class="nav-links collapsed" data-nav-links>
+        <a class="nav-link" href="./index.html">Home</a>
+        <a class="nav-link" href="./about.html">About</a>
+        <a class="nav-link" href="./privacy-policy.html">Privacy</a>
+        <a class="nav-link" href="./terms-and-conditions.html">Terms</a>
+        <a class="nav-link" href="./FloodGuard_Desktop_UI.html">Desktop UI Mockup</a>
+        <a class="nav-link" href="./FloodGuard_Mobile_App_UI.html">Mobile UI Mockup</a>
+      </nav>
+    </div>
+  </header>
+
+  <main>
+    <section class="hero">
+      <div class="site-shell hero-grid">
+        <article class="panel hero-main">
+          <div class="chip"><span class="beacon" aria-hidden="true"></span>Danger Monitoring Active</div>
+          <h1>FloodGuard by Jenix for Railway Under Bridges</h1>
+          <p>
+            Real-time RUB flood monitoring with offline-first local safety control. Even when internet is down,
+            the ESP32-based controller continues siren, beacon, and voice alert logic at site level.
+          </p>
+          <p>
+            Project tagline: Real-time RUB flood monitoring, alerts and audit logs.
+          </p>
+          <div class="hero-actions">
+            <a class="btn btn-primary" href="./PHASE_WISE_DELIVERABLES.md">View Phase Deliverables</a>
+            <a class="btn btn-secondary" href="./about.html">Platform Overview</a>
+          </div>
+          <div class="hero-metrics">
+            <div class="metric">
+              <div class="metric-value">2 sec</div>
+              <div class="metric-label">Danger Telemetry Frequency</div>
+            </div>
+            <div class="metric">
+              <div class="metric-value">60 sec</div>
+              <div class="metric-label">Stable Trigger Confirmation</div>
+            </div>
+            <div class="metric">
+              <div class="metric-value">5 min</div>
+              <div class="metric-label">Danger Auto-Clear Stability</div>
+            </div>
+          </div>
+        </article>
+
+        <aside class="panel hero-side">
+          <h2 class="live-card-title">Live Site Snapshot - RUB-043</h2>
+          <div class="water-readout">
+            <div class="water-level">524</div>
+            <div class="water-unit">mm</div>
+          </div>
+          <div class="vessel" aria-label="Water level vessel">
+            <div class="vessel-mark alert"></div>
+            <div class="vessel-mark danger"></div>
+            <div class="vessel-fill"></div>
+          </div>
+          <div class="strip">
+            <div class="strip-item">
+              <span>Current Status</span>
+              <strong class="danger-text">DANGER CONFIRMED</strong>
+            </div>
+            <div class="strip-item">
+              <span>Local Safety Mode</span>
+              <strong>Online + Offline Ready</strong>
+            </div>
+            <div class="strip-item">
+              <span>Notification Path</span>
+              <strong>FCM + PWA + Android</strong>
+            </div>
+          </div>
+        </aside>
+      </div>
+    </section>
+
+    <section class="content-section">
+      <div class="site-shell">
+        <h2 class="section-title">Why This Platform</h2>
+        <p class="section-lead">
+          Built for field reliability, government audit visibility, and multi-location incident command.
+        </p>
+        <div class="feature-grid">
+          <article class="card glow">
+            <h3>Offline-First Safety</h3>
+            <p>Danger detection and alarm activation run locally on controller logic. Cloud failure does not block emergency warning.</p>
+          </article>
+          <article class="card glow">
+            <h3>Audit-Grade Accountability</h3>
+            <p>Every action is logged with user, session, device, time, and context for traceable incident reconstruction.</p>
+          </article>
+          <article class="card glow">
+            <h3>Responsive Dashboard and PWA</h3>
+            <p>Desktop dashboard remains fully responsive across mobile, tablet, and large screens with installable PWA support.</p>
+          </article>
+          <article class="card glow">
+            <h3>Smart Alert Logic</h3>
+            <p>Stable trigger windows and sensor filtering reduce false alarms from splash, debris, or transient movement.</p>
+          </article>
+          <article class="card glow">
+            <h3>Network and SIM Diagnostics</h3>
+            <p>Monitor Wi-Fi, gateway, internet, SIM registration, operator, signal quality, and fallback communication health.</p>
+          </article>
+          <article class="card glow">
+            <h3>Scalable Governance Model</h3>
+            <p>Supports vendor, department, location admin, operator, viewer, and third-party monitoring structures.</p>
+          </article>
+        </div>
+      </div>
+    </section>
+
+    <section class="content-section">
+      <div class="site-shell">
+        <h2 class="section-title">Execution Snapshot</h2>
+        <p class="section-lead">
+          Detailed milestones are documented in <a href="./PHASE_WISE_DELIVERABLES.md">PHASE_WISE_DELIVERABLES.md</a>.
+        </p>
+        <div class="phase-grid">
+          <article class="phase-card">
+            <h4>Phase 1: Firmware Safety Core</h4>
+            <p>Sensor filtering, delayed danger confirmation, relay orchestration, local queue, and dry-run support.</p>
+          </article>
+          <article class="phase-card">
+            <h4>Phase 2-3: Uplink and Backend</h4>
+            <p>MQTT + HTTP fallback, secure auth, RBAC, incident lifecycle, and complete control action auditing.</p>
+          </article>
+          <article class="phase-card">
+            <h4>Phase 4: Responsive PWA Dashboard</h4>
+            <p>Theme-consistent desktop and mobile web UI with vessel animation, status glow, and action safeguards.</p>
+          </article>
+          <article class="phase-card">
+            <h4>Phase 5-6: Android, FCM, and Hardening</h4>
+            <p>Capacitor Android delivery, push notification matrix, OTA protection rules, and full regression testing.</p>
+          </article>
+        </div>
+        <div class="cta-box">
+          <h3>Request Deployment Readiness Pack</h3>
+          <p>Includes environment checklist, role matrix, field commissioning flow, and emergency audit report template.</p>
+          <a class="btn btn-primary" href="./terms-and-conditions.html">Review Terms and Usage Conditions</a>
+        </div>
+      </div>
+    </section>
+  </main>
+
+  <footer class="footer">
+    <div class="site-shell footer-row">
+      <div>Copyright <span data-year></span> Jenix. FloodGuard by Jenix.</div>
+      <div class="footer-links">
+        <a href="./about.html">About</a>
+        <a href="./privacy-policy.html">Privacy Policy</a>
+        <a href="./terms-and-conditions.html">Terms and Conditions</a>
+      </div>
+    </div>
+  </footer>
+
+  <script src="./site.js"></script>
+</body>
+</html>
+

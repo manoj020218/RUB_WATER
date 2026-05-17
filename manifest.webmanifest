@@ -1,0 +1,19 @@
+{
+  "name": "FloodGuard by Jenix",
+  "short_name": "FloodGuard",
+  "description": "Real-time RUB flood monitoring, alerts and audit logs.",
+  "start_url": "./index.html",
+  "scope": "./",
+  "display": "standalone",
+  "background_color": "#070b18",
+  "theme_color": "#1d4ed8",
+  "icons": [
+    {
+      "src": "./icon.svg",
+      "sizes": "any",
+      "type": "image/svg+xml",
+      "purpose": "any"
+    }
+  ]
+}
+

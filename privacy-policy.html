@@ -1,0 +1,126 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <meta name="description" content="Privacy Policy for FloodGuard by Jenix.">
+  <meta name="theme-color" content="#1d4ed8">
+  <title>Privacy Policy | FloodGuard by Jenix</title>
+  <link rel="manifest" href="./manifest.webmanifest">
+  <link rel="icon" href="./icon.svg" type="image/svg+xml">
+  <link rel="stylesheet" href="./site.css">
+</head>
+<body>
+  <header class="top-nav">
+    <div class="site-shell">
+      <div class="brand-block">
+        <div class="brand-name">FloodGuard by Jenix</div>
+        <div class="brand-sub">RUB Water Level Monitoring and Alarm System</div>
+      </div>
+      <button class="menu-button" data-menu-button type="button" aria-label="Toggle menu">Menu</button>
+      <nav class="nav-links collapsed" data-nav-links>
+        <a class="nav-link" href="./index.html">Home</a>
+        <a class="nav-link" href="./about.html">About</a>
+        <a class="nav-link" href="./privacy-policy.html">Privacy</a>
+        <a class="nav-link" href="./terms-and-conditions.html">Terms</a>
+      </nav>
+    </div>
+  </header>
+
+  <main class="content-page">
+    <div class="site-shell">
+      <header class="page-header">
+        <h1 class="page-title">Privacy Policy</h1>
+        <p class="page-subtitle">Effective date: 17 May 2026</p>
+      </header>
+
+      <section class="prose">
+        <h2>1. Scope</h2>
+        <p>
+          This Privacy Policy explains how FloodGuard by Jenix collects, uses, stores, and protects information in the
+          web dashboard, PWA, Android app, backend APIs, and device telemetry workflows.
+        </p>
+
+        <h2>2. Information We Process</h2>
+        <ul>
+          <li>User account data: login ID, role, assigned location scope, and authentication records</li>
+          <li>Session metadata: session ID, app type, device name, and last seen timestamp</li>
+          <li>Operational telemetry: water level, sensor state, switch state, power and network indicators</li>
+          <li>Control action logs: mute, force clear, dry run, and configuration changes</li>
+          <li>Notification data: FCM token and delivery event metadata</li>
+          <li>Network diagnostics: Wi-Fi, gateway reachability, internet status, and SIM health fields (when enabled)</li>
+        </ul>
+
+        <h2>3. Why We Process This Data</h2>
+        <ul>
+          <li>Provide real-time flood monitoring and alert distribution</li>
+          <li>Maintain audit and compliance evidence for infrastructure operations</li>
+          <li>Support role-based command authorization and incident forensics</li>
+          <li>Improve platform stability, device uptime, and emergency response quality</li>
+        </ul>
+
+        <h2>4. Data Retention</h2>
+        <p>
+          Retention policy may vary by deployment agreement. The default operational model can include compressed daily
+          summaries for dry days and detailed retention for water-detection periods and incidents.
+        </p>
+        <p>
+          If no water is detected in a 24-hour period, operators may keep one summarized record marked as a no-water
+          day and purge high-frequency dry telemetry according to approved policy.
+        </p>
+
+        <h2>5. Security Controls</h2>
+        <ul>
+          <li>JWT-based authenticated APIs and role access controls</li>
+          <li>Password hashing (bcrypt or equivalent secure algorithm)</li>
+          <li>Command authorization checks before high-risk actions</li>
+          <li>Audit logging for sensitive operations</li>
+          <li>Transport security for internet-facing endpoints where available</li>
+        </ul>
+
+        <h2>6. Data Sharing</h2>
+        <p>
+          Data is shared only with authorized project stakeholders, operators, and approved service providers required
+          for platform operation. Jenix does not sell personal data under this project model.
+        </p>
+
+        <h2>7. User and Organization Rights</h2>
+        <p>
+          Authorized organizations can request correction of inaccurate account metadata, deactivation of users, and
+          scoped data exports where technically and legally feasible.
+        </p>
+
+        <h2>8. Changes to This Policy</h2>
+        <p>
+          This policy may be updated as platform scope, legal obligations, or deployment controls evolve. Updated
+          versions should include a revised effective date.
+        </p>
+
+        <h2>9. Contact</h2>
+        <p>
+          For privacy and compliance queries, contact the authorized FloodGuard deployment administrator or Jenix
+          support contact defined in your deployment agreement.
+        </p>
+      </section>
+
+      <div class="notice">
+        This document is a project policy template and should be reviewed by legal counsel before production rollout.
+      </div>
+    </div>
+  </main>
+
+  <footer class="footer">
+    <div class="site-shell footer-row">
+      <div>Copyright <span data-year></span> Jenix. FloodGuard by Jenix.</div>
+      <div class="footer-links">
+        <a href="./index.html">Home</a>
+        <a href="./about.html">About</a>
+        <a href="./terms-and-conditions.html">Terms and Conditions</a>
+      </div>
+    </div>
+  </footer>
+
+  <script src="./site.js"></script>
+</body>
+</html>
+

@@ -1,0 +1,98 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <meta name="description" content="About FloodGuard by Jenix - purpose, architecture, and operational model.">
+  <meta name="theme-color" content="#1d4ed8">
+  <title>About | FloodGuard by Jenix</title>
+  <link rel="manifest" href="./manifest.webmanifest">
+  <link rel="icon" href="./icon.svg" type="image/svg+xml">
+  <link rel="stylesheet" href="./site.css">
+</head>
+<body>
+  <header class="top-nav">
+    <div class="site-shell">
+      <div class="brand-block">
+        <div class="brand-name">FloodGuard by Jenix</div>
+        <div class="brand-sub">RUB Water Level Monitoring and Alarm System</div>
+      </div>
+      <button class="menu-button" data-menu-button type="button" aria-label="Toggle menu">Menu</button>
+      <nav class="nav-links collapsed" data-nav-links>
+        <a class="nav-link" href="./index.html">Home</a>
+        <a class="nav-link" href="./about.html">About</a>
+        <a class="nav-link" href="./privacy-policy.html">Privacy</a>
+        <a class="nav-link" href="./terms-and-conditions.html">Terms</a>
+      </nav>
+    </div>
+  </header>
+
+  <main class="content-page">
+    <div class="site-shell">
+      <header class="page-header">
+        <h1 class="page-title">About FloodGuard by Jenix</h1>
+        <p class="page-subtitle">Jenix FloodGuard - RUB Water Level Monitoring and Alarm System</p>
+      </header>
+
+      <section class="prose">
+        <h2>Mission</h2>
+        <p>
+          FloodGuard by Jenix is designed to reduce risk at Railway Under Bridges and low-lying road crossings by
+          combining local emergency control with real-time remote monitoring.
+        </p>
+
+        <h2>Core Safety Design</h2>
+        <p>
+          The local controller is the safety authority. If cloud, VPS, or internet connectivity fails, on-site alarm
+          decisions and relay activation continue based on sensor and switch state. This design minimizes dependency
+          risk during peak flood events.
+        </p>
+
+        <h2>Platform Components</h2>
+        <ul>
+          <li>ESP32-S3 controller with RS485 ultrasonic water level sensor integration</li>
+          <li>Backup 300 mm and 500 mm level switch inputs</li>
+          <li>Local siren, beacon, and voice output relays</li>
+          <li>MQTT-first communication with HTTP fallback</li>
+          <li>Node.js backend and MongoDB event storage</li>
+          <li>Responsive web dashboard (PWA) and Android mobile app support</li>
+          <li>FCM notifications and complete incident audit logs</li>
+        </ul>
+
+        <h2>Operating Philosophy</h2>
+        <p>
+          Every operational event should answer: what happened, where it happened, when it happened, who acted, and
+          what the sensor context was at that time. This creates accountability suitable for government and large
+          infrastructure teams.
+        </p>
+
+        <h2>Current Scope</h2>
+        <p>
+          The current project scope includes firmware safety logic, backend APIs, role-based control, responsive PWA
+          dashboard, Android packaging, notification handling, OTA strategy, and launch-ready legal pages.
+        </p>
+
+        <h2>Commercial Identity</h2>
+        <p>
+          Product name: FloodGuard by Jenix<br>
+          Tagline: Real-time RUB flood monitoring, alerts and audit logs
+        </p>
+      </section>
+    </div>
+  </main>
+
+  <footer class="footer">
+    <div class="site-shell footer-row">
+      <div>Copyright <span data-year></span> Jenix. FloodGuard by Jenix.</div>
+      <div class="footer-links">
+        <a href="./index.html">Home</a>
+        <a href="./privacy-policy.html">Privacy Policy</a>
+        <a href="./terms-and-conditions.html">Terms and Conditions</a>
+      </div>
+    </div>
+  </footer>
+
+  <script src="./site.js"></script>
+</body>
+</html>
+

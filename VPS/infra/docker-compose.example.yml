@@ -1,0 +1,56 @@
+version: "3.8"
+
+# FloodGuard VPS skeleton (example only)
+# Services: API + Mosquitto + MongoDB
+
+services:
+  mongo:
+    image: mongo:7
+    container_name: floodguard_mongo
+    restart: unless-stopped
+    volumes:
+      - mongo_data:/data/db
+    networks:
+      - fg_net
+
+  mosquitto:
+    image: eclipse-mosquitto:2
+    container_name: floodguard_mosquitto
+    restart: unless-stopped
+    ports:
+      - "1883:1883"
+      - "9001:9001"
+    volumes:
+      - ./mosquitto.conf:/mosquitto/config/mosquitto.conf
+      - mosquitto_data:/mosquitto/data
+      - mosquitto_logs:/mosquitto/log
+    networks:
+      - fg_net
+
+  api:
+    image: floodguard-api:latest
+    container_name: floodguard_api
+    restart: unless-stopped
+    depends_on:
+      - mongo
+      - mosquitto
+    environment:
+      NODE_ENV: production
+      PORT: 3000
+      MONGO_URL: mongodb://mongo:27017/floodguard
+      MQTT_HOST: mosquitto
+      MQTT_PORT: 1883
+    ports:
+      - "3000:3000"
+    networks:
+      - fg_net
+
+volumes:
+  mongo_data:
+  mosquitto_data:
+  mosquitto_logs:
+
+networks:
+  fg_net:
+    driver: bridge
+
