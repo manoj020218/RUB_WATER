@@ -70,6 +70,10 @@ struct DeviceConfig {
     char mqttUser[64];
     char mqttPass[64];
     char httpBaseUrl[128];
+    char otaBaseUrl[128];
+    char otaManifestPath[64];
+    char otaChannel[24];
+    uint32_t otaCheckIntervalMs;
     char firmwareVersion[32];
     ThresholdConfig thresholds;
     ReportingProfile reporting;

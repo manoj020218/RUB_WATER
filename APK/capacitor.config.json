@@ -1,0 +1,8 @@
+{
+  "appId": "in.jenix.floodguard",
+  "appName": "FloodGuard by Jenix",
+  "webDir": "www",
+  "server": {
+    "androidScheme": "https"
+  }
+}

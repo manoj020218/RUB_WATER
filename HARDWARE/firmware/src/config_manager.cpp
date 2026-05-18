@@ -31,6 +31,10 @@ void ConfigManager::loadDefaults() {
     std::strncpy(_config.mqttUser, DeviceProfile::DEFAULT_MQTT_USER, sizeof(_config.mqttUser) - 1);
     std::strncpy(_config.mqttPass, DeviceProfile::DEFAULT_MQTT_PASS, sizeof(_config.mqttPass) - 1);
     std::strncpy(_config.httpBaseUrl, DeviceProfile::DEFAULT_HTTP_BASE_URL, sizeof(_config.httpBaseUrl) - 1);
+    std::strncpy(_config.otaBaseUrl, DeviceProfile::DEFAULT_OTA_BASE_URL, sizeof(_config.otaBaseUrl) - 1);
+    std::strncpy(_config.otaManifestPath, DeviceProfile::DEFAULT_OTA_MANIFEST_PATH, sizeof(_config.otaManifestPath) - 1);
+    std::strncpy(_config.otaChannel, DeviceProfile::DEFAULT_OTA_CHANNEL, sizeof(_config.otaChannel) - 1);
+    _config.otaCheckIntervalMs = DeviceProfile::DEFAULT_OTA_CHECK_INTERVAL_MS;
     std::strncpy(_config.firmwareVersion, DeviceProfile::FIRMWARE_VERSION, sizeof(_config.firmwareVersion) - 1);
 
     _config.thresholds.sensorMountHeightMm = 1200;

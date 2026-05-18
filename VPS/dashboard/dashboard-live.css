@@ -1,0 +1,239 @@
+﻿/* FloodGuard dashboard runtime/mobile overrides */
+
+.auth-modal-bg {
+  position: fixed;
+  inset: 0;
+  background: rgba(15, 23, 42, 0.68);
+  display: none;
+  align-items: center;
+  justify-content: center;
+  padding: 16px;
+  z-index: 350;
+}
+
+.auth-modal-bg.show {
+  display: flex;
+}
+
+.auth-modal {
+  width: min(100%, 460px);
+  background: #ffffff;
+  border-radius: 14px;
+  border: 1px solid #e2e8f0;
+  box-shadow: 0 18px 42px rgba(15, 23, 42, 0.28);
+  padding: 20px;
+}
+
+.auth-modal h3 {
+  font-size: 20px;
+  line-height: 1.2;
+  margin-bottom: 8px;
+}
+
+.auth-modal p {
+  font-size: 13px;
+  color: #64748b;
+  margin-bottom: 12px;
+}
+
+.auth-lbl {
+  display: block;
+  font-size: 11px;
+  font-weight: 700;
+  text-transform: uppercase;
+  color: #334155;
+  letter-spacing: 0.04em;
+  margin: 10px 0 6px;
+}
+
+.auth-inp {
+  width: 100%;
+  padding: 11px 12px;
+  font-size: 14px;
+  border: 1px solid #cbd5e1;
+  border-radius: 8px;
+  outline: none;
+}
+
+.auth-inp:focus {
+  border-color: #1d4ed8;
+  box-shadow: 0 0 0 3px rgba(29, 78, 216, 0.14);
+}
+
+.auth-row {
+  display: flex;
+  gap: 10px;
+  margin-top: 14px;
+}
+
+.auth-btn {
+  flex: 1;
+  border-radius: 8px;
+  font-size: 13px;
+  font-weight: 700;
+  padding: 10px 12px;
+  border: 1px solid transparent;
+}
+
+.auth-btn-primary {
+  background: #1d4ed8;
+  color: #ffffff;
+}
+
+.auth-btn-secondary {
+  background: #ffffff;
+  color: #1e40af;
+  border-color: #bfdbfe;
+}
+
+.auth-error {
+  margin-top: 10px;
+  min-height: 18px;
+  font-size: 12px;
+  color: #dc2626;
+}
+
+#user-access-panel .modal-inp,
+#user-access-panel .cbtn {
+  margin: 0;
+}
+
+#user-access-panel .pc-title {
+  margin-bottom: 4px;
+}
+
+.lcard,
+.cbtn,
+.btn-sm,
+.ab-btn,
+.user-btn,
+.nl {
+  touch-action: manipulation;
+}
+
+@media (max-width: 900px) {
+  #dash {
+    padding: 14px 12px 18px;
+    gap: 12px;
+  }
+
+  .section-wrap {
+    padding: 14px 12px;
+  }
+
+  .mp-hdr {
+    padding: 14px;
+  }
+
+  .mp-name {
+    font-size: 18px;
+  }
+
+  .pcard,
+  .mc,
+  .vessel-pnl,
+  .ctrl-pnl,
+  .audit-pnl {
+    padding: 14px;
+  }
+
+  .ctrl-pnl .cp-grid {
+    grid-template-columns: 1fr;
+  }
+
+  #user-access-panel .ua-create {
+    grid-template-columns: 1fr !important;
+  }
+
+  .atable {
+    display: block;
+    overflow-x: auto;
+    -webkit-overflow-scrolling: touch;
+  }
+}
+
+@media (max-width: 640px) {
+  .nav-in {
+    height: auto;
+    min-height: 58px;
+    padding: 10px 12px;
+    gap: 8px;
+    flex-wrap: wrap;
+  }
+
+  .nav-r {
+    width: 100%;
+    justify-content: space-between;
+    margin-left: 0;
+  }
+
+  .logo-name {
+    font-size: 16px;
+  }
+
+  .clock-txt {
+    font-size: 11px;
+  }
+
+  #hero {
+    padding: 28px 12px;
+  }
+
+  .hero-h1 {
+    font-size: 26px;
+  }
+
+  .hero-tag {
+    font-size: 13px;
+    margin-bottom: 16px;
+  }
+
+  .hero-btns {
+    width: 100%;
+  }
+
+  .hero-btns .btn-pri,
+  .hero-btns .btn-sec {
+    width: 100%;
+    justify-content: center;
+  }
+
+  .ab-in {
+    padding: 8px 12px;
+  }
+
+  .ab-text {
+    font-size: 12px;
+  }
+
+  .ab-btns {
+    width: 100%;
+  }
+
+  .ab-btn {
+    flex: 1;
+  }
+
+  .vessel-wrap {
+    margin-right: 0;
+    transform: scale(0.95);
+  }
+
+  .vlabel {
+    right: -64px;
+  }
+
+  .net-grid,
+  .relay-grid {
+    grid-template-columns: 1fr;
+  }
+
+  .auth-modal {
+    border-radius: 12px;
+    padding: 16px;
+  }
+
+  .auth-row {
+    flex-direction: column;
+  }
+}

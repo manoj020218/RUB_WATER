@@ -19,7 +19,9 @@ public:
 
 private:
     LocalEventQueue() = default;
-    static constexpr size_t MAX_EVENTS = 500;
+    // 500+ events is the target with external storage/PSRAM.
+    // On ESP32-S3 N8 (no PSRAM), keep this lower to fit internal DRAM.
+    static constexpr size_t MAX_EVENTS = 250;
     QueuedEvent _events[MAX_EVENTS]{};
     size_t _head = 0;
     size_t _tail = 0;

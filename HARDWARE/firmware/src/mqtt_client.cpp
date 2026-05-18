@@ -43,7 +43,7 @@ void MqttClientService::loop() {
     _client.loop();
 }
 
-bool MqttClientService::isConnected() const {
+bool MqttClientService::isConnected() {
     return _client.connected();
 }
 
@@ -78,6 +78,10 @@ String MqttClientService::commandAckTopic() const {
     return String("rub/") + _deviceId + "/command_ack";
 }
 
+String MqttClientService::otaTopic() const {
+    return String("rub/") + _deviceId + "/ota";
+}
+
 bool MqttClientService::connect() {
     if (_deviceId[0] == '\0' || _host[0] == '\0') {
         return false;
@@ -101,7 +105,7 @@ bool MqttClientService::connect() {
 void MqttClientService::subscribe() {
     _client.subscribe(commandTopic().c_str());
     _client.subscribe((String("rub/") + _deviceId + "/config").c_str());
-    _client.subscribe((String("rub/") + _deviceId + "/ota").c_str());
+    _client.subscribe(otaTopic().c_str());
 }
 
 void MqttClientService::onMessageBridge(char* topic, uint8_t* payload, unsigned int length) {
@@ -116,7 +120,12 @@ void MqttClientService::onMessage(char* topic, uint8_t* payload, unsigned int le
     std::memcpy(message, payload, copyLen);
     message[copyLen] = '\0';
 
-    if (String(topic) != commandTopic()) {
+    const String topicStr = String(topic);
+    const String configTopic = String("rub/") + _deviceId + "/config";
+    const bool fromCommandTopic = (topicStr == commandTopic());
+    const bool fromOtaTopic = (topicStr == otaTopic());
+    const bool fromConfigTopic = (topicStr == configTopic);
+    if (!fromCommandTopic && !fromOtaTopic && !fromConfigTopic) {
         return;
     }
 
@@ -131,6 +140,19 @@ void MqttClientService::onMessage(char* topic, uint8_t* payload, unsigned int le
     }
     if (command[0] == '\0') {
         command = doc["action"] | "";
+    }
+    if (command[0] == '\0' && fromOtaTopic) {
+        command = "OTA_UPDATE";
+    }
+    if (command[0] == '\0' && fromConfigTopic) {
+        if (doc.containsKey("ota_host") || doc.containsKey("ota_base_url") ||
+            doc.containsKey("host") || doc.containsKey("vps") || doc.containsKey("server")) {
+            command = "OTA_SET_HOST";
+        } else if (doc["ota_update"] | false) {
+            command = "OTA_UPDATE";
+        } else if (doc["ota_check"] | false) {
+            command = "OTA_CHECK";
+        }
     }
     if (_commandCallback && command[0] != '\0') {
         _commandCallback(command, message);

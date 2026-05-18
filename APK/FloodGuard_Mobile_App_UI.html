@@ -1,0 +1,1120 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>FloodGuard Mobile App — UI Mockup</title>
+<style>
+/* ── PAGE ─────────────────────────────────────────────────────── */
+*,*::before,*::after{box-sizing:border-box;margin:0;padding:0}
+:root{
+  --brand:#1d4ed8;--brand-h:#1e40af;--brand-lt:#eff6ff;
+  --danger:#dc2626;--danger-lt:#fee2e2;--danger-bd:#fca5a5;
+  --alert:#d97706;--alert-lt:#fffbeb;--alert-bd:#fde68a;
+  --ok:#059669;--ok-lt:#ecfdf5;--ok-bd:#6ee7b7;
+  --off:#6b7280;
+  --card:#fff;--bg:#f1f5f9;--bdr:#e2e8f0;
+  --text:#0f172a;--t2:#475569;--t3:#94a3b8;
+  font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-serif;
+}
+
+body{
+  background:linear-gradient(135deg,#1e3a8a 0%,#1e40af 40%,#0f172a 100%);
+  min-height:100vh;
+  display:flex;
+  flex-direction:column;
+  align-items:center;
+  padding:30px 20px 40px;
+  gap:24px;
+}
+
+/* ── DEMO LABEL ────────────────────────────────────────────────── */
+.demo-label{
+  color:#93c5fd;
+  font-size:13px;
+  font-weight:600;
+  letter-spacing:.08em;
+  text-transform:uppercase;
+  text-align:center;
+}
+.demo-label span{color:#fff;font-size:15px;font-weight:800}
+
+/* ── SCREEN SWITCHER ────────────────────────────────────────────── */
+.screen-tabs{
+  display:flex;gap:6px;flex-wrap:wrap;justify-content:center;
+  background:rgba(255,255,255,.1);
+  padding:8px;
+  border-radius:14px;
+}
+.stab{
+  padding:7px 16px;border:none;border-radius:9px;
+  font-size:12px;font-weight:600;cursor:pointer;
+  background:transparent;color:rgba(255,255,255,.6);
+  transition:.15s;letter-spacing:.02em;
+}
+.stab.act{background:#fff;color:#1e3a8a;}
+.stab.danger-tab{background:#dc2626!important;color:#fff!important;}
+
+/* ── PHONE FRAME ─────────────────────────────────────────────────── */
+.phone-outer{
+  position:relative;
+  width:393px;
+  max-width:100%;
+}
+.phone-frame{
+  width:393px;
+  max-width:100%;
+  height:852px;
+  background:#fff;
+  border-radius:48px;
+  overflow:hidden;
+  position:relative;
+  box-shadow:
+    0 0 0 10px #1a1a2e,
+    0 0 0 12px #374151,
+    0 40px 80px rgba(0,0,0,.6);
+}
+
+/* Notch */
+.notch{
+  position:absolute;top:0;left:50%;transform:translateX(-50%);
+  width:126px;height:36px;background:#1a1a2e;
+  border-radius:0 0 22px 22px;z-index:50;
+  display:flex;align-items:center;justify-content:center;gap:8px;
+}
+.notch-cam{width:12px;height:12px;background:#2d3748;border-radius:50%;border:2px solid #374151}
+
+/* ── STATUS BAR ─────────────────────────────────────────────────── */
+.sb{
+  height:50px;background:#fff;
+  display:flex;align-items:flex-end;justify-content:space-between;
+  padding:0 28px 8px;font-size:12px;font-weight:600;color:var(--text);
+  position:relative;z-index:40;flex-shrink:0;border-bottom:1px solid #f1f5f9;
+}
+.sb-left{font-size:13px;font-weight:700}
+.sb-right{display:flex;align-items:center;gap:6px;font-size:11px}
+.sig-bars{display:flex;align-items:flex-end;gap:1.5px}
+.sig-bar{width:3px;background:#0f172a;border-radius:1px}
+
+/* ── SCREEN BASE ─────────────────────────────────────────────────── */
+.screen{
+  display:none;
+  flex-direction:column;
+  height:calc(852px - 50px - 72px);
+  overflow-y:auto;
+  overflow-x:hidden;
+  background:#f1f5f9;
+  scroll-behavior:smooth;
+}
+.screen.act{display:flex}
+/* Hide scrollbars in mockup */
+.screen::-webkit-scrollbar{display:none}
+.screen{-ms-overflow-style:none;scrollbar-width:none}
+
+/* ── BOTTOM NAV ──────────────────────────────────────────────────── */
+.bnav{
+  height:72px;background:#fff;
+  border-top:1px solid #e2e8f0;
+  display:flex;
+  position:relative;z-index:40;flex-shrink:0;
+  padding-bottom:8px;
+}
+.bnav-item{
+  flex:1;display:flex;flex-direction:column;
+  align-items:center;justify-content:center;gap:3px;
+  cursor:pointer;border:none;background:none;
+  font-size:10px;font-weight:600;color:var(--t3);
+  transition:.15s;
+}
+.bnav-item.act{color:var(--brand)}
+.bnav-icon{font-size:22px;line-height:1}
+.bnav-badge{
+  position:absolute;top:8px;background:var(--danger);
+  color:#fff;font-size:9px;font-weight:800;
+  width:16px;height:16px;border-radius:50%;
+  display:flex;align-items:center;justify-content:center;
+}
+
+/* ── ANIMATIONS ─────────────────────────────────────────────────── */
+@keyframes blink{0%,100%{opacity:1}50%{opacity:.15}}
+@keyframes pulse-r{0%,100%{box-shadow:0 0 0 0 rgba(220,38,38,.5)}60%{box-shadow:0 0 0 10px rgba(220,38,38,0)}}
+@keyframes wave{0%,100%{transform:translateX(0)}50%{transform:translateX(-16px)}}
+@keyframes fadein{from{opacity:0;transform:translateY(12px)}to{opacity:1;transform:translateY(0)}}
+@keyframes slidedown{from{transform:translateY(-100%);opacity:0}to{transform:translateY(0);opacity:1}}
+@keyframes shimmer{0%{background-position:-200% 0}100%{background-position:200% 0}}
+
+.blink{animation:blink 1.4s ease-in-out infinite}
+.fadein{animation:fadein .35s ease both}
+
+/* ── SCREEN 1: LOGIN ─────────────────────────────────────────────── */
+.login-bg{
+  flex:1;display:flex;flex-direction:column;align-items:center;justify-content:center;
+  background:linear-gradient(180deg,#1e3a8a 0%,#1d4ed8 60%,#f1f5f9 100%);
+  padding:24px 28px;gap:0;
+}
+.login-logo{text-align:center;margin-bottom:32px}
+.login-logo-icon{font-size:48px;margin-bottom:10px;display:block;filter:drop-shadow(0 4px 12px rgba(0,0,0,.3))}
+.login-logo-name{font-size:26px;font-weight:900;color:#fff;letter-spacing:-.02em}
+.login-logo-sub{font-size:11px;color:#bfdbfe;margin-top:4px;letter-spacing:.04em;text-transform:uppercase}
+.login-logo-hi{font-size:13px;color:#93c5fd;margin-top:6px}
+.login-card{
+  background:#fff;border-radius:20px;padding:24px 22px;width:100%;
+  box-shadow:0 20px 60px rgba(0,0,0,.3);
+}
+.login-title{font-size:17px;font-weight:800;color:var(--text);margin-bottom:4px}
+.login-sub{font-size:12px;color:var(--t3);margin-bottom:20px}
+.form-grp{margin-bottom:14px}
+.form-lbl{font-size:11px;font-weight:700;color:var(--t2);margin-bottom:5px;display:block;letter-spacing:.04em;text-transform:uppercase}
+.form-inp{
+  width:100%;padding:12px 14px;border:1px solid var(--bdr);border-radius:10px;
+  font-size:14px;color:var(--text);background:#f8fafc;outline:none;
+  font-family:inherit;
+}
+.form-inp:focus{border-color:var(--brand);background:#fff;box-shadow:0 0 0 3px rgba(29,78,216,.1)}
+.form-row{display:flex;justify-content:space-between;align-items:center;margin-bottom:18px}
+.form-chk{display:flex;align-items:center;gap:8px;font-size:12px;color:var(--t2);cursor:pointer}
+.form-forgot{font-size:12px;color:var(--brand);font-weight:600;cursor:pointer}
+.btn-login{
+  width:100%;padding:14px;background:var(--brand);color:#fff;
+  border:none;border-radius:12px;font-size:15px;font-weight:800;
+  cursor:pointer;letter-spacing:.02em;transition:.15s;
+  margin-bottom:12px;
+}
+.btn-login:active{background:var(--brand-h)}
+.login-note{font-size:10px;color:var(--t3);text-align:center;line-height:1.5}
+.dept-divider{display:flex;align-items:center;gap:10px;margin:14px 0;font-size:11px;color:var(--t3)}
+.dept-divider::before,.dept-divider::after{content:'';flex:1;height:1px;background:var(--bdr)}
+
+/* ── SCREEN 2: LOCATION LIST ─────────────────────────────────────── */
+.app-bar{
+  background:#fff;padding:12px 18px 14px;
+  border-bottom:1px solid var(--bdr);flex-shrink:0;
+}
+.app-bar-title{font-size:17px;font-weight:800}
+.app-bar-sub{font-size:11px;color:var(--t3);margin-top:2px}
+.alert-strip{
+  background:var(--danger);color:#fff;
+  padding:10px 18px;font-size:12px;font-weight:600;
+  display:flex;align-items:center;gap:10px;flex-shrink:0;
+}
+.alert-strip-icon{font-size:16px;animation:blink .9s infinite}
+.alert-strip-txt{flex:1;line-height:1.4}
+.list-scroll{flex:1;overflow-y:auto;padding:14px;display:flex;flex-direction:column;gap:10px}
+.list-scroll::-webkit-scrollbar{display:none}
+.lc{
+  background:#fff;border:1px solid var(--bdr);border-radius:14px;
+  padding:14px 16px;
+}
+.lc.d{border-left:5px solid var(--danger);animation:pulse-r 2.5s ease-in-out infinite}
+.lc.a{border-left:5px solid var(--alert)}
+.lc.n{border-left:5px solid var(--ok)}
+.lc.o{border-left:5px solid var(--off)}
+.lc-row1{display:flex;justify-content:space-between;align-items:flex-start;margin-bottom:10px}
+.lc-name{font-size:14px;font-weight:800;line-height:1.3}
+.lc-id{font-size:10px;color:var(--t3);font-weight:600;margin-top:2px}
+.lbadge{display:inline-flex;align-items:center;gap:4px;padding:3px 10px;border-radius:999px;font-size:10px;font-weight:800;letter-spacing:.06em;text-transform:uppercase;white-space:nowrap}
+.lb-d{background:var(--danger-lt);color:var(--danger);border:1px solid var(--danger-bd)}
+.lb-a{background:var(--alert-lt);color:var(--alert);border:1px solid var(--alert-bd)}
+.lb-n{background:#ecfdf5;color:var(--ok);border:1px solid var(--ok-bd)}
+.lb-o{background:#f9fafb;color:var(--off);border:1px solid #e5e7eb}
+.ldot{width:6px;height:6px;border-radius:50%;background:currentColor}
+.lc-row2{display:grid;grid-template-columns:1fr 1fr 1fr;gap:8px}
+.lc-metric{text-align:center}
+.lc-m-val{font-size:16px;font-weight:900;line-height:1}
+.lc-m-lbl{font-size:9px;color:var(--t3);text-transform:uppercase;letter-spacing:.04em;margin-top:2px}
+.lc-danger-val{color:var(--danger)}
+.lc-alert-val{color:var(--alert)}
+.lc-ok-val{color:var(--ok)}
+.lc-off-val{color:var(--off)}
+.lc-row3{margin-top:10px;display:flex;justify-content:space-between;align-items:center}
+.lc-update{font-size:10px;color:var(--t3)}
+.lc-arrow{font-size:14px;color:var(--t3)}
+
+/* ── SCREEN 3: DASHBOARD ─────────────────────────────────────────── */
+.dash-header{
+  background:linear-gradient(135deg,#1e3a8a,#1d4ed8);
+  padding:14px 18px 18px;flex-shrink:0;color:#fff;
+}
+.dh-top{display:flex;justify-content:space-between;align-items:flex-start;margin-bottom:10px}
+.dh-name{font-size:16px;font-weight:900;line-height:1.3}
+.dh-sub{font-size:10px;color:#93c5fd;margin-top:3px}
+.dh-badge{display:inline-flex;align-items:center;gap:5px;background:rgba(220,38,38,.9);color:#fff;padding:4px 12px;border-radius:999px;font-size:11px;font-weight:800;animation:pulse-r 2s infinite}
+.dh-stats{display:grid;grid-template-columns:repeat(3,1fr);gap:8px;margin-top:10px}
+.dh-stat{background:rgba(255,255,255,.12);border-radius:10px;padding:8px;text-align:center}
+.dh-stat-v{font-size:18px;font-weight:900;line-height:1}
+.dh-stat-l{font-size:9px;opacity:.7;text-transform:uppercase;letter-spacing:.04em;margin-top:3px}
+
+/* Dashboard scroll content */
+.dash-scroll{flex:1;overflow-y:auto;padding:12px;display:flex;flex-direction:column;gap:12px}
+.dash-scroll::-webkit-scrollbar{display:none}
+
+/* Water vessel card */
+.vessel-card{
+  background:#fff;border-radius:16px;padding:18px;
+  display:flex;align-items:center;gap:20px;
+  box-shadow:0 2px 8px rgba(0,0,0,.06);
+}
+.mv-wrap{position:relative;width:70px;height:180px;flex-shrink:0}
+.mv-top{position:absolute;top:0;left:6px;right:6px;height:16px;border:2px solid #94a3b8;border-bottom:none;border-radius:3px 3px 0 0;background:#f8fafc}
+.mv-body{position:absolute;bottom:0;left:0;right:0;height:164px;border:2px solid #94a3b8;border-top:none;border-radius:0 0 10px 10px;overflow:hidden;background:#f8fafc}
+.mv-fill{position:absolute;bottom:0;left:0;right:0;height:43.7%;background:linear-gradient(0deg,#b91c1c,#ef4444);transition:height 2s ease}
+.mv-surf{position:absolute;top:-3px;left:-20px;right:-20px;height:6px;background:rgba(255,255,255,.35);border-radius:50%;animation:wave 3s ease-in-out infinite}
+.mv-m{position:absolute;left:0;right:0;border-top:1.5px dashed;z-index:2;pointer-events:none}
+.mv-m500{bottom:41.7%;border-color:rgba(220,38,38,.6)}
+.mv-m300{bottom:25%;border-color:rgba(217,119,6,.6)}
+/* Labels next to vessel */
+.mv-labels{position:absolute;right:-48px;width:45px}
+.mv-l500{position:absolute;bottom:41.7%;font-size:8px;font-weight:800;color:var(--danger);white-space:nowrap;transform:translateY(50%)}
+.mv-l300{position:absolute;bottom:25%;font-size:8px;font-weight:800;color:var(--alert);white-space:nowrap;transform:translateY(50%)}
+/* Reading area */
+.vessel-reading{flex:1}
+.vr-level{font-size:46px;font-weight:900;color:var(--danger);line-height:1;font-variant-numeric:tabular-nums}
+.vr-unit{font-size:14px;color:var(--t3);font-weight:500}
+.vr-dist{font-size:12px;color:var(--t3);margin-top:4px}
+.vr-badge{display:inline-flex;align-items:center;gap:5px;background:var(--danger-lt);color:var(--danger);border:1px solid var(--danger-bd);padding:5px 12px;border-radius:999px;font-size:11px;font-weight:800;margin-top:10px;animation:pulse-r 2s infinite}
+.vr-switch{margin-top:10px;display:flex;flex-direction:column;gap:5px}
+.sw-row{display:flex;align-items:center;justify-content:space-between;font-size:12px}
+.sw-lbl{color:var(--t2);font-weight:600}
+.sw-val{font-weight:800;padding:2px 8px;border-radius:4px;font-size:11px}
+.sw-on{background:var(--danger-lt);color:var(--danger)}
+.sw-off{background:#ecfdf5;color:var(--ok)}
+
+/* Metric cards */
+.m-grid{display:grid;grid-template-columns:1fr 1fr;gap:10px}
+.mcard{background:#fff;border-radius:14px;padding:14px;box-shadow:0 2px 6px rgba(0,0,0,.05)}
+.mcard-icon{font-size:20px;margin-bottom:6px}
+.mcard-lbl{font-size:10px;color:var(--t3);text-transform:uppercase;letter-spacing:.05em;font-weight:700}
+.mcard-val{font-size:20px;font-weight:900;line-height:1.2;font-variant-numeric:tabular-nums}
+.mcard-sub{font-size:11px;color:var(--t3);margin-top:2px}
+.mcard-ok{color:var(--ok)}
+.mcard-warn{color:var(--alert)}
+.mcard-err{color:var(--danger)}
+
+/* Network status card */
+.net-card{background:#fff;border-radius:14px;padding:14px;box-shadow:0 2px 6px rgba(0,0,0,.05)}
+.nc-title{font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:.07em;color:var(--t2);margin-bottom:12px;padding-bottom:8px;border-bottom:1px solid var(--bdr);display:flex;justify-content:space-between;align-items:center}
+.nc-row{display:flex;align-items:center;justify-content:space-between;padding:8px 0;border-bottom:1px solid #f8fafc;font-size:12px}
+.nc-row:last-child{border-bottom:none}
+.nc-name{color:var(--t2);display:flex;align-items:center;gap:6px}
+.nc-val{font-weight:700;font-size:12px}
+.c-ok{color:var(--ok)}
+.c-err{color:var(--danger)}
+.c-warn{color:var(--alert)}
+.c-grey{color:var(--t2)}
+
+/* Relay card */
+.relay-card{background:#fff;border-radius:14px;padding:14px;box-shadow:0 2px 6px rgba(0,0,0,.05)}
+.rc-title{font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:.07em;color:var(--t2);margin-bottom:12px;padding-bottom:8px;border-bottom:1px solid var(--bdr)}
+.rc-rows{display:flex;flex-direction:column;gap:8px}
+.rc-row{display:flex;align-items:center;justify-content:space-between;padding:8px 12px;background:var(--bg);border-radius:9px}
+.rc-name{font-size:13px;font-weight:700;color:var(--t2)}
+.rc-sub{font-size:10px;color:var(--t3)}
+.tog{width:42px;height:24px;border-radius:12px;position:relative;flex-shrink:0}
+.tog-on{background:var(--danger);animation:pulse-r 2s infinite}
+.tog-off{background:#d1d5db}
+.tok{position:absolute;top:3px;width:18px;height:18px;background:#fff;border-radius:50%;box-shadow:0 1px 4px rgba(0,0,0,.2);transition:.2s}
+.tog-on .tok{left:21px}
+.tog-off .tok{left:3px}
+
+/* ── SCREEN 4: CONTROL ─────────────────────────────────────────── */
+.ctrl-scroll{flex:1;overflow-y:auto;padding:14px;display:flex;flex-direction:column;gap:12px}
+.ctrl-scroll::-webkit-scrollbar{display:none}
+.ctrl-section-title{font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:.08em;color:var(--t2);margin-bottom:8px;padding-left:2px}
+.ctrl-btn{
+  width:100%;padding:16px 18px;border-radius:14px;font-size:15px;font-weight:800;
+  cursor:pointer;border:none;display:flex;align-items:center;gap:12px;
+  text-align:left;transition:all .15s;
+}
+.ctrl-btn-label{flex:1}
+.ctrl-btn-sublabel{font-size:11px;font-weight:500;opacity:.75;display:block;margin-top:2px}
+.ctrl-btn-arr{font-size:18px;opacity:.5}
+.cbtn-mute{background:#fef3c7;color:#92400e}
+.cbtn-fc{background:#f3e8ff;color:#6b21a8}
+.cbtn-dry{background:#e0f2fe;color:#0c4a6e}
+.cbtn-rpt{background:#f1f5f9;color:var(--t2)}
+.cbtn-fcm{background:#ecfdf5;color:#065f46}
+.confirm-box{
+  background:#fff;border-radius:14px;padding:14px;
+  border:1px solid var(--bdr);font-size:12px;color:var(--t2);line-height:1.6;
+}
+.confirm-box strong{color:var(--text)}
+.perm-row{display:flex;justify-content:space-between;align-items:center;padding:10px 0;border-bottom:1px solid #f8fafc;font-size:12px}
+.perm-row:last-child{border-bottom:none}
+.perm-name{color:var(--t2);font-weight:600}
+.perm-val{font-weight:800}
+.perm-yes{color:var(--ok)}
+.perm-no{color:var(--off)}
+
+/* ── SCREEN 5: AUDIT LOG ─────────────────────────────────────────── */
+.audit-scroll{flex:1;overflow-y:auto;padding:12px;display:flex;flex-direction:column;gap:8px}
+.audit-scroll::-webkit-scrollbar{display:none}
+.audit-item{
+  background:#fff;border-radius:12px;padding:12px 14px;
+  display:flex;gap:12px;align-items:flex-start;
+  box-shadow:0 1px 4px rgba(0,0,0,.05);
+}
+.ai-dot{width:8px;height:8px;border-radius:50%;flex-shrink:0;margin-top:5px}
+.ai-d{background:var(--danger)}
+.ai-a{background:var(--alert)}
+.ai-n{background:var(--ok)}
+.ai-i{background:var(--brand)}
+.ai-w{background:#f59e0b}
+.ai-o{background:var(--off)}
+.ai-body{flex:1}
+.ai-event{font-size:11px;font-weight:800;text-transform:uppercase;letter-spacing:.06em}
+.ai-ev-d{color:var(--danger)}
+.ai-ev-a{color:var(--alert)}
+.ai-ev-n{color:var(--ok)}
+.ai-ev-i{color:var(--brand)}
+.ai-ev-w{color:#92400e}
+.ai-ev-o{color:var(--off)}
+.ai-loc{font-size:11px;color:var(--t3);font-weight:600;margin-top:1px}
+.ai-detail{font-size:12px;color:var(--t2);margin-top:4px;line-height:1.5}
+.ai-by{font-size:11px;color:var(--t3);margin-top:4px;font-style:italic}
+.ai-time{font-size:10px;color:var(--t3);white-space:nowrap;font-variant-numeric:tabular-nums;text-align:right}
+
+/* Filter bar */
+.filter-bar{
+  background:#fff;padding:10px 14px;display:flex;gap:8px;overflow-x:auto;
+  flex-shrink:0;border-bottom:1px solid var(--bdr);
+}
+.filter-bar::-webkit-scrollbar{display:none}
+.ftag{padding:5px 14px;border-radius:999px;font-size:11px;font-weight:700;cursor:pointer;border:1px solid var(--bdr);background:#f1f5f9;color:var(--t2);white-space:nowrap;transition:.15s}
+.ftag.act{background:var(--brand-lt);color:var(--brand);border-color:#bfdbfe}
+
+/* ── PUSH NOTIFICATION ──────────────────────────────────────────── */
+.notif-overlay{
+  position:fixed;top:0;left:50%;transform:translateX(-50%);
+  width:393px;max-width:100%;z-index:999;
+  padding:60px 16px 0;pointer-events:none;
+}
+.notif-popup{
+  background:rgba(15,23,42,.95);
+  backdrop-filter:blur(20px);
+  border-radius:20px;
+  padding:14px 16px;
+  display:none;
+  animation:slidedown .4s cubic-bezier(.34,1.56,.64,1) both;
+  pointer-events:all;
+  box-shadow:0 8px 32px rgba(0,0,0,.4);
+}
+.notif-popup.show{display:flex;gap:12px;align-items:flex-start}
+.notif-app-icon{
+  width:40px;height:40px;background:linear-gradient(135deg,#1e3a8a,#dc2626);
+  border-radius:10px;display:flex;align-items:center;justify-content:center;
+  font-size:20px;flex-shrink:0;
+}
+.notif-content{flex:1}
+.notif-app-name{font-size:11px;color:#94a3b8;font-weight:600;text-transform:uppercase;letter-spacing:.06em;margin-bottom:2px;display:flex;justify-content:space-between;align-items:center}
+.notif-time{font-size:10px;color:#64748b}
+.notif-title{font-size:14px;font-weight:800;color:#fff;line-height:1.3;margin-bottom:3px}
+.notif-body{font-size:12px;color:#94a3b8;line-height:1.5}
+.notif-actions{display:flex;gap:8px;margin-top:8px}
+.na-btn{padding:6px 14px;border-radius:8px;font-size:12px;font-weight:700;cursor:pointer;border:none;transition:.15s}
+.na-view{background:var(--danger);color:#fff}
+.na-dismiss{background:rgba(255,255,255,.1);color:#94a3b8}
+
+/* ── OUTSIDE CONTROLS ────────────────────────────────────────────── */
+.outside-info{
+  color:rgba(255,255,255,.6);font-size:12px;text-align:center;
+  max-width:393px;line-height:1.6;
+}
+.outside-info strong{color:#fff}
+
+/* ── SIM ALERT BAR ───────────────────────────────────────────────── */
+.sim-bar{
+  background:#7c3aed;color:#fff;padding:8px 18px;
+  font-size:11px;font-weight:600;display:flex;align-items:center;
+  gap:8px;flex-shrink:0;
+}
+</style>
+</head>
+<body>
+
+<!-- ══ PAGE TITLE ══════════════════════════════════════════════════ -->
+<div class="demo-label">
+  <span>FloodGuard by Jenix</span><br>
+  Mobile App UI Mockup — Android & PWA
+</div>
+
+<!-- ══ SCREEN SWITCHER ══════════════════════════════════════════════ -->
+<div class="screen-tabs">
+  <button class="stab" onclick="showScreen('login')">Login</button>
+  <button class="stab" onclick="showScreen('list')">Locations</button>
+  <button class="stab act danger-tab" onclick="showScreen('dash')">🔴 Dashboard</button>
+  <button class="stab" onclick="showScreen('ctrl')">Controls</button>
+  <button class="stab" onclick="showScreen('audit')">Audit Log</button>
+</div>
+
+<!-- ══ PHONE ════════════════════════════════════════════════════════ -->
+<div class="phone-outer">
+
+  <!-- Push Notification Overlay -->
+  <div class="notif-overlay">
+    <div class="notif-popup" id="notif-popup">
+      <div class="notif-app-icon">🌊</div>
+      <div class="notif-content">
+        <div class="notif-app-name">FloodGuard <span class="notif-time" id="notif-time">now</span></div>
+        <div class="notif-title">🚨 DANGER — RUB-043 Kalyan Underpass</div>
+        <div class="notif-body">Water level crossed 500mm. Siren &amp; voice announcement activated. Tap to view dashboard.</div>
+        <div class="notif-actions">
+          <button class="na-btn na-view" onclick="showScreen('dash');dismissNotif()">View Dashboard</button>
+          <button class="na-btn na-dismiss" onclick="dismissNotif()">Dismiss</button>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <div class="phone-frame">
+    <!-- Notch -->
+    <div class="notch"><div class="notch-cam"></div></div>
+
+    <!-- Status Bar -->
+    <div class="sb">
+      <span class="sb-left" id="sb-time">09:30</span>
+      <div class="sb-right">
+        <div class="sig-bars">
+          <div class="sig-bar" style="height:5px"></div>
+          <div class="sig-bar" style="height:8px"></div>
+          <div class="sig-bar" style="height:11px"></div>
+          <div class="sig-bar" style="height:14px;opacity:.3"></div>
+        </div>
+        <span>4G</span>
+        <span>🔋 84%</span>
+      </div>
+    </div>
+
+    <!-- ═══ SCREEN: LOGIN ══════════════════════════════════════════ -->
+    <div class="screen" id="s-login">
+      <div class="login-bg">
+        <div class="login-logo">
+          <span class="login-logo-icon">🌊</span>
+          <div class="login-logo-name">FloodGuard</div>
+          <div class="login-logo-sub">by Jenix · RUB Monitoring</div>
+          <div class="login-logo-hi">जल सुरक्षा निगरानी प्रणाली</div>
+        </div>
+        <div class="login-card fadein">
+          <div class="login-title">Sign In / लॉग इन करें</div>
+          <div class="login-sub">Use your Department Login ID or Mobile Number</div>
+          <div class="form-grp">
+            <label class="form-lbl">Login ID / Mobile Number</label>
+            <input class="form-inp" type="text" value="operator_rub043" readonly />
+          </div>
+          <div class="form-grp">
+            <label class="form-lbl">Password / पासवर्ड</label>
+            <input class="form-inp" type="password" value="••••••••" readonly />
+          </div>
+          <div class="form-row">
+            <label class="form-chk"><input type="checkbox" checked /> Remember Device</label>
+            <span class="form-forgot">Forgot Password?</span>
+          </div>
+          <button class="btn-login" onclick="showScreen('list');showToast('✅ Logged in as operator_rub043')">Sign In →</button>
+          <div class="login-note">
+            No Google / Gmail login required.<br>
+            Custom JWT authentication · bcrypt secured
+          </div>
+          <div class="dept-divider">or login with</div>
+          <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px">
+            <button style="padding:11px;border:1px solid var(--bdr);border-radius:10px;background:#f8fafc;font-size:12px;font-weight:600;color:var(--t2);cursor:pointer">📋 Dept Code</button>
+            <button style="padding:11px;border:1px solid var(--bdr);border-radius:10px;background:#f8fafc;font-size:12px;font-weight:600;color:var(--t2);cursor:pointer">📱 OTP Login</button>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- ═══ SCREEN: LOCATION LIST ══════════════════════════════════ -->
+    <div class="screen" id="s-list">
+      <div class="app-bar" style="background:#fff;padding:14px 18px 12px">
+        <div style="display:flex;justify-content:space-between;align-items:center">
+          <div>
+            <div class="app-bar-title">Locations / स्थान</div>
+            <div class="app-bar-sub">5 sites · 1 Danger · 1 Alert · 2 Normal · 1 Offline</div>
+          </div>
+          <div style="display:flex;align-items:center;gap:6px;background:#dcfce7;color:#15803d;padding:4px 10px;border-radius:999px;font-size:11px;font-weight:700">
+            <span class="blink" style="width:6px;height:6px;border-radius:50%;background:#16a34a;display:inline-block"></span>LIVE
+          </div>
+        </div>
+      </div>
+      <div class="alert-strip">
+        <span class="alert-strip-icon">⚠️</span>
+        <div class="alert-strip-txt">
+          <strong>DANGER ACTIVE</strong> — RUB-043 Kalyan Road Underpass · <span id="ticker-level">524mm</span>
+        </div>
+      </div>
+      <div class="list-scroll">
+        <div class="lc d fadein" onclick="showScreen('dash')">
+          <div class="lc-row1">
+            <div>
+              <div class="lc-name">Kalyan Road Underpass</div>
+              <div class="lc-id">RUB-043 · Thane District</div>
+            </div>
+            <span class="lbadge lb-d"><span class="ldot blink"></span>DANGER</span>
+          </div>
+          <div class="lc-row2">
+            <div class="lc-metric"><div class="lc-m-val lc-danger-val" id="list-lvl">524</div><div class="lc-m-lbl">Water mm</div></div>
+            <div class="lc-metric"><div class="lc-m-val" style="color:var(--ok)">12.4V</div><div class="lc-m-lbl">Battery</div></div>
+            <div class="lc-metric"><div class="lc-m-val" style="color:var(--ok)">Online</div><div class="lc-m-lbl">Status</div></div>
+          </div>
+          <div class="lc-row3">
+            <span class="lc-update">🔊 Siren ON · 🔴 Beacon ON · Updated just now</span>
+            <span class="lc-arrow">›</span>
+          </div>
+        </div>
+
+        <div class="lc a fadein">
+          <div class="lc-row1">
+            <div>
+              <div class="lc-name">Thane Junction Bridge</div>
+              <div class="lc-id">RUB-057 · Thane District</div>
+            </div>
+            <span class="lbadge lb-a"><span class="ldot blink"></span>ALERT</span>
+          </div>
+          <div class="lc-row2">
+            <div class="lc-metric"><div class="lc-m-val lc-alert-val">318</div><div class="lc-m-lbl">Water mm</div></div>
+            <div class="lc-metric"><div class="lc-m-val" style="color:var(--ok)">12.7V</div><div class="lc-m-lbl">Battery</div></div>
+            <div class="lc-metric"><div class="lc-m-val lc-ok-val">Online</div><div class="lc-m-lbl">Status</div></div>
+          </div>
+          <div class="lc-row3">
+            <span class="lc-update">Rising · 45 sec ago</span>
+            <span class="lc-arrow">›</span>
+          </div>
+        </div>
+
+        <div class="lc n fadein">
+          <div class="lc-row1">
+            <div>
+              <div class="lc-name">Pune Expressway Bypass</div>
+              <div class="lc-id">RUB-102 · Pune District</div>
+            </div>
+            <span class="lbadge lb-n"><span class="ldot"></span>NORMAL</span>
+          </div>
+          <div class="lc-row2">
+            <div class="lc-metric"><div class="lc-m-val lc-ok-val">42</div><div class="lc-m-lbl">Water mm</div></div>
+            <div class="lc-metric"><div class="lc-m-val" style="color:var(--ok)">13.1V</div><div class="lc-m-lbl">Battery</div></div>
+            <div class="lc-metric"><div class="lc-m-val lc-ok-val">Online</div><div class="lc-m-lbl">Status</div></div>
+          </div>
+          <div class="lc-row3">
+            <span class="lc-update">Stable · 2 min ago</span>
+            <span class="lc-arrow">›</span>
+          </div>
+        </div>
+
+        <div class="lc o fadein">
+          <div class="lc-row1">
+            <div>
+              <div class="lc-name">Nashik District Road</div>
+              <div class="lc-id">RUB-078 · Nashik District</div>
+            </div>
+            <span class="lbadge lb-o"><span class="ldot"></span>OFFLINE</span>
+          </div>
+          <div class="lc-row2">
+            <div class="lc-metric"><div class="lc-m-val lc-off-val">—</div><div class="lc-m-lbl">Water mm</div></div>
+            <div class="lc-metric"><div class="lc-m-val lc-off-val">—</div><div class="lc-m-lbl">Battery</div></div>
+            <div class="lc-metric"><div class="lc-m-val lc-off-val">Offline</div><div class="lc-m-lbl">Status</div></div>
+          </div>
+          <div class="lc-row3">
+            <span class="lc-update" style="color:var(--danger)">⚠ Offline 18 min — Check device</span>
+            <span class="lc-arrow">›</span>
+          </div>
+        </div>
+
+        <div class="lc n fadein">
+          <div class="lc-row1">
+            <div>
+              <div class="lc-name">Aurangabad Link Road</div>
+              <div class="lc-id">RUB-119 · Aurangabad</div>
+            </div>
+            <span class="lbadge lb-n"><span class="ldot"></span>NORMAL</span>
+          </div>
+          <div class="lc-row2">
+            <div class="lc-metric"><div class="lc-m-val lc-ok-val">18</div><div class="lc-m-lbl">Water mm</div></div>
+            <div class="lc-metric"><div class="lc-m-val" style="color:var(--ok)">12.9V</div><div class="lc-m-lbl">Battery</div></div>
+            <div class="lc-metric"><div class="lc-m-val lc-ok-val">Online</div><div class="lc-m-lbl">Status</div></div>
+          </div>
+          <div class="lc-row3">
+            <span class="lc-update">Dry · 3 min ago</span>
+            <span class="lc-arrow">›</span>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- ═══ SCREEN: DASHBOARD ══════════════════════════════════════ -->
+    <div class="screen act" id="s-dash">
+      <div class="dash-header">
+        <div class="dh-top">
+          <div>
+            <div class="dh-name">RUB-043 Kalyan Road</div>
+            <div class="dh-sub">Thane District · Device: RUB043-CTRL01</div>
+          </div>
+          <span class="dh-badge"><span class="blink">⚠</span> DANGER</span>
+        </div>
+        <div class="dh-stats">
+          <div class="dh-stat">
+            <div class="dh-stat-v" id="dh-level">524<span style="font-size:13px">mm</span></div>
+            <div class="dh-stat-l">Water Level / जल स्तर</div>
+          </div>
+          <div class="dh-stat">
+            <div class="dh-stat-v">12.4V</div>
+            <div class="dh-stat-l">Battery / बैटरी</div>
+          </div>
+          <div class="dh-stat">
+            <div class="dh-stat-v" id="dh-timer">14:23</div>
+            <div class="dh-stat-l">Active Since</div>
+          </div>
+        </div>
+      </div>
+      <div class="dash-scroll">
+        <!-- Water Vessel -->
+        <div class="vessel-card fadein">
+          <div style="position:relative">
+            <div class="mv-wrap" id="mv-wrap">
+              <div class="mv-top"></div>
+              <div class="mv-body">
+                <div class="mv-fill" id="mv-fill">
+                  <div class="mv-surf"></div>
+                </div>
+                <div class="mv-m mv-m500"></div>
+                <div class="mv-m mv-m300"></div>
+              </div>
+            </div>
+            <div style="position:absolute;right:-44px;top:0;bottom:0;width:42px">
+              <div class="mv-l500" style="bottom:calc(41.7% + 162px - 164px*0.417);">500mm</div>
+              <div class="mv-l300" style="bottom:calc(25% + 162px - 164px*0.25);">300mm</div>
+            </div>
+          </div>
+          <div class="vessel-reading" style="margin-left:52px">
+            <div class="vr-level" id="vr-level">524</div>
+            <div class="vr-unit">mm water level</div>
+            <div class="vr-dist">Distance: <span id="vr-dist">676</span>mm</div>
+            <div class="vr-badge"><span class="blink">⚠</span> DANGER / खतरा</div>
+            <div class="vr-switch">
+              <div class="sw-row"><span class="sw-lbl">300mm Switch</span><span class="sw-val sw-on">TRIGGERED ⚠</span></div>
+              <div class="sw-row"><span class="sw-lbl">500mm Switch</span><span class="sw-val sw-on">TRIGGERED ⚠</span></div>
+            </div>
+          </div>
+        </div>
+
+        <!-- Metrics -->
+        <div class="m-grid fadein">
+          <div class="mcard">
+            <div class="mcard-icon">🔋</div>
+            <div class="mcard-lbl">Battery / बैटरी</div>
+            <div class="mcard-val mcard-ok">12.4V</div>
+            <div class="mcard-sub">Solar: 17.8V ☀️ Charging</div>
+          </div>
+          <div class="mcard">
+            <div class="mcard-icon">📡</div>
+            <div class="mcard-lbl">Signal / सिग्नल</div>
+            <div class="mcard-val mcard-ok">-65 dBm</div>
+            <div class="mcard-sub">4G · Jio · 3 bars</div>
+          </div>
+          <div class="mcard">
+            <div class="mcard-icon">🕐</div>
+            <div class="mcard-lbl">Incident / घटना</div>
+            <div class="mcard-val mcard-err" id="m-timer2">14:23</div>
+            <div class="mcard-sub">Since 09:15:42 IST</div>
+          </div>
+          <div class="mcard">
+            <div class="mcard-icon">💓</div>
+            <div class="mcard-lbl">Heartbeat</div>
+            <div class="mcard-val mcard-ok">Online</div>
+            <div class="mcard-sub">FW v1.0.2 · ESP32-S3</div>
+          </div>
+        </div>
+
+        <!-- Network Status -->
+        <div class="net-card fadein">
+          <div class="nc-title">Network / नेटवर्क <span style="font-size:10px;color:var(--ok);font-weight:800">● All Online</span></div>
+          <div class="nc-row"><span class="nc-name">📶 WiFi</span><span class="nc-val c-ok">Connected</span></div>
+          <div class="nc-row"><span class="nc-name">🌐 Internet</span><span class="nc-val c-ok">Available</span></div>
+          <div class="nc-row"><span class="nc-name">📱 SIM 4G</span><span class="nc-val c-ok">Jio · -82dBm</span></div>
+          <div class="nc-row"><span class="nc-name">🔄 MQTT</span><span class="nc-val c-ok">FGServer.jenix.in</span></div>
+          <div class="nc-row"><span class="nc-name">🔐 MAC Bind</span><span class="nc-val c-ok">Verified ✓</span></div>
+          <div class="nc-row"><span class="nc-name">🔗 WAN IP</span><span class="nc-val c-grey">49.34.xxx.xxx</span></div>
+        </div>
+
+        <!-- Relay Status -->
+        <div class="relay-card fadein">
+          <div class="rc-title">Relay Status / रिले स्थिति</div>
+          <div class="rc-rows">
+            <div class="rc-row">
+              <div><div class="rc-name">🔊 Siren / साइरन</div><div class="rc-sub">10s ON / 20s OFF pattern</div></div>
+              <div class="tog tog-on"><div class="tok"></div></div>
+            </div>
+            <div class="rc-row">
+              <div><div class="rc-name">🔴 Beacon / बीकन</div><div class="rc-sub">Continuous ON</div></div>
+              <div class="tog tog-on"><div class="tok"></div></div>
+            </div>
+            <div class="rc-row">
+              <div><div class="rc-name">📢 Voice / आवाज</div><div class="rc-sub">Every 30 seconds</div></div>
+              <div class="tog tog-on"><div class="tok"></div></div>
+            </div>
+            <div class="rc-row">
+              <div><div class="rc-name">🚧 Barrier / बैरियर</div><div class="rc-sub">Future integration</div></div>
+              <div class="tog tog-off"><div class="tok"></div></div>
+            </div>
+          </div>
+        </div>
+
+        <!-- SIM Detail Card -->
+        <div style="background:#fff;border-radius:14px;padding:14px;box-shadow:0 2px 6px rgba(0,0,0,.05)" class="fadein">
+          <div style="font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:.07em;color:var(--t2);margin-bottom:10px;padding-bottom:8px;border-bottom:1px solid var(--bdr)">SIM / Network Detail</div>
+          <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;font-size:12px">
+            <div style="background:#f8fafc;border-radius:8px;padding:8px"><div style="color:var(--t3);font-size:10px;margin-bottom:2px">SIM Inserted</div><div style="font-weight:800;color:var(--ok)">Yes ✓</div></div>
+            <div style="background:#f8fafc;border-radius:8px;padding:8px"><div style="color:var(--t3);font-size:10px;margin-bottom:2px">SIM Registered</div><div style="font-weight:800;color:var(--ok)">Yes ✓</div></div>
+            <div style="background:#f8fafc;border-radius:8px;padding:8px"><div style="color:var(--t3);font-size:10px;margin-bottom:2px">4G Connected</div><div style="font-weight:800;color:var(--ok)">Yes ✓</div></div>
+            <div style="background:#f8fafc;border-radius:8px;padding:8px"><div style="color:var(--t3);font-size:10px;margin-bottom:2px">Network Mode</div><div style="font-weight:800;color:var(--text)">4G LTE</div></div>
+            <div style="background:#f8fafc;border-radius:8px;padding:8px"><div style="color:var(--t3);font-size:10px;margin-bottom:2px">Operator</div><div style="font-weight:800;color:var(--text)">Jio</div></div>
+            <div style="background:#f8fafc;border-radius:8px;padding:8px"><div style="color:var(--t3);font-size:10px;margin-bottom:2px">Signal (RSRP)</div><div style="font-weight:800;color:var(--ok)">-82 dBm · ███░</div></div>
+          </div>
+        </div>
+
+        <div style="height:8px"></div>
+      </div>
+    </div>
+
+    <!-- ═══ SCREEN: CONTROLS ════════════════════════════════════════ -->
+    <div class="screen" id="s-ctrl">
+      <div class="app-bar">
+        <div class="app-bar-title">Control Panel / नियंत्रण</div>
+        <div class="app-bar-sub">RUB-043 · Operator Role · All actions logged</div>
+      </div>
+      <div class="ctrl-scroll">
+        <div style="background:var(--danger-lt);border:1px solid var(--danger-bd);border-radius:12px;padding:12px 14px;font-size:12px;color:var(--danger);font-weight:600;display:flex;gap:8px;align-items:center">
+          <span style="font-size:18px;animation:blink 1s infinite">⚠️</span>
+          <div><strong>DANGER ACTIVE</strong> — Water 524mm · Siren, Beacon &amp; Voice ON<br><span style="font-weight:500;opacity:.85">All control actions require confirmation and are permanently logged.</span></div>
+        </div>
+
+        <div>
+          <div class="ctrl-section-title">Alarm Controls / अलार्म नियंत्रण</div>
+          <div style="display:flex;flex-direction:column;gap:8px">
+            <button class="ctrl-btn cbtn-mute" onclick="showToast('🔇 Confirm: Mute alarm for RUB-043?');triggerConfirm('mute')">
+              <span style="font-size:22px">🔇</span>
+              <div class="ctrl-btn-label">Mute Alarm / अलार्म बंद करें<span class="ctrl-btn-sublabel">Siren &amp; Voice OFF · Beacon stays ON</span></div>
+              <span class="ctrl-btn-arr">›</span>
+            </button>
+            <button class="ctrl-btn cbtn-fc" onclick="triggerConfirm('clear')">
+              <span style="font-size:22px">🔓</span>
+              <div class="ctrl-btn-label">Force Clear / जबरन साफ<span class="ctrl-btn-sublabel">Requires reason · Logged in audit trail</span></div>
+              <span class="ctrl-btn-arr">›</span>
+            </button>
+          </div>
+        </div>
+
+        <div>
+          <div class="ctrl-section-title">Testing / परीक्षण</div>
+          <div style="display:flex;flex-direction:column;gap:8px">
+            <button class="ctrl-btn cbtn-dry" onclick="showToast('🧪 Dry run initiated — Siren 10s, Beacon 5s, Voice. No real incident created.')">
+              <span style="font-size:22px">🧪</span>
+              <div class="ctrl-btn-label">Dry Run Test / ड्राई रन टेस्ट<span class="ctrl-btn-sublabel">Test siren, beacon &amp; voice — no real incident</span></div>
+              <span class="ctrl-btn-arr">›</span>
+            </button>
+            <button class="ctrl-btn cbtn-fcm" onclick="showToast('🔔 Test push notification sent to all 8 users.')">
+              <span style="font-size:22px">🔔</span>
+              <div class="ctrl-btn-label">Test FCM Push<span class="ctrl-btn-sublabel">Send test notification to all assigned users</span></div>
+              <span class="ctrl-btn-arr">›</span>
+            </button>
+          </div>
+        </div>
+
+        <div>
+          <div class="ctrl-section-title">Reports / रिपोर्ट</div>
+          <div style="display:flex;flex-direction:column;gap:8px">
+            <button class="ctrl-btn cbtn-rpt" onclick="showToast('📊 Generating incident report...')">
+              <span style="font-size:22px">📊</span>
+              <div class="ctrl-btn-label">Incident Report<span class="ctrl-btn-sublabel">Download PDF / Excel for this incident</span></div>
+              <span class="ctrl-btn-arr">›</span>
+            </button>
+          </div>
+        </div>
+
+        <div class="confirm-box fadein" id="confirm-box" style="display:none">
+          <strong id="confirm-title">Confirm Action</strong><br>
+          <span id="confirm-body">Are you sure?</span><br><br>
+          <input style="width:100%;padding:10px;border:1px solid var(--bdr);border-radius:8px;font-size:13px;font-family:inherit;margin-bottom:10px;outline:none" placeholder="Reason (required)..." id="confirm-reason" />
+          <div style="display:flex;gap:8px">
+            <button style="flex:1;padding:10px;border:1px solid var(--bdr);border-radius:8px;background:#f8fafc;font-size:13px;font-weight:700;cursor:pointer;color:var(--t2)" onclick="hideConfirm()">Cancel</button>
+            <button style="flex:2;padding:10px;background:var(--danger);color:#fff;border:none;border-radius:8px;font-size:13px;font-weight:800;cursor:pointer" onclick="doConfirm()">Confirm &amp; Log Action →</button>
+          </div>
+        </div>
+
+        <div class="pcard" style="background:#fff;border-radius:14px;padding:14px;box-shadow:0 2px 6px rgba(0,0,0,.05)">
+          <div style="font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:.07em;color:var(--t2);margin-bottom:10px;padding-bottom:8px;border-bottom:1px solid var(--bdr)">Your Permissions — Operator Role</div>
+          <div class="perm-row"><span class="perm-name">View Dashboard</span><span class="perm-val perm-yes">✓ Yes</span></div>
+          <div class="perm-row"><span class="perm-name">Mute Alarm</span><span class="perm-val perm-yes">✓ Yes</span></div>
+          <div class="perm-row"><span class="perm-name">Force Clear (with reason)</span><span class="perm-val perm-yes">✓ Yes</span></div>
+          <div class="perm-row"><span class="perm-name">Dry Run Test</span><span class="perm-val perm-yes">✓ Yes</span></div>
+          <div class="perm-row"><span class="perm-name">Add Users</span><span class="perm-val perm-no">✗ No</span></div>
+          <div class="perm-row"><span class="perm-name">Device Config / OTA</span><span class="perm-val perm-no">✗ No</span></div>
+        </div>
+        <div style="height:8px"></div>
+      </div>
+    </div>
+
+    <!-- ═══ SCREEN: AUDIT LOG ═══════════════════════════════════════ -->
+    <div class="screen" id="s-audit">
+      <div class="app-bar">
+        <div class="app-bar-title">Audit Log / ऑडिट लॉग</div>
+        <div class="app-bar-sub">All actions · All locations · Tamper-proof</div>
+      </div>
+      <div class="filter-bar">
+        <button class="ftag act">All Events</button>
+        <button class="ftag">DANGER</button>
+        <button class="ftag">ALERT</button>
+        <button class="ftag">Muted</button>
+        <button class="ftag">Force Clear</button>
+        <button class="ftag">Dry Run</button>
+        <button class="ftag">Offline</button>
+      </div>
+      <div class="audit-scroll">
+        <div class="audit-item fadein">
+          <div class="ai-dot ai-d"></div>
+          <div class="ai-body">
+            <div class="ai-event ai-ev-d">DANGER CONFIRMED</div>
+            <div class="ai-loc">RUB-043 · Kalyan Road Underpass</div>
+            <div class="ai-detail">Water level 524mm continuous for 60 sec. Siren, Beacon &amp; Voice activated. Incident #INC-2026-043-008 opened.</div>
+            <div class="ai-by">By: System / Auto · Session: auto-trigger</div>
+          </div>
+          <div class="ai-time">09:15:42<br>Today</div>
+        </div>
+
+        <div class="audit-item fadein">
+          <div class="ai-dot ai-i"></div>
+          <div class="ai-body">
+            <div class="ai-event ai-ev-i">FCM PUSH SENT</div>
+            <div class="ai-loc">RUB-043 · Kalyan Road Underpass</div>
+            <div class="ai-detail">Push notification sent to 8 authorized users. Delivery confirmed for 7 of 8 devices.</div>
+            <div class="ai-by">By: System / Auto</div>
+          </div>
+          <div class="ai-time">09:15:44<br>Today</div>
+        </div>
+
+        <div class="audit-item fadein">
+          <div class="ai-dot ai-a"></div>
+          <div class="ai-body">
+            <div class="ai-event ai-ev-a">ALERT CONFIRMED</div>
+            <div class="ai-loc">RUB-057 · Thane Junction Bridge</div>
+            <div class="ai-detail">Water level 318mm for 60 sec. Alert level confirmed.</div>
+            <div class="ai-by">By: System / Auto</div>
+          </div>
+          <div class="ai-time">09:12:30<br>Today</div>
+        </div>
+
+        <div class="audit-item fadein">
+          <div class="ai-dot ai-o"></div>
+          <div class="ai-body">
+            <div class="ai-event ai-ev-o">DEVICE OFFLINE</div>
+            <div class="ai-loc">RUB-078 · Nashik District Road</div>
+            <div class="ai-detail">Heartbeat timeout — No response for 5 minutes. Push sent to all users.</div>
+            <div class="ai-by">By: System / Auto · Device: RUB078-CTRL01</div>
+          </div>
+          <div class="ai-time">08:45:00<br>Today</div>
+        </div>
+
+        <div class="audit-item fadein">
+          <div class="ai-dot ai-i"></div>
+          <div class="ai-body">
+            <div class="ai-event ai-ev-i">DRY RUN TEST</div>
+            <div class="ai-loc">RUB-102 · Pune Expressway Bypass</div>
+            <div class="ai-detail">Siren test completed. Duration: 10 sec. Result: PASS. No incident created.</div>
+            <div class="ai-by">By: operator_rub102 · Samsung Galaxy · Session: sess_8a42</div>
+          </div>
+          <div class="ai-time">08:30:15<br>Today</div>
+        </div>
+
+        <div class="audit-item fadein">
+          <div class="ai-dot ai-w"></div>
+          <div class="ai-body">
+            <div class="ai-event ai-ev-w">ALARM MUTED</div>
+            <div class="ai-loc">RUB-043 · Kalyan Road Underpass</div>
+            <div class="ai-detail">Siren &amp; Voice muted. Beacon remains ON. Reason: Site inspection ongoing. Danger status unchanged.</div>
+            <div class="ai-by">By: operator_rub043 · Redmi Note 12 · 09:00:10 · IP: 192.168.x.x</div>
+          </div>
+          <div class="ai-time">07:55:00<br>Today</div>
+        </div>
+
+        <div class="audit-item fadein">
+          <div class="ai-dot ai-n"></div>
+          <div class="ai-body">
+            <div class="ai-event ai-ev-n">DANGER CLEARED</div>
+            <div class="ai-loc">RUB-043 · Kalyan Road Underpass</div>
+            <div class="ai-detail">Water below 450mm for 5 min. Auto-cleared. All relays OFF. Incident #INC-2026-043-007 closed.</div>
+            <div class="ai-by">By: System / Auto · Duration: 2h 14min · Max level: 612mm</div>
+          </div>
+          <div class="ai-time">07:30:00<br>Today</div>
+        </div>
+        <div style="height:8px"></div>
+      </div>
+    </div>
+
+    <!-- Bottom Nav -->
+    <div class="bnav">
+      <button class="bnav-item" id="bn-home" onclick="showScreen('list')">
+        <span class="bnav-icon">🏠</span><span>Home</span>
+      </button>
+      <button class="bnav-item" id="bn-loc" onclick="showScreen('list')">
+        <span class="bnav-icon">📍</span><span>Locations</span>
+      </button>
+      <button class="bnav-item" id="bn-dash" onclick="showScreen('dash')" style="position:relative">
+        <div class="bnav-badge">!</div>
+        <span class="bnav-icon">🌊</span><span>Live</span>
+      </button>
+      <button class="bnav-item" id="bn-audit" onclick="showScreen('audit')">
+        <span class="bnav-icon">📋</span><span>Audit</span>
+      </button>
+      <button class="bnav-item" id="bn-ctrl" onclick="showScreen('ctrl')">
+        <span class="bnav-icon">⚙️</span><span>Controls</span>
+      </button>
+    </div>
+  </div><!-- phone-frame -->
+
+</div><!-- phone-outer -->
+
+<!-- Toast -->
+<div id="mobile-toast" style="position:fixed;bottom:110px;left:50%;transform:translateX(-50%);z-index:9999;display:none;max-width:360px;width:90%">
+  <div style="background:rgba(15,23,42,.95);color:#fff;padding:12px 18px;border-radius:12px;font-size:13px;font-weight:500;box-shadow:0 8px 24px rgba(0,0,0,.4);text-align:center;backdrop-filter:blur(10px)" id="toast-msg"></div>
+</div>
+
+<div class="outside-info">
+  <strong>FloodGuard by Jenix</strong> — Android App &amp; PWA<br>
+  Tap screen tabs above to navigate between app screens.<br>
+  Push notification auto-shows after 4 seconds on Dashboard view.
+</div>
+
+<script>
+// ── Screen Management ────────────────────────────────────────
+let currentScreen = 'dash';
+function showScreen(name) {
+  document.querySelectorAll('.screen').forEach(s => s.classList.remove('act'));
+  document.querySelectorAll('.stab').forEach(s => s.classList.remove('act'));
+  document.querySelectorAll('.bnav-item').forEach(s => s.classList.remove('act'));
+
+  const screenMap = { login:'s-login', list:'s-list', dash:'s-dash', ctrl:'s-ctrl', audit:'s-audit' };
+  const tabMap = { login:0, list:1, dash:2, ctrl:3, audit:4 };
+  const bnMap = { list:'bn-home', dash:'bn-dash', ctrl:'bn-ctrl', audit:'bn-audit' };
+
+  const s = document.getElementById(screenMap[name]);
+  if(s) { s.classList.add('act'); if(s.scrollTop) s.scrollTop=0; }
+  const tabs = document.querySelectorAll('.stab');
+  if(tabs[tabMap[name]]) tabs[tabMap[name]].classList.add('act');
+  if(bnMap[name]) { const bn = document.getElementById(bnMap[name]); if(bn) bn.classList.add('act'); }
+  currentScreen = name;
+
+  if(name === 'dash') {
+    setTimeout(showNotif, 4000);
+  }
+}
+showScreen('dash');
+document.querySelectorAll('.stab')[2].classList.add('danger-tab');
+
+// ── Status Bar Clock ─────────────────────────────────────────
+function updateSBTime() {
+  const now = new Date();
+  const h = String(now.getHours()).padStart(2,'0');
+  const m = String(now.getMinutes()).padStart(2,'0');
+  document.getElementById('sb-time').textContent = h + ':' + m;
+}
+setInterval(updateSBTime, 1000);
+updateSBTime();
+
+// ── Incident Timer ────────────────────────────────────────────
+let incSec = 14 * 60 + 23;
+setInterval(() => {
+  incSec++;
+  const m = String(Math.floor(incSec / 60)).padStart(2,'0');
+  const s = String(incSec % 60).padStart(2,'0');
+  const tStr = m + ':' + s;
+  const t1 = document.getElementById('dh-timer'); if(t1) t1.textContent = tStr;
+  const t2 = document.getElementById('m-timer2'); if(t2) t2.textContent = tStr;
+}, 1000);
+
+// ── Water Level Simulation ────────────────────────────────────
+let mLevel = 524;
+let mDir = 1;
+function simMobile() {
+  mLevel += mDir * (Math.random() * 2.2);
+  if(mLevel > 530) mDir = -1;
+  if(mLevel < 518) mDir = 1;
+  const lvl = Math.round(mLevel);
+  const pct = (lvl / 1200 * 100).toFixed(1);
+  const dist = 1200 - lvl;
+  const mvf = document.getElementById('mv-fill'); if(mvf) mvf.style.height = pct + '%';
+  const vrl = document.getElementById('vr-level'); if(vrl) vrl.textContent = lvl;
+  const vrd = document.getElementById('vr-dist'); if(vrd) vrd.textContent = dist;
+  const dhl = document.getElementById('dh-level'); if(dhl) dhl.innerHTML = lvl + '<span style="font-size:13px">mm</span>';
+  const ll = document.getElementById('list-lvl'); if(ll) ll.textContent = lvl;
+  const tl = document.getElementById('ticker-level'); if(tl) tl.textContent = lvl + 'mm';
+}
+setInterval(simMobile, 3000);
+
+// ── Push Notification ─────────────────────────────────────────
+let notifShown = false;
+function showNotif() {
+  if(notifShown || currentScreen !== 'dash') return;
+  notifShown = true;
+  const popup = document.getElementById('notif-popup');
+  popup.classList.add('show');
+  const t = document.getElementById('notif-time');
+  if(t) t.textContent = 'just now';
+  setTimeout(() => { if(!popup.classList.contains('dismissed')) dismissNotif(); }, 8000);
+}
+function dismissNotif() {
+  const popup = document.getElementById('notif-popup');
+  popup.classList.remove('show');
+  popup.classList.add('dismissed');
+}
+
+// ── Confirm Box ───────────────────────────────────────────────
+let confirmType = '';
+function triggerConfirm(type) {
+  confirmType = type;
+  const box = document.getElementById('confirm-box');
+  const title = document.getElementById('confirm-title');
+  const body = document.getElementById('confirm-body');
+  box.style.display = 'block';
+  if(type === 'mute') {
+    title.textContent = '🔇 Confirm: Mute Alarm';
+    body.textContent = 'Siren and voice will be muted. Beacon remains ON. A reason is required for the audit log.';
+  } else {
+    title.textContent = '🔓 Confirm: Force Clear Incident';
+    body.textContent = 'This will deactivate all alarms and close incident #INC-2026-043-008. This cannot be undone.';
+  }
+  document.getElementById('confirm-reason').value = '';
+  document.getElementById('confirm-reason').focus();
+}
+function hideConfirm() {
+  document.getElementById('confirm-box').style.display = 'none';
+}
+function doConfirm() {
+  const reason = document.getElementById('confirm-reason').value.trim();
+  if(!reason) { document.getElementById('confirm-reason').style.borderColor='#dc2626'; return; }
+  hideConfirm();
+  if(confirmType === 'mute') {
+    showToast('🔇 Alarm muted by operator_rub043. Reason logged. Beacon remains ON. Audit entry created.');
+  } else {
+    showToast('🔓 Incident force-cleared. Reason logged. All relays OFF. Push sent to all users.');
+  }
+}
+
+// ── Filter Tabs ───────────────────────────────────────────────
+document.querySelectorAll('.ftag').forEach(tag => {
+  tag.addEventListener('click', function() {
+    document.querySelectorAll('.ftag').forEach(t => t.classList.remove('act'));
+    this.classList.add('act');
+  });
+});
+
+// ── Toast ─────────────────────────────────────────────────────
+let toastTimer;
+function showToast(msg) {
+  const t = document.getElementById('mobile-toast');
+  const m = document.getElementById('toast-msg');
+  m.textContent = msg;
+  t.style.display = 'block';
+  clearTimeout(toastTimer);
+  toastTimer = setTimeout(() => { t.style.display = 'none'; }, 4500);
+}
+</script>
+</body>
+</html>

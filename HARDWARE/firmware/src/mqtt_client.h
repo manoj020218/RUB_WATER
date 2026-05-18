@@ -14,7 +14,7 @@ public:
 
     void begin(const char* host, uint16_t port, const char* user, const char* pass, const char* deviceId);
     void loop();
-    bool isConnected() const;
+    bool isConnected();
 
     bool publish(const char* topic, const char* payload, bool retained = false);
     void setCommandCallback(MqttCommandCallback callback);
@@ -24,6 +24,7 @@ public:
     String heartbeatTopic() const;
     String commandTopic() const;
     String commandAckTopic() const;
+    String otaTopic() const;
 
 private:
     MqttClientService() = default;
@@ -44,4 +45,3 @@ private:
     static void onMessageBridge(char* topic, uint8_t* payload, unsigned int length);
     void onMessage(char* topic, uint8_t* payload, unsigned int length);
 };
-

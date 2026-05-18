@@ -1,0 +1,29 @@
+﻿{
+    "deployment":  {
+                       "nodeEnv":  "production",
+                       "port":  4080,
+                       "timezone":  "Asia/Kolkata"
+                   },
+    "domains":  {
+                    "publicApiBaseUrl":  "https://api.floodguard.iotsoft.in",
+                    "vpsFqdn":  "api.floodguard.iotsoft.in"
+                },
+    "database":  {
+                     "mongoUri":  "mongodb://api.floodguard.iotsoft.in:27017/floodguard",
+                     "mongoDbName":  "floodguard"
+                 },
+    "messaging":  {
+                      "mqttEnabled":  true,
+                      "mqttProtocol":  "mqtt",
+                      "mqttHost":  "api.floodguard.iotsoft.in",
+                      "mqttPort":  1883,
+                      "mqttUser":  "",
+                      "mqttPass":  "",
+                      "mqttTopicBase":  "rub"
+                  },
+    "security":  {
+                     "apiKey":  "FG_LOCAL_DEV_KEY",
+                     "jwtSecret":  "CHANGE_THIS_IN_PRODUCTION",
+                     "allowDeviceIdAuth":  true
+                 }
+}

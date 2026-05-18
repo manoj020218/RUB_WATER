@@ -1,0 +1,155 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
+  <title>FloodGuard by Jenix</title>
+  <link rel="stylesheet" href="./app.css">
+</head>
+<body>
+  <div class="app-shell">
+    <header class="topbar">
+      <div>
+        <div class="brand">FloodGuard by Jenix</div>
+        <div class="subtitle">Real-time RUB flood monitoring</div>
+      </div>
+      <button class="ghost-btn" id="logout-btn" onclick="logoutApp()">Logout</button>
+    </header>
+
+    <main class="main">
+      <section class="view active" id="view-login">
+        <div class="card">
+          <h1 class="view-title">Secure Login</h1>
+          <p class="view-subtitle">Sign in with authorized dashboard credentials.</p>
+          <label class="lbl">API Base URL</label>
+          <input class="inp" id="login-api-base" placeholder="http://127.0.0.1:4080/api">
+          <label class="lbl">Login ID</label>
+          <input class="inp" id="login-id" placeholder="operator_rub043" value="demo">
+          <label class="lbl">Password</label>
+          <input class="inp" id="login-password" type="password" placeholder="Enter password" value="123456">
+          <button class="primary-btn" onclick="loginApp()">Login</button>
+          <div class="hint">Access can be granted or withdrawn by super admin from dashboard.</div>
+          <div class="err" id="login-error"></div>
+        </div>
+      </section>
+
+      <section class="view" id="view-locations">
+        <div class="card">
+          <div class="row between">
+            <h2 class="view-title">Locations</h2>
+            <span class="chip" id="location-count">0 sites</span>
+          </div>
+          <div class="list" id="location-list">
+            <div class="empty">Loading locations...</div>
+          </div>
+        </div>
+      </section>
+
+      <section class="view" id="view-dashboard">
+        <div class="card">
+          <div class="row between">
+            <div>
+              <h2 class="view-title" id="dash-location-name">--</h2>
+              <p class="view-subtitle" id="dash-location-sub">No location selected</p>
+            </div>
+            <span class="chip danger" id="dash-status-badge">OFFLINE</span>
+          </div>
+
+          <div class="vessel-wrap">
+            <div class="vessel">
+              <div class="vessel-fill" id="vessel-fill"></div>
+              <div class="marker marker-300">300mm</div>
+              <div class="marker marker-500">500mm</div>
+            </div>
+            <div class="vessel-metrics">
+              <div class="metric-value" id="dash-water-level">--</div>
+              <div class="metric-unit">mm</div>
+              <div class="meta" id="dash-distance">Distance: -- mm</div>
+              <div class="meta" id="dash-incident">Incident: --:--:--</div>
+            </div>
+          </div>
+
+          <div class="grid">
+            <div class="mini-card">
+              <div class="mini-label">Battery</div>
+              <div class="mini-value" id="dash-battery">--</div>
+            </div>
+            <div class="mini-card">
+              <div class="mini-label">Solar</div>
+              <div class="mini-value" id="dash-solar">--</div>
+            </div>
+            <div class="mini-card">
+              <div class="mini-label">Wi-Fi RSSI</div>
+              <div class="mini-value" id="dash-rssi">--</div>
+            </div>
+            <div class="mini-card">
+              <div class="mini-label">Heartbeat</div>
+              <div class="mini-value" id="dash-heartbeat">--</div>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      <section class="view" id="view-controls">
+        <div class="card">
+          <h2 class="view-title">Controls</h2>
+          <p class="view-subtitle" id="control-user-role">Logged in user: --</p>
+          <button class="control-btn warn" onclick="muteAlarmApp()">Mute Alarm</button>
+          <button class="control-btn info" onclick="dryRunApp()">Dry Run Test</button>
+          <input class="inp" id="force-clear-reason" placeholder="Force clear reason (min 5 chars)">
+          <button class="control-btn danger" onclick="forceClearApp()">Force Clear Incident</button>
+          <p class="hint">All actions are audited with user/session/device metadata.</p>
+
+          <div class="admin-user-panel" id="mobile-user-admin-panel" style="display:none">
+            <div class="row between" style="margin-top:16px">
+              <h3 style="margin:0;font-size:14px">User Management (Super Admin)</h3>
+              <button class="ghost-btn" style="padding:6px 10px" onclick="refreshAdminUsersApp()">Refresh</button>
+            </div>
+            <div class="admin-create-grid">
+              <input class="inp" id="mobile-ua-login-id" placeholder="login_id">
+              <input class="inp" id="mobile-ua-name" placeholder="User name">
+              <input class="inp" id="mobile-ua-password" type="password" placeholder="Password">
+              <select class="inp" id="mobile-ua-role">
+                <option value="OPERATOR">OPERATOR</option>
+                <option value="VIEWER">VIEWER</option>
+                <option value="LOCATION_ADMIN">LOCATION_ADMIN</option>
+                <option value="DEPARTMENT_ADMIN">DEPARTMENT_ADMIN</option>
+                <option value="DEPARTMENT_SUPER_ADMIN">DEPARTMENT_SUPER_ADMIN</option>
+                <option value="VENDOR_MONITORING_USER">VENDOR_MONITORING_USER</option>
+              </select>
+              <select class="inp" id="mobile-ua-active-mode">
+                <option value="active">Active</option>
+                <option value="deactive">Deactive</option>
+              </select>
+              <input class="inp" id="mobile-ua-assigned-locations" placeholder="Assigned locations (RUB043,RUB057)">
+            </div>
+            <button class="control-btn info" onclick="createAdminUserApp()">Create User</button>
+            <div class="timeline" id="mobile-admin-user-list">
+              <div class="empty">No users loaded yet.</div>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      <section class="view" id="view-audit">
+        <div class="card">
+          <h2 class="view-title">Audit Timeline</h2>
+          <div class="timeline" id="audit-list">
+            <div class="empty">No logs yet.</div>
+          </div>
+        </div>
+      </section>
+    </main>
+
+    <nav class="bottom-nav" id="bottom-nav">
+      <button class="nav-btn active" data-view="view-locations" onclick="openView('view-locations')">Locations</button>
+      <button class="nav-btn" data-view="view-dashboard" onclick="openView('view-dashboard')">Live</button>
+      <button class="nav-btn" data-view="view-controls" onclick="openView('view-controls')">Controls</button>
+      <button class="nav-btn" data-view="view-audit" onclick="openView('view-audit')">Audit</button>
+    </nav>
+  </div>
+
+  <div class="toast" id="toast"></div>
+  <script src="./app.js"></script>
+</body>
+</html>

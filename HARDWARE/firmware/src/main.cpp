@@ -189,6 +189,13 @@ void setup() {
         config.gpio.relayBarrierPin,
         config.gpio.relaySparePin
     );
+    Serial.printf(
+        "OTA Base=%s Manifest=%s Channel=%s IntervalMs=%lu\n",
+        config.otaBaseUrl,
+        config.otaManifestPath,
+        config.otaChannel,
+        static_cast<unsigned long>(config.otaCheckIntervalMs)
+    );
 
     WifiManager::getInstance().begin(config.wifiSsid, config.wifiPass);
     NetworkDiagnosticsService::getInstance().begin();
@@ -207,7 +214,7 @@ void setup() {
     MqttClientService::getInstance().setCommandCallback(onMqttCommand);
 
     TelemetryManager::getInstance().begin(config);
-    OtaManager::getInstance().begin(config.firmwareVersion);
+    OtaManager::getInstance().begin(config);
     gPreviousState = AlarmStateMachine::getInstance().getState();
 }
 
@@ -253,7 +260,7 @@ void loop() {
     );
 
     replayOfflineQueue();
-    OtaManager::getInstance().loop(AlarmStateMachine::getInstance().isDangerActive());
+    OtaManager::getInstance().loop(AlarmStateMachine::getInstance().isDangerActive(), wifiConnected);
 
     WatchdogService::getInstance().feed();
     WatchdogService::getInstance().loop();

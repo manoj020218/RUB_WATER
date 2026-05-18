@@ -1,0 +1,1026 @@
+﻿<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>FloodGuard by Jenix | RUB Water Level Monitoring & Alarm System</title>
+<style>
+/* â”€â”€ RESET & VARIABLES â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€ */
+*,*::before,*::after{box-sizing:border-box;margin:0;padding:0}
+:root{
+  --brand:#1d4ed8;--brand-h:#1e40af;--brand-lt:#eff6ff;--brand-bd:#bfdbfe;
+  --danger:#dc2626;--danger-lt:#fee2e2;--danger-bd:#fca5a5;--danger-dk:#7f1d1d;
+  --alert:#d97706;--alert-lt:#fffbeb;--alert-bd:#fde68a;
+  --ok:#059669;--ok-lt:#ecfdf5;--ok-bd:#6ee7b7;
+  --off:#6b7280;--off-lt:#f9fafb;--off-bd:#e5e7eb;
+  --bg:#f1f5f9;--card:#fff;--text:#0f172a;--t2:#475569;--t3:#94a3b8;
+  --bdr:#e2e8f0;--sh:0 1px 3px rgba(0,0,0,.08);--sh2:0 4px 14px rgba(0,0,0,.10);
+  --r:8px;--r2:12px;
+  font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-serif;
+}
+body{background:var(--bg);color:var(--text);line-height:1.5}
+a{text-decoration:none;color:inherit}
+button{font-family:inherit;cursor:pointer}
+
+/* â”€â”€ ANIMATIONS â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€ */
+@keyframes blink{0%,100%{opacity:1}50%{opacity:.15}}
+@keyframes pulse-r{0%,100%{box-shadow:0 0 0 0 rgba(220,38,38,.45)}60%{box-shadow:0 0 0 9px rgba(220,38,38,0)}}
+@keyframes pulse-a{0%,100%{box-shadow:0 0 0 0 rgba(217,119,6,.45)}60%{box-shadow:0 0 0 9px rgba(217,119,6,0)}}
+@keyframes wave{0%,100%{transform:translateX(0)}50%{transform:translateX(-18px)}}
+@keyframes slidein{from{transform:translateY(-100%);opacity:0}to{transform:translateY(0);opacity:1}}
+@keyframes fadein{from{opacity:0;transform:translateY(8px)}to{opacity:1;transform:translateY(0)}}
+@keyframes marquee{0%{transform:translateX(100%)}100%{transform:translateX(-100%)}}
+
+.blink{animation:blink 1.4s ease-in-out infinite}
+.fadein{animation:fadein .35s ease both}
+
+/* â”€â”€ STATUS HELPERS â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€ */
+.badge{display:inline-flex;align-items:center;gap:5px;padding:3px 11px;border-radius:999px;font-size:11px;font-weight:700;letter-spacing:.07em;text-transform:uppercase}
+.dot{width:7px;height:7px;border-radius:50%;background:currentColor}
+.s-danger{background:var(--danger-lt);color:var(--danger);border:1px solid var(--danger-bd)}
+.s-alert{background:var(--alert-lt);color:var(--alert);border:1px solid var(--alert-bd)}
+.s-ok{background:var(--ok-lt);color:var(--ok);border:1px solid var(--ok-bd)}
+.s-off{background:var(--off-lt);color:var(--off);border:1px solid var(--off-bd)}
+
+/* â”€â”€ NAVBAR â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€ */
+#nav{position:sticky;top:0;z-index:200;background:#fff;border-bottom:1px solid var(--bdr);box-shadow:var(--sh)}
+.nav-in{max-width:1380px;margin:0 auto;display:flex;align-items:center;height:58px;padding:0 20px;gap:20px}
+.logo{display:flex;flex-direction:column;line-height:1.1;min-width:max-content}
+.logo-name{font-size:18px;font-weight:900;color:var(--brand);letter-spacing:-.03em}
+.logo-sub{font-size:9px;color:var(--t3);letter-spacing:.05em;text-transform:uppercase}
+.nav-links{display:flex;gap:2px;flex:1}
+.nl{padding:6px 12px;border-radius:6px;font-size:13px;font-weight:500;color:var(--t2);border:none;background:none;transition:.15s;cursor:pointer}
+.nl:hover,.nl.act{background:var(--brand-lt);color:var(--brand)}
+.nav-r{display:flex;align-items:center;gap:12px;margin-left:auto}
+.live-chip{display:flex;align-items:center;gap:6px;background:#dcfce7;color:#15803d;padding:4px 11px;border-radius:999px;font-size:11px;font-weight:700;letter-spacing:.07em}
+.live-d{width:7px;height:7px;border-radius:50%;background:#16a34a;animation:blink 1.3s infinite}
+.clock-txt{font-size:12px;font-weight:600;color:var(--t2);font-variant-numeric:tabular-nums;white-space:nowrap}
+.user-btn{display:flex;align-items:center;gap:8px;background:var(--brand-lt);border:1px solid var(--brand-bd);border-radius:20px;padding:4px 12px 4px 4px;cursor:pointer}
+.u-av{width:28px;height:28px;border-radius:50%;background:var(--brand);color:#fff;font-size:11px;font-weight:800;display:flex;align-items:center;justify-content:center}
+.u-name{font-size:12px;font-weight:600;color:var(--brand)}
+
+/* â”€â”€ TICKER â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€ */
+#ticker{background:#1e3a8a;color:#bfdbfe;font-size:11px;font-weight:500;overflow:hidden;white-space:nowrap;height:26px;display:flex;align-items:center}
+.ticker-in{display:inline-block;animation:marquee 28s linear infinite}
+
+/* â”€â”€ ALERT BANNER â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€ */
+#alert-bar{background:var(--danger);color:#fff;animation:slidein .4s ease;position:relative;z-index:190}
+.ab-in{max-width:1380px;margin:0 auto;padding:9px 20px;display:flex;align-items:center;gap:14px;flex-wrap:wrap}
+.ab-icon{font-size:19px;animation:blink .9s infinite}
+.ab-text{flex:1;font-size:13px;font-weight:600}
+.ab-text strong{font-size:14px}
+.ab-text small{opacity:.85;font-size:11px;font-weight:400}
+.ab-btns{display:flex;gap:8px}
+.ab-btn{padding:5px 14px;border-radius:6px;font-size:12px;font-weight:700;cursor:pointer;border:none;transition:.15s}
+.ab-view{background:#fff;color:var(--danger)}
+.ab-mute{background:rgba(255,255,255,.18);color:#fff;border:1px solid rgba(255,255,255,.35)!important}
+.ab-close{background:none;border:none;color:rgba(255,255,255,.6);font-size:20px;line-height:1;cursor:pointer;padding:0 4px}
+
+/* â”€â”€ HERO â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€ */
+#hero{background:linear-gradient(135deg,#eff6ff 0%,#f8fafc 55%,#f0fdf4 100%);border-bottom:1px solid var(--bdr);padding:52px 20px 48px}
+.hero-in{max-width:1380px;margin:0 auto;display:grid;grid-template-columns:1fr 360px;gap:60px;align-items:center}
+.hero-label{display:inline-flex;align-items:center;gap:7px;background:var(--brand-lt);border:1px solid var(--brand-bd);color:var(--brand);padding:5px 14px;border-radius:999px;font-size:12px;font-weight:600;margin-bottom:18px}
+.hero-h1{font-size:42px;font-weight:900;color:var(--text);letter-spacing:-.03em;line-height:1.1;margin-bottom:6px}
+.hero-h1 span{color:var(--brand)}
+.hero-h2{font-size:15px;color:var(--t2);font-weight:500;margin-bottom:6px}
+.hero-hi{font-size:20px;color:var(--brand);font-weight:700;margin-bottom:14px}
+.hero-tag{font-size:14px;color:var(--t3);margin-bottom:28px;max-width:500px;line-height:1.65}
+.hero-stats{display:flex;gap:36px;margin-bottom:32px;flex-wrap:wrap}
+.h-stat-v{font-size:30px;font-weight:900;color:var(--brand);line-height:1}
+.h-stat-l{font-size:11px;color:var(--t3);text-transform:uppercase;letter-spacing:.06em;margin-top:3px}
+.hero-btns{display:flex;gap:12px;flex-wrap:wrap}
+.btn-pri{padding:11px 24px;background:var(--brand);color:#fff;border:none;border-radius:8px;font-size:14px;font-weight:700;cursor:pointer;transition:.15s;display:inline-flex;align-items:center;gap:8px}
+.btn-pri:hover{background:var(--brand-h)}
+.btn-sec{padding:11px 24px;background:#fff;color:var(--brand);border:1px solid var(--brand-bd);border-radius:8px;font-size:14px;font-weight:700;cursor:pointer;transition:.15s;display:inline-flex;align-items:center;gap:8px}
+.hero-cards{display:flex;flex-direction:column;gap:12px}
+.hc{background:#fff;border:1px solid var(--bdr);border-radius:var(--r2);padding:16px 18px;box-shadow:var(--sh);display:flex;align-items:center;gap:14px}
+.hc-icon{width:44px;height:44px;border-radius:10px;display:flex;align-items:center;justify-content:center;font-size:23px;flex-shrink:0}
+.hc-title{font-size:13px;font-weight:700}
+.hc-desc{font-size:12px;color:var(--t2);margin-top:2px}
+
+/* â”€â”€ SECTION WRAPPER â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€ */
+.section-wrap{max-width:1380px;margin:0 auto;padding:24px 20px}
+.section-head{display:flex;justify-content:space-between;align-items:center;margin-bottom:18px}
+.section-title{font-size:13px;font-weight:700;color:var(--t2);text-transform:uppercase;letter-spacing:.08em}
+.section-action{font-size:12px;color:var(--brand);font-weight:600;cursor:pointer}
+
+/* â”€â”€ DASHBOARD LAYOUT â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€ */
+#dash{max-width:1380px;margin:0 auto;padding:24px 20px;display:grid;grid-template-columns:270px 1fr;gap:20px;min-height:calc(100vh - 200px)}
+
+/* â”€â”€ SIDEBAR â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€ */
+.sb-hdr{display:flex;justify-content:space-between;align-items:center;margin-bottom:12px}
+.sb-title{font-size:11px;font-weight:700;color:var(--t2);text-transform:uppercase;letter-spacing:.08em}
+.sb-count{font-size:11px;color:var(--t3)}
+.lcard{background:var(--card);border:1px solid var(--bdr);border-radius:var(--r);padding:14px;cursor:pointer;transition:all .15s;position:relative;margin-bottom:8px}
+.lcard:hover{border-color:var(--brand-bd);box-shadow:var(--sh)}
+.lcard.sel{border-color:var(--brand);box-shadow:0 0 0 2px rgba(29,78,216,.12)}
+.lcard.d{border-left:4px solid var(--danger)}
+.lcard.a{border-left:4px solid var(--alert)}
+.lcard.n{border-left:4px solid var(--ok)}
+.lcard.o{border-left:4px solid var(--off)}
+.lc-top{display:flex;justify-content:space-between;align-items:flex-start;margin-bottom:10px}
+.lc-name{font-size:13px;font-weight:700;line-height:1.3}
+.lc-id{font-size:10px;color:var(--t3);font-weight:600;letter-spacing:.04em;margin-top:2px}
+.lc-bot{display:flex;justify-content:space-between;align-items:flex-end}
+.lc-lvl{font-size:22px;font-weight:900;line-height:1}
+.lc-unit{font-size:11px;color:var(--t3);font-weight:500}
+.lc-time{font-size:10px;color:var(--t3);text-align:right;line-height:1.4}
+.lc-danger{color:var(--danger)}
+.lc-alert{color:var(--alert)}
+.lc-ok{color:var(--ok)}
+.lc-off{color:var(--off)}
+
+/* â”€â”€ MAIN PANEL â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€ */
+#mpanel{display:flex;flex-direction:column;gap:16px}
+.mp-hdr{background:var(--card);border:1px solid var(--bdr);border-radius:var(--r2);padding:18px 22px;display:flex;align-items:center;gap:16px;flex-wrap:wrap;box-shadow:var(--sh)}
+.mp-loc{flex:1}
+.mp-name{font-size:21px;font-weight:900;letter-spacing:-.02em}
+.mp-sub{font-size:12px;color:var(--t3);margin-top:3px}
+.mp-meta{display:flex;align-items:center;gap:14px;flex-wrap:wrap}
+.mp-time{font-size:11px;color:var(--t3);text-align:right;line-height:1.5}
+.btn-sm{padding:7px 15px;border-radius:6px;font-size:12px;font-weight:600;cursor:pointer;border:1px solid var(--bdr);background:#fff;color:var(--t2);transition:.15s}
+.btn-sm:hover{border-color:var(--brand-bd);color:var(--brand)}
+
+/* â”€â”€ VESSEL + METRICS ROW â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€ */
+.row1{display:grid;grid-template-columns:220px 1fr;gap:16px;align-items:start}
+
+/* Vessel */
+.vessel-pnl{background:var(--card);border:1px solid var(--bdr);border-radius:var(--r2);padding:20px 18px;box-shadow:var(--sh);display:flex;flex-direction:column;align-items:center;gap:14px}
+.vpnl-title{font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:.08em;color:var(--t2)}
+.vessel-wrap{position:relative;width:90px;height:220px;margin-right:76px}
+.vtop{position:absolute;top:0;left:8px;right:8px;height:20px;border:2.5px solid #94a3b8;border-bottom:none;border-radius:4px 4px 0 0;background:#f8fafc}
+.vbody{position:absolute;bottom:0;left:0;right:0;height:200px;border:2.5px solid #94a3b8;border-top:none;border-radius:0 0 12px 12px;overflow:hidden;background:#f8fafc}
+.wfill{position:absolute;bottom:0;left:0;right:0;height:43.7%;transition:height 2s ease}
+.wfill-d{background:linear-gradient(0deg,#b91c1c,#ef4444)}
+.wfill-a{background:linear-gradient(0deg,#b45309,#fbbf24)}
+.wfill-n{background:linear-gradient(0deg,#047857,#34d399)}
+.wsurface{position:absolute;top:-3px;left:-25px;right:-25px;height:8px;background:rgba(255,255,255,.35);border-radius:50%;animation:wave 3s ease-in-out infinite}
+.vm-line{position:absolute;left:0;right:0;height:0;border-top:1.5px dashed;pointer-events:none;z-index:2}
+.vm-500{bottom:41.7%;border-color:rgba(220,38,38,.65)}
+.vm-300{bottom:25%;border-color:rgba(217,119,6,.65)}
+/* marker labels - positioned in vessel-wrap above vbody */
+.vlabel{position:absolute;right:-78px;display:flex;align-items:center;gap:3px;pointer-events:none;z-index:3}
+.vlabel-line{width:12px;height:2px}
+.vlabel-txt{font-size:9px;font-weight:800;white-space:nowrap}
+.vl-500{bottom:calc(41.7% - 1px);color:var(--danger)}
+.vl-500 .vlabel-line{background:var(--danger)}
+.vl-300{bottom:calc(25% - 1px);color:var(--alert)}
+.vl-300 .vlabel-line{background:var(--alert)}
+.v-readings{text-align:center}
+.v-lvl{font-size:32px;font-weight:900;font-variant-numeric:tabular-nums;line-height:1}
+.v-lvl-d{color:var(--danger)}
+.v-lvl-a{color:var(--alert)}
+.v-lvl-n{color:var(--ok)}
+.v-unit{font-size:12px;color:var(--t3);font-weight:500}
+.v-dist{font-size:11px;color:var(--t3);margin-top:4px}
+.v-badge{display:inline-flex;align-items:center;gap:5px;padding:5px 13px;border-radius:999px;font-size:11px;font-weight:800;letter-spacing:.07em;margin-top:8px}
+.vb-d{background:var(--danger-lt);color:var(--danger);border:1px solid var(--danger-bd);animation:pulse-r 2s ease-in-out infinite}
+.vb-a{background:var(--alert-lt);color:var(--alert);border:1px solid var(--alert-bd);animation:pulse-a 2s ease-in-out infinite}
+.vb-n{background:var(--ok-lt);color:var(--ok);border:1px solid var(--ok-bd)}
+
+/* Metrics grid */
+.metrics{display:grid;grid-template-columns:repeat(3,1fr);gap:12px}
+.mc{background:var(--card);border:1px solid var(--bdr);border-radius:var(--r);padding:16px;box-shadow:var(--sh)}
+.mc-icon{font-size:20px;margin-bottom:8px;display:block}
+.mc-lbl{font-size:10px;color:var(--t3);text-transform:uppercase;letter-spacing:.06em;font-weight:700}
+.mc-lbl-hi{font-size:10px;color:var(--t3);display:block;margin-bottom:5px}
+.mc-val{font-size:24px;font-weight:900;line-height:1;font-variant-numeric:tabular-nums}
+.mc-unit{font-size:13px;font-weight:500;color:var(--t3)}
+.mc-sub{font-size:11px;color:var(--t3);margin-top:4px}
+.mc-tag{display:inline-flex;align-items:center;gap:4px;margin-top:6px;font-size:11px;font-weight:700;padding:2px 9px;border-radius:999px}
+
+/* â”€â”€ NETWORK + RELAY ROW â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€ */
+.row2{display:grid;grid-template-columns:1fr 1fr;gap:16px}
+.pcard{background:var(--card);border:1px solid var(--bdr);border-radius:var(--r2);padding:18px;box-shadow:var(--sh)}
+.pc-title{font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:.08em;color:var(--t2);padding-bottom:10px;margin-bottom:14px;border-bottom:1px solid var(--bdr);display:flex;justify-content:space-between;align-items:center}
+.net-grid{display:grid;grid-template-columns:1fr 1fr;gap:10px}
+.ni{display:flex;align-items:center;gap:10px;background:var(--bg);border-radius:8px;padding:10px 12px}
+.ni-icon{font-size:18px;flex-shrink:0}
+.ni-lbl{font-size:10px;color:var(--t3);font-weight:600;letter-spacing:.04em}
+.ni-val{font-size:13px;font-weight:700;margin-top:1px}
+.c-ok{color:var(--ok)}
+.c-warn{color:var(--alert)}
+.c-err{color:var(--danger)}
+.c-txt{color:var(--text)}
+.relay-grid{display:grid;grid-template-columns:1fr 1fr;gap:10px}
+.ri{display:flex;align-items:center;justify-content:space-between;padding:11px 14px;border-radius:8px;background:var(--bg)}
+.ri-name{font-size:12px;font-weight:700;color:var(--t2)}
+.ri-hi{font-size:10px;color:var(--t3)}
+.toggle{width:38px;height:21px;border-radius:11px;position:relative;flex-shrink:0}
+.t-on{background:var(--danger);animation:pulse-r 2s ease-in-out infinite}
+.t-off{background:#d1d5db}
+.tknob{position:absolute;top:2.5px;width:16px;height:16px;background:#fff;border-radius:50%;transition:left .2s;box-shadow:0 1px 3px rgba(0,0,0,.25)}
+.t-on .tknob{left:19px}
+.t-off .tknob{left:2.5px}
+
+/* â”€â”€ CONTROL PANEL â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€ */
+.ctrl-pnl{background:var(--card);border:1px solid var(--bdr);border-radius:var(--r2);padding:18px;box-shadow:var(--sh)}
+.cp-title{font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:.08em;color:var(--t2);padding-bottom:10px;margin-bottom:14px;border-bottom:1px solid var(--bdr)}
+.cp-grid{display:flex;gap:10px;flex-wrap:wrap}
+.cbtn{padding:10px 18px;border-radius:8px;font-size:13px;font-weight:700;cursor:pointer;border:none;transition:all .15s;display:inline-flex;align-items:center;gap:7px}
+.cbtn-mute{background:#fef3c7;color:#92400e;border:1px solid #fde68a}
+.cbtn-mute:hover{background:#fde68a}
+.cbtn-fc{background:#f3e8ff;color:#6b21a8;border:1px solid #e9d5ff}
+.cbtn-fc:hover{background:#e9d5ff}
+.cbtn-dry{background:#e0f2fe;color:#0c4a6e;border:1px solid #bae6fd}
+.cbtn-dry:hover{background:#bae6fd}
+.cbtn-rpt{background:var(--bg);color:var(--t2);border:1px solid var(--bdr)}
+.cbtn-rpt:hover{border-color:var(--brand-bd);color:var(--brand)}
+.cp-note{margin-top:12px;font-size:11px;color:var(--t3);display:flex;align-items:center;gap:6px}
+
+/* â”€â”€ AUDIT LOG â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€ */
+.audit-pnl{background:var(--card);border:1px solid var(--bdr);border-radius:var(--r2);box-shadow:var(--sh);overflow:hidden}
+.ap-hdr{padding:15px 18px;border-bottom:1px solid var(--bdr);display:flex;justify-content:space-between;align-items:center}
+.ap-title{font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:.08em;color:var(--t2)}
+.ap-all{font-size:12px;color:var(--brand);font-weight:600;cursor:pointer}
+.atable{width:100%;border-collapse:collapse;font-size:12px}
+.atable th{background:#f8fafc;padding:9px 16px;text-align:left;font-size:10px;font-weight:700;color:var(--t3);text-transform:uppercase;letter-spacing:.06em;border-bottom:1px solid var(--bdr)}
+.atable td{padding:11px 16px;border-bottom:1px solid var(--bdr);color:var(--t2);vertical-align:middle}
+.atable tr:last-child td{border-bottom:none}
+.atable tr:hover td{background:#f8fafc}
+.ev{display:inline-block;padding:2px 8px;border-radius:4px;font-size:10px;font-weight:700;letter-spacing:.06em;text-transform:uppercase}
+.ev-d{background:var(--danger-lt);color:var(--danger)}
+.ev-a{background:var(--alert-lt);color:var(--alert)}
+.ev-n{background:var(--ok-lt);color:var(--ok)}
+.ev-i{background:var(--brand-lt);color:var(--brand)}
+.ev-w{background:#fef3c7;color:#92400e}
+.ev-o{background:var(--off-lt);color:var(--off)}
+
+/* â”€â”€ FEATURES â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€ */
+#features{background:#fff;border-top:1px solid var(--bdr);padding:64px 20px}
+.feat-in{max-width:1380px;margin:0 auto}
+.feat-hdr{text-align:center;margin-bottom:48px}
+.feat-h2{font-size:34px;font-weight:900;color:var(--text);letter-spacing:-.02em;margin-bottom:8px}
+.feat-sub{font-size:16px;color:var(--t2)}
+.feat-grid{display:grid;grid-template-columns:repeat(3,1fr);gap:24px}
+.fc{padding:28px;border:1px solid var(--bdr);border-radius:var(--r2);transition:.2s}
+.fc:hover{box-shadow:var(--sh2);border-color:var(--brand-bd)}
+.fc-icon{width:52px;height:52px;background:var(--brand-lt);border-radius:12px;display:flex;align-items:center;justify-content:center;font-size:26px;margin-bottom:16px}
+.fc-title{font-size:16px;font-weight:800;color:var(--text);margin-bottom:8px}
+.fc-desc{font-size:14px;color:var(--t2);line-height:1.65}
+
+/* â”€â”€ FOOTER â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€ */
+footer{background:#0f172a;color:#94a3b8;padding:52px 20px 24px}
+.ft-in{max-width:1380px;margin:0 auto}
+.ft-grid{display:grid;grid-template-columns:2fr 1fr 1fr 1fr;gap:44px;margin-bottom:44px}
+.ft-brand-name{font-size:20px;font-weight:900;color:#fff;margin-bottom:4px}
+.ft-brand-sub{font-size:12px;color:#475569;margin-bottom:10px}
+.ft-brand-desc{font-size:13px;color:#475569;line-height:1.7;max-width:280px}
+.ft-col-title{font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:.1em;color:#fff;margin-bottom:14px}
+.ft-link{display:block;font-size:13px;color:#475569;margin-bottom:8px;cursor:pointer;transition:.15s}
+.ft-link:hover{color:#94a3b8}
+.ft-bottom{border-top:1px solid #1e293b;padding-top:22px;display:flex;justify-content:space-between;align-items:center;font-size:12px;color:#475569;flex-wrap:wrap;gap:10px}
+.cert-chips{display:flex;gap:10px;flex-wrap:wrap}
+.cert{background:#1e293b;border:1px solid #334155;border-radius:5px;padding:3px 10px;font-size:11px;font-weight:600;color:#64748b}
+
+/* â”€â”€ MODAL â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€ */
+.modal-bg{position:fixed;inset:0;background:rgba(0,0,0,.5);z-index:500;display:flex;align-items:center;justify-content:center;display:none}
+.modal-bg.show{display:flex}
+.modal{background:#fff;border-radius:var(--r2);padding:28px;max-width:420px;width:90%;box-shadow:0 20px 60px rgba(0,0,0,.2)}
+.modal h3{font-size:16px;font-weight:800;margin-bottom:8px}
+.modal p{font-size:13px;color:var(--t2);margin-bottom:16px;line-height:1.6}
+.modal-inp{width:100%;padding:10px 14px;border:1px solid var(--bdr);border-radius:8px;font-size:13px;font-family:inherit;margin-bottom:16px;outline:none}
+.modal-inp:focus{border-color:var(--brand);box-shadow:0 0 0 3px rgba(29,78,216,.1)}
+.modal-btns{display:flex;gap:10px;justify-content:flex-end}
+.mbt-cancel{padding:9px 18px;border:1px solid var(--bdr);border-radius:7px;background:#fff;font-size:13px;font-weight:600;cursor:pointer;color:var(--t2)}
+.mbt-confirm{padding:9px 18px;border:none;border-radius:7px;background:var(--danger);color:#fff;font-size:13px;font-weight:700;cursor:pointer}
+
+/* â”€â”€ TOAST â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€ */
+#toast{position:fixed;bottom:24px;right:24px;z-index:600;display:none}
+.toast-msg{background:#0f172a;color:#fff;padding:12px 18px;border-radius:10px;font-size:13px;font-weight:500;box-shadow:0 8px 24px rgba(0,0,0,.25);animation:fadein .3s ease;display:flex;align-items:center;gap:10px}
+
+/* â”€â”€ RESPONSIVE â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€ */
+@media(max-width:1100px){
+  .metrics{grid-template-columns:repeat(2,1fr)}
+  .feat-grid{grid-template-columns:repeat(2,1fr)}
+  .ft-grid{grid-template-columns:1fr 1fr}
+  .hero-in{grid-template-columns:1fr 300px;gap:40px}
+}
+@media(max-width:900px){
+  .nav-links{display:none}
+  #dash{grid-template-columns:1fr}
+  #sidebar{display:grid;grid-template-columns:repeat(2,1fr);gap:10px}
+  .sb-hdr{grid-column:1/-1}
+  .lcard{margin-bottom:0}
+  .row1{grid-template-columns:1fr}
+  .vessel-pnl{flex-direction:row;gap:24px;align-items:center;flex-wrap:wrap;justify-content:center}
+  .row2{grid-template-columns:1fr}
+  .hero-in{grid-template-columns:1fr}
+  .hero-cards{flex-direction:row;flex-wrap:wrap}
+}
+@media(max-width:600px){
+  #sidebar{grid-template-columns:1fr}
+  .hero-h1{font-size:28px}
+  .hero-stats{gap:20px}
+  .feat-grid{grid-template-columns:1fr}
+  .ft-grid{grid-template-columns:1fr}
+  .ab-btns{flex-wrap:wrap}
+  .metrics{grid-template-columns:1fr}
+}
+</style>
+<link rel="stylesheet" href="./dashboard-live.css">
+</head>
+<body>
+
+<!-- â•â• NAVBAR â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â• -->
+<nav id="nav">
+  <div class="nav-in">
+    <a href="#" class="logo">
+      <span class="logo-name">ðŸŒŠ FloodGuard</span>
+      <span class="logo-sub">by Jenix &nbsp;Â·&nbsp; RUB Flood Monitoring</span>
+    </a>
+    <div class="nav-links">
+      <button class="nl" onclick="scrollTo({top:0,behavior:'smooth'})">Home</button>
+      <button class="nl act" onclick="document.getElementById('dash').scrollIntoView({behavior:'smooth'})">Live Dashboard</button>
+      <button class="nl">Locations</button>
+      <button class="nl">Audit Logs</button>
+      <button class="nl">Reports</button>
+      <button class="nl">Settings</button>
+    </div>
+    <div class="nav-r">
+      <div class="live-chip">
+        <span class="live-d"></span>LIVE
+      </div>
+      <span class="clock-txt" id="clock">--:--:-- IST</span>
+      <div class="user-btn">
+        <div class="u-av" id="user-avatar">VA</div>
+        <span class="u-name" id="user-name">Vendor Admin</span>
+      </div>
+    </div>
+  </div>
+</nav>
+
+<!-- â•â• LIVE TICKER â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â• -->
+<div id="ticker">
+  <span class="ticker-in" id="ticker-content">
+    &nbsp;&nbsp;&nbsp;ðŸ”´ DANGER ACTIVE â€” RUB-043 Kalyan Road Underpass: Water level 524mm, Siren &amp; Beacon ON &nbsp;&nbsp;&nbsp;|&nbsp;&nbsp;&nbsp;
+    ðŸŸ¡ ALERT â€” RUB-057 Thane Junction: Water level 318mm and rising &nbsp;&nbsp;&nbsp;|&nbsp;&nbsp;&nbsp;
+    âœ… RUB-102 Pune Bypass: Normal â€” 42mm &nbsp;&nbsp;&nbsp;|&nbsp;&nbsp;&nbsp;
+    âš« RUB-078 Nashik: OFFLINE â€” Last seen 18 min ago &nbsp;&nbsp;&nbsp;|&nbsp;&nbsp;&nbsp;
+    âœ… RUB-119 Aurangabad: Normal â€” 18mm &nbsp;&nbsp;&nbsp;|&nbsp;&nbsp;&nbsp;
+    ðŸ“¡ System heartbeat OK &nbsp;&nbsp;&nbsp;|&nbsp;&nbsp;&nbsp; VPS: FGServer.jenix.in &nbsp;&nbsp;&nbsp;
+  </span>
+</div>
+
+<!-- â•â• ALERT BANNER â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â• -->
+<div id="alert-bar">
+  <div class="ab-in">
+    <span class="ab-icon">âš ï¸</span>
+    <div class="ab-text">
+      <strong id="ab-location">DANGER - RUB-043 Kalyan Road Underpass</strong>
+      <small> &nbsp;|&nbsp; Water Level: <strong id="ab-level">524mm</strong> &nbsp;|&nbsp; Siren &amp; Beacon Active &nbsp;|&nbsp; Alert since 09:15:42 IST</small>
+    </div>
+    <div class="ab-btns">
+      <button class="ab-btn ab-view" onclick="document.getElementById('dash').scrollIntoView({behavior:'smooth'})">View Dashboard</button>
+      <button class="ab-btn ab-mute" onclick="muteAlarm()">ðŸ”‡ Mute Alarm</button>
+    </div>
+    <button class="ab-close" onclick="document.getElementById('alert-bar').style.display='none'">Ã—</button>
+  </div>
+</div>
+
+<!-- â•â• HERO â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â• -->
+<section id="hero">
+  <div class="hero-in">
+    <div>
+      <div class="hero-label">
+        ðŸ›ï¸ Approved for Government Deployment &nbsp;Â·&nbsp; NDRF Compatible
+      </div>
+      <h1 class="hero-h1">Jenix <span>FloodGuard</span></h1>
+      <div class="hero-h2">RUB Water Level Monitoring &amp; Alarm System</div>
+      <div class="hero-hi">à¤œà¤² à¤¸à¥à¤°à¤•à¥à¤·à¤¾ à¤¨à¤¿à¤—à¤°à¤¾à¤¨à¥€ à¤ªà¥à¤°à¤£à¤¾à¤²à¥€</div>
+      <p class="hero-tag">Real-time flood detection for Railway Under Bridges and low-lying roads â€” automated danger alerts, complete audit trail, and offline-resilient operation for uninterrupted public safety.</p>
+      <div class="hero-stats">
+        <div>
+          <div class="h-stat-v">500+</div>
+          <div class="h-stat-l">Locations Ready</div>
+        </div>
+        <div>
+          <div class="h-stat-v">2s</div>
+          <div class="h-stat-l">Alert Response</div>
+        </div>
+        <div>
+          <div class="h-stat-v">99.9%</div>
+          <div class="h-stat-l">Uptime SLA</div>
+        </div>
+        <div>
+          <div class="h-stat-v">24/7</div>
+          <div class="h-stat-l">Monitoring</div>
+        </div>
+      </div>
+      <div class="hero-btns">
+        <button class="btn-pri" onclick="document.getElementById('dash').scrollIntoView({behavior:'smooth'})">ðŸ“Š View Live Dashboard</button>
+        <button class="btn-sec">ðŸ“„ Download Brochure</button>
+      </div>
+    </div>
+    <div class="hero-cards">
+      <div class="hc">
+        <div class="hc-icon" style="background:#fee2e2">âš¡</div>
+        <div>
+          <div class="hc-title">2-Second Alert Response</div>
+          <div class="hc-desc">Real-time MQTT telemetry with automated FCM push alerts</div>
+        </div>
+      </div>
+      <div class="hc">
+        <div class="hc-icon" style="background:#dcfce7">ðŸ”†</div>
+        <div>
+          <div class="hc-title">Solar Powered â€” Always On</div>
+          <div class="hc-desc">Operates 24/7 even during grid power failure or monsoon</div>
+        </div>
+      </div>
+      <div class="hc">
+        <div class="hc-icon" style="background:#eff6ff">ðŸ“¶</div>
+        <div>
+          <div class="hc-title">Offline Resilient</div>
+          <div class="hc-desc">Local alarm logic runs without internet â€” safety first</div>
+        </div>
+      </div>
+      <div class="hc">
+        <div class="hc-icon" style="background:#fef3c7">ðŸ“‹</div>
+        <div>
+          <div class="hc-title">Government-Grade Audit Trail</div>
+          <div class="hc-desc">Every action logged with user, session, timestamp &amp; location</div>
+        </div>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- â•â• LIVE DASHBOARD â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â• -->
+<div style="background:var(--bg);padding:20px 0 0">
+  <div class="section-wrap" style="padding-bottom:0">
+    <div class="section-head">
+      <div>
+        <div class="section-title">Live Monitoring Dashboard â€” à¤²à¤¾à¤‡à¤µ à¤¨à¤¿à¤—à¤°à¤¾à¤¨à¥€ à¤¡à¥ˆà¤¶à¤¬à¥‹à¤°à¥à¤¡</div>
+      </div>
+      <div style="display:flex;align-items:center;gap:10px">
+        <div class="live-chip"><span class="live-d"></span>LIVE DATA</div>
+        <span style="font-size:11px;color:var(--t3)" id="last-refresh">Refreshed just now</span>
+      </div>
+    </div>
+  </div>
+</div>
+
+<div id="dash">
+  <!-- â”€â”€ SIDEBAR â”€â”€ -->
+  <aside id="sidebar">
+    <div class="sb-hdr">
+      <span class="sb-title">Locations / à¤¸à¥à¤¥à¤¾à¤¨</span>
+      <span class="sb-count" id="location-count">5 sites</span>
+    </div>
+
+    <div class="lcard d sel" onclick="selectLocation(0)" id="lc-0">
+      <div class="lc-top">
+        <div>
+          <div class="lc-name">Kalyan Road Underpass</div>
+          <div class="lc-id">RUB-043 &nbsp;Â·&nbsp; Thane District</div>
+        </div>
+        <span class="badge s-danger"><span class="dot blink"></span>DANGER</span>
+      </div>
+      <div class="lc-bot">
+        <div><span class="lc-lvl lc-danger" id="lc0-lvl">524</span><span class="lc-unit"> mm</span></div>
+        <div class="lc-time">
+          <span class="lc-time-label">Battery: 12.4V</span>
+          <span class="lc-update-value" style="color:var(--ok);">â— Online</span>
+        </div>
+      </div>
+    </div>
+
+    <div class="lcard a" onclick="selectLocation(1)" id="lc-1">
+      <div class="lc-top">
+        <div>
+          <div class="lc-name">Thane Junction Bridge</div>
+          <div class="lc-id">RUB-057 &nbsp;Â·&nbsp; Thane District</div>
+        </div>
+        <span class="badge s-alert"><span class="dot blink"></span>ALERT</span>
+      </div>
+      <div class="lc-bot">
+        <div><span class="lc-lvl lc-alert">318</span><span class="lc-unit"> mm</span></div>
+        <div class="lc-time">
+          <span>Battery: 12.7V</span>
+          <span style="color:var(--ok);">â— Online</span>
+        </div>
+      </div>
+    </div>
+
+    <div class="lcard n" onclick="selectLocation(2)" id="lc-2">
+      <div class="lc-top">
+        <div>
+          <div class="lc-name">Pune Expressway Bypass</div>
+          <div class="lc-id">RUB-102 &nbsp;Â·&nbsp; Pune District</div>
+        </div>
+        <span class="badge s-ok"><span class="dot"></span>NORMAL</span>
+      </div>
+      <div class="lc-bot">
+        <div><span class="lc-lvl lc-ok">42</span><span class="lc-unit"> mm</span></div>
+        <div class="lc-time">
+          <span>Battery: 13.1V</span>
+          <span style="color:var(--ok);">â— Online</span>
+        </div>
+      </div>
+    </div>
+
+    <div class="lcard o" onclick="selectLocation(3)" id="lc-3">
+      <div class="lc-top">
+        <div>
+          <div class="lc-name">Nashik District Road</div>
+          <div class="lc-id">RUB-078 &nbsp;Â·&nbsp; Nashik District</div>
+        </div>
+        <span class="badge s-off"><span class="dot"></span>OFFLINE</span>
+      </div>
+      <div class="lc-bot">
+        <div><span class="lc-lvl lc-off">â€”</span></div>
+        <div class="lc-time">
+          <span>Last: 18 min ago</span>
+          <span style="color:var(--danger);">â— Offline</span>
+        </div>
+      </div>
+    </div>
+
+    <div class="lcard n" onclick="selectLocation(4)" id="lc-4">
+      <div class="lc-top">
+        <div>
+          <div class="lc-name">Aurangabad Link Road</div>
+          <div class="lc-id">RUB-119 &nbsp;Â·&nbsp; Aurangabad</div>
+        </div>
+        <span class="badge s-ok"><span class="dot"></span>NORMAL</span>
+      </div>
+      <div class="lc-bot">
+        <div><span class="lc-lvl lc-ok">18</span><span class="lc-unit"> mm</span></div>
+        <div class="lc-time">
+          <span>Battery: 12.9V</span>
+          <span style="color:var(--ok);">â— Online</span>
+        </div>
+      </div>
+    </div>
+  </aside>
+
+  <!-- â”€â”€ MAIN PANEL â”€â”€ -->
+  <main id="mpanel">
+    <!-- Location Header -->
+    <div class="mp-hdr fadein">
+      <div class="mp-loc">
+        <div class="mp-name" id="mp-name">RUB-043 â€” Kalyan Road Underpass</div>
+        <div class="mp-sub" id="mp-sub">Thane District, Maharashtra &nbsp;Â·&nbsp; Device: RUB043-CTRL01 &nbsp;Â·&nbsp; FW v1.0.2 &nbsp;Â·&nbsp; Mount: 1200mm</div>
+      </div>
+      <div class="mp-meta">
+        <span class="badge s-danger" id="mp-badge"><span class="dot blink"></span>DANGER / à¤–à¤¤à¤°à¤¾</span>
+        <div class="mp-time">
+          <span id="mp-update">Last Update</span><br>
+          <strong id="mp-update-val" style="color:var(--text);">Just now</strong>
+        </div>
+        <button class="btn-sm" onclick="showToast('ðŸ“¥ Incident report downloading...')">ðŸ“Š Report</button>
+        <button class="btn-sm" onclick="showToast('âš™ï¸ Config panel coming soon...')">âš™ï¸ Config</button>
+      </div>
+    </div>
+
+    <!-- Row 1: Vessel + Metrics -->
+    <div class="row1">
+      <div class="vessel-pnl fadein">
+        <div class="vpnl-title">à¤œà¤² à¤¸à¥à¤¤à¤° / Water Level</div>
+        <div class="vessel-wrap" id="vessel-wrap">
+          <div class="vtop"></div>
+          <div class="vbody" id="vbody">
+            <div class="wfill wfill-d" id="wfill" style="height:43.7%">
+              <div class="wsurface"></div>
+            </div>
+            <div class="vm-line vm-500"></div>
+            <div class="vm-line vm-300"></div>
+          </div>
+          <div class="vlabel vl-500">
+            <div class="vlabel-line"></div>
+            <span class="vlabel-txt">500mm âš </span>
+          </div>
+          <div class="vlabel vl-300">
+            <div class="vlabel-line"></div>
+            <span class="vlabel-txt">300mm</span>
+          </div>
+        </div>
+        <div class="v-readings">
+          <div class="v-lvl v-lvl-d" id="v-lvl">524</div>
+          <div class="v-unit">mm</div>
+          <div class="v-dist">Distance: <span id="v-dist">676</span> mm</div>
+        </div>
+        <div class="v-badge vb-d" id="v-status-badge"><span class="blink">âš </span> DANGER / à¤–à¤¤à¤°à¤¾</div>
+      </div>
+
+      <!-- Metrics -->
+      <div class="metrics fadein">
+        <div class="mc">
+          <span class="mc-icon">ðŸ”‹</span>
+          <div class="mc-lbl">Battery / à¤¬à¥ˆà¤Ÿà¤°à¥€</div>
+          <span class="mc-lbl-hi"></span>
+          <div class="mc-val" id="m-bat">12.4<span class="mc-unit">V</span></div>
+          <div class="mc-sub">Solar: <strong id="m-sol">17.8V</strong></div>
+          <span class="mc-tag s-ok" style="font-size:11px;font-weight:700;padding:2px 9px;border-radius:999px;">â— Charging</span>
+        </div>
+        <div class="mc">
+          <span class="mc-icon">ðŸ“¡</span>
+          <div class="mc-lbl">WiFi RSSI / à¤¸à¤¿à¤—à¥à¤¨à¤²</div>
+          <div class="mc-val" id="m-wifi">-65<span class="mc-unit"> dBm</span></div>
+          <div class="mc-sub">SIM: 4G &nbsp;Â·&nbsp; Signal: â–ˆâ–ˆâ–ˆâ–‘</div>
+          <span class="mc-tag s-ok" style="font-size:11px;font-weight:700;padding:2px 9px;border-radius:999px;">â— Good Signal</span>
+        </div>
+        <div class="mc">
+          <span class="mc-icon">ðŸ’§</span>
+          <div class="mc-lbl">300mm Switch / à¤¸à¥à¤µà¤¿à¤š</div>
+          <div class="mc-val" id="switch-300-state" style="font-size:18px;margin-top:4px;color:var(--danger);">TRIGGERED</div>
+          <div class="mc-sub" id="switch-300-contact">Contact: CLOSED</div>
+          <span class="mc-tag s-danger" id="switch-300-badge" style="font-size:11px;font-weight:700;padding:2px 9px;border-radius:999px;animation:pulse-r 2s infinite;">âš  Active</span>
+        </div>
+        <div class="mc">
+          <span class="mc-icon">ðŸš¨</span>
+          <div class="mc-lbl">500mm Switch / à¤¸à¥à¤µà¤¿à¤š</div>
+          <div class="mc-val" id="switch-500-state" style="font-size:18px;margin-top:4px;color:var(--danger);">TRIGGERED</div>
+          <div class="mc-sub" id="switch-500-contact">Contact: CLOSED</div>
+          <span class="mc-tag s-danger" id="switch-500-badge" style="font-size:11px;font-weight:700;padding:2px 9px;border-radius:999px;animation:pulse-r 2s infinite;">âš  Active</span>
+        </div>
+        <div class="mc">
+          <span class="mc-icon">ðŸ•</span>
+          <div class="mc-lbl">Incident Duration</div>
+          <div class="mc-val" id="m-inc" style="font-size:20px;color:var(--danger);">00:14:23</div>
+          <div class="mc-sub" id="incident-started">Started: 09:15:42 IST</div>
+          <span class="mc-tag s-danger" style="font-size:11px;font-weight:700;padding:2px 9px;border-radius:999px;">ACTIVE</span>
+        </div>
+        <div class="mc">
+          <span class="mc-icon">ðŸ’“</span>
+          <div class="mc-lbl">Heartbeat / à¤¹à¤¾à¤°à¥à¤Ÿà¤¬à¥€à¤Ÿ</div>
+          <div class="mc-val" id="heartbeat-state" style="font-size:18px;color:var(--ok)">â— Online</div>
+          <div class="mc-sub" id="firmware-version">Firmware: v1.0.2</div>
+          <span class="mc-tag s-ok" id="heartbeat-badge" style="font-size:11px;font-weight:700;padding:2px 9px;border-radius:999px;">ESP32-S3 OK</span>
+        </div>
+      </div>
+    </div>
+
+    <!-- Row 2: Network + Relay -->
+    <div class="row2 fadein">
+      <div class="pcard">
+        <div class="pc-title">
+          Network Status / à¤¨à¥‡à¤Ÿà¤µà¤°à¥à¤• à¤¸à¥à¤¥à¤¿à¤¤à¤¿
+          <span class="badge s-ok" id="network-summary-badge" style="font-size:10px;"><span class="dot"></span>All Online</span>
+        </div>
+        <div class="net-grid">
+          <div class="ni">
+            <span class="ni-icon">ðŸ“¶</span>
+            <div>
+              <div class="ni-lbl">WiFi</div>
+              <div class="ni-val c-ok" id="net-wifi">Connected</div>
+            </div>
+          </div>
+          <div class="ni">
+            <span class="ni-icon">ðŸŒ</span>
+            <div>
+              <div class="ni-lbl">Internet</div>
+              <div class="ni-val c-ok" id="net-internet">Available</div>
+            </div>
+          </div>
+          <div class="ni">
+            <span class="ni-icon">ðŸ“±</span>
+            <div>
+              <div class="ni-lbl">SIM Status</div>
+              <div class="ni-val c-ok" id="net-sim">4G Connected</div>
+            </div>
+          </div>
+          <div class="ni">
+            <span class="ni-icon">ðŸ“Š</span>
+            <div>
+              <div class="ni-lbl">Signal / RSRP</div>
+              <div class="ni-val c-ok" id="net-signal">-82 dBm Â· 3 Bars</div>
+            </div>
+          </div>
+          <div class="ni">
+            <span class="ni-icon">ðŸ¢</span>
+            <div>
+              <div class="ni-lbl">Operator</div>
+              <div class="ni-val c-txt" id="net-operator">Jio 4G</div>
+            </div>
+          </div>
+          <div class="ni">
+            <span class="ni-icon">ðŸ”—</span>
+            <div>
+              <div class="ni-lbl">Gateway / WAN IP</div>
+              <div class="ni-val c-txt" id="net-wan">49.34.xxx.xxx</div>
+            </div>
+          </div>
+          <div class="ni">
+            <span class="ni-icon">ðŸ”„</span>
+            <div>
+              <div class="ni-lbl">MQTT Broker</div>
+              <div class="ni-val c-ok" id="net-mqtt">Connected</div>
+            </div>
+          </div>
+          <div class="ni">
+            <span class="ni-icon">ðŸ”</span>
+            <div>
+              <div class="ni-lbl">MAC Bind</div>
+              <div class="ni-val c-ok" id="net-mac">Verified âœ“</div>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <div class="pcard">
+        <div class="pc-title">
+          Relay Status / à¤°à¤¿à¤²à¥‡ à¤¸à¥à¤¥à¤¿à¤¤à¤¿
+          <span style="font-size:11px;color:var(--t3);">Active outputs shown</span>
+        </div>
+        <div class="relay-grid">
+          <div class="ri">
+            <div>
+              <div class="ri-name">ðŸ”Š Siren / à¤¸à¤¾à¤‡à¤°à¤¨</div>
+              <div class="ri-hi">Pattern: 10s ON / 20s OFF</div>
+            </div>
+            <div class="toggle t-on" id="relay-siren"><div class="tknob"></div></div>
+          </div>
+          <div class="ri">
+            <div>
+              <div class="ri-name">ðŸ”´ Beacon / à¤¬à¥€à¤•à¤¨</div>
+              <div class="ri-hi">Continuous ON</div>
+            </div>
+            <div class="toggle t-on" id="relay-beacon"><div class="tknob"></div></div>
+          </div>
+          <div class="ri">
+            <div>
+              <div class="ri-name">ðŸ“¢ Voice / à¤†à¤µà¤¾à¤œ</div>
+              <div class="ri-hi">Repeat every 30s</div>
+            </div>
+            <div class="toggle t-on" id="relay-voice"><div class="tknob"></div></div>
+          </div>
+          <div class="ri">
+            <div>
+              <div class="ri-name">ðŸš§ Barrier / à¤¬à¥ˆà¤°à¤¿à¤¯à¤°</div>
+              <div class="ri-hi">Future integration</div>
+            </div>
+            <div class="toggle t-off" id="relay-barrier"><div class="tknob"></div></div>
+          </div>
+        </div>
+        <div id="relay-note" style="margin-top:12px;padding:10px 12px;background:#fff3cd;border-radius:8px;font-size:11px;color:#92400e;border:1px solid #fde68a;">
+          âš ï¸ Danger active since 09:15:42 â€” Beacon remains ON even if alarm is muted
+        </div>
+      </div>
+    </div>
+
+    <!-- Control Panel -->
+    <div class="ctrl-pnl fadein">
+      <div class="cp-title">Control Panel / à¤¨à¤¿à¤¯à¤‚à¤¤à¥à¤°à¤£ à¤ªà¥ˆà¤¨à¤² &nbsp;Â·&nbsp; <span id="control-user-role" style="font-weight:500;font-size:10px;color:var(--t3)">Logged in as: Vendor Admin â€” All permissions active</span></div>
+      <div class="cp-grid">
+        <button class="cbtn cbtn-mute" onclick="muteAlarm()">ðŸ”‡ Mute Alarm / à¤…à¤²à¤¾à¤°à¥à¤® à¤¬à¤‚à¤¦ à¤•à¤°à¥‡à¤‚</button>
+        <button class="cbtn cbtn-fc" onclick="document.getElementById('fc-modal').classList.add('show')">ðŸ”“ Force Clear / à¤œà¤¬à¤°à¤¨ à¤¸à¤¾à¤«</button>
+        <button class="cbtn cbtn-dry" onclick="dryRun()">ðŸ§ª Dry Run Test / à¤ªà¤°à¥€à¤•à¥à¤·à¤£</button>
+        <button class="cbtn cbtn-rpt" onclick="showToast('ðŸ“Š Generating incident report...')">ðŸ“Š Incident Report</button>
+        <button class="cbtn cbtn-rpt" onclick="showToast('ðŸ“¤ Sending SMS alert...')">ðŸ“± SMS Alert</button>
+        <button class="cbtn cbtn-rpt" onclick="showToast('ðŸ”” FCM push sent to 8 users')">ðŸ”” Test FCM Push</button>
+      </div>
+      <div class="cp-note">ðŸ”’ All actions require confirmation and are permanently logged in audit trail with user, session ID, device name, and timestamp.</div>
+      <div class="ua-panel" id="user-access-panel" style="display:none;margin-top:16px">
+        <div class="pc-title">
+          <span>User Access Management (Super Admin)</span>
+          <button class="btn-sm" onclick="refreshAdminUsers()">Refresh Users</button>
+        </div>
+        <div class="ua-create" style="display:grid;grid-template-columns:repeat(auto-fit,minmax(180px,1fr));gap:10px;margin-top:10px">
+          <input class="modal-inp" id="ua-login-id" placeholder="login_id (e.g. operator_rub201)" />
+          <input class="modal-inp" id="ua-name" placeholder="User name" />
+          <input class="modal-inp" id="ua-password" type="password" placeholder="Password (min 6 chars)" />
+          <select class="modal-inp" id="ua-role">
+            <option value="OPERATOR">OPERATOR</option>
+            <option value="VIEWER">VIEWER</option>
+            <option value="LOCATION_ADMIN">LOCATION_ADMIN</option>
+            <option value="DEPARTMENT_ADMIN">DEPARTMENT_ADMIN</option>
+            <option value="DEPARTMENT_SUPER_ADMIN">DEPARTMENT_SUPER_ADMIN</option>
+            <option value="VENDOR_MONITORING_USER">VENDOR_MONITORING_USER</option>
+          </select>
+          <select class="modal-inp" id="ua-active-mode">
+            <option value="active">Active</option>
+            <option value="deactive">Deactive</option>
+          </select>
+          <input class="modal-inp" id="ua-assigned-locations" placeholder="Assigned locations (comma separated, e.g. RUB043,RUB057)" />
+          <button class="cbtn cbtn-rpt" onclick="createAdminUser()">Create Login Access</button>
+        </div>
+        <div style="font-size:11px;color:var(--t3);margin:8px 0 6px">
+          Super admin can grant or withdraw app login access. Revoking access will sign out active sessions on next request.
+        </div>
+        <div style="overflow-x:auto">
+          <table class="atable">
+            <thead>
+              <tr>
+                <th>Login ID</th>
+                <th>Name</th>
+                <th>Role</th>
+                <th>Status</th>
+                <th>Sessions</th>
+                <th>Action</th>
+              </tr>
+            </thead>
+            <tbody id="user-access-body">
+              <tr><td colspan="6" style="padding:12px;color:#64748b">Loading user access list...</td></tr>
+            </tbody>
+          </table>
+        </div>
+      </div>
+    </div>
+
+    <!-- Audit Log -->
+    <div class="audit-pnl fadein">
+      <div class="ap-hdr">
+        <span class="ap-title">Recent Audit Log â€” à¤¹à¤¾à¤²à¤¿à¤¯à¤¾ à¤‘à¤¡à¤¿à¤Ÿ à¤²à¥‰à¤—</span>
+        <a class="ap-all" onclick="showToast('ðŸ“‹ Full audit log viewer coming soon...')">View All Logs â†’</a>
+      </div>
+      <table class="atable">
+        <thead>
+          <tr>
+            <th>Time / à¤¸à¤®à¤¯</th>
+            <th>Event / à¤˜à¤Ÿà¤¨à¤¾</th>
+            <th>Location</th>
+            <th>Details / à¤µà¤¿à¤µà¤°à¤£</th>
+            <th>By / à¤¦à¥à¤µà¤¾à¤°à¤¾</th>
+          </tr>
+        </thead>
+        <tbody id="audit-body">
+          <tr>
+            <td style="font-variant-numeric:tabular-nums;white-space:nowrap;color:var(--danger);font-weight:600">09:15:42</td>
+            <td><span class="ev ev-d">DANGER</span></td>
+            <td>RUB-043</td>
+            <td>Water 524mm continuous &gt;60sec â€” Siren &amp; Beacon activated</td>
+            <td style="color:var(--t3);font-style:italic">System / Auto</td>
+          </tr>
+          <tr>
+            <td style="font-variant-numeric:tabular-nums;white-space:nowrap">09:15:44</td>
+            <td><span class="ev ev-i">FCM PUSH</span></td>
+            <td>RUB-043</td>
+            <td>Push notification sent to 8 authorized users</td>
+            <td style="color:var(--t3);font-style:italic">System / Auto</td>
+          </tr>
+          <tr>
+            <td style="font-variant-numeric:tabular-nums;white-space:nowrap">09:12:30</td>
+            <td><span class="ev ev-a">ALERT</span></td>
+            <td>RUB-057</td>
+            <td>Water 318mm continuous &gt;60sec â€” Alert level confirmed</td>
+            <td style="color:var(--t3);font-style:italic">System / Auto</td>
+          </tr>
+          <tr>
+            <td style="font-variant-numeric:tabular-nums;white-space:nowrap">08:45:00</td>
+            <td><span class="ev ev-o">OFFLINE</span></td>
+            <td>RUB-078</td>
+            <td>Heartbeat timeout â€” No response for 5 minutes</td>
+            <td style="color:var(--t3);font-style:italic">System / Auto</td>
+          </tr>
+          <tr>
+            <td style="font-variant-numeric:tabular-nums;white-space:nowrap">08:30:15</td>
+            <td><span class="ev ev-i">DRY RUN</span></td>
+            <td>RUB-102</td>
+            <td>Siren test completed â€” Duration 10 sec, Result: PASS</td>
+            <td>operator_rub102</td>
+          </tr>
+          <tr>
+            <td style="font-variant-numeric:tabular-nums;white-space:nowrap">07:55:00</td>
+            <td><span class="ev ev-w">MUTED</span></td>
+            <td>RUB-043</td>
+            <td>Alarm muted â€” Reason: Site inspection ongoing. Beacon remains ON.</td>
+            <td>operator_rub043</td>
+          </tr>
+          <tr>
+            <td style="font-variant-numeric:tabular-nums;white-space:nowrap">07:30:00</td>
+            <td><span class="ev ev-n">CLEARED</span></td>
+            <td>RUB-043</td>
+            <td>Danger auto-cleared â€” Water &lt;450mm for 5 min, All relays OFF</td>
+            <td style="color:var(--t3);font-style:italic">System / Auto</td>
+          </tr>
+        </tbody>
+      </table>
+    </div>
+  </main>
+</div>
+
+<!-- â•â• FEATURES â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â• -->
+<section id="features">
+  <div class="feat-in">
+    <div class="feat-hdr">
+      <h2 class="feat-h2">Why FloodGuard by Jenix?</h2>
+      <p class="feat-sub">Built to government audit standards â€” every alert, every action, fully accountable</p>
+    </div>
+    <div class="feat-grid">
+      <div class="fc">
+        <div class="fc-icon">âš¡</div>
+        <div class="fc-title">Real-Time Monitoring</div>
+        <p class="fc-desc">Water level updates every 2 seconds during danger events. RS485 ultrasonic sensor with 5-reading filtered average eliminates false alarms from vehicle splashes, animals, or debris.</p>
+      </div>
+      <div class="fc">
+        <div class="fc-icon">ðŸ”´</div>
+        <div class="fc-title">Instant Multi-Channel Alerts</div>
+        <p class="fc-desc">FCM push notifications to all authorized Android and PWA users simultaneously. Siren, beacon, and prerecorded voice announcement trigger locally within 2 seconds of confirmed danger.</p>
+      </div>
+      <div class="fc">
+        <div class="fc-icon">ðŸ”†</div>
+        <div class="fc-title">Solar Powered â€” Zero Downtime</div>
+        <p class="fc-desc">Independent solar panel with battery backup ensures continuous operation through monsoon, grid failure, and extreme weather conditions â€” exactly when flood risk is highest.</p>
+      </div>
+      <div class="fc">
+        <div class="fc-icon">ðŸ“¶</div>
+        <div class="fc-title">Offline Resilient Architecture</div>
+        <p class="fc-desc">ESP32-S3 runs complete local safety logic independently. Internet loss does not affect siren, beacon, or voice announcement. Offline events sync automatically when connectivity returns.</p>
+      </div>
+      <div class="fc">
+        <div class="fc-icon">ðŸ“‹</div>
+        <div class="fc-title">Complete Audit Trail</div>
+        <p class="fc-desc">Every action â€” mute, force-clear, dry-run, config change â€” logged with user ID, login ID, session ID, device name, IP address, and timestamp. Meets government accountability requirements.</p>
+      </div>
+      <div class="fc">
+        <div class="fc-icon">ðŸ¢</div>
+        <div class="fc-title">Multi-Location Management</div>
+        <p class="fc-desc">Vendor-level, department-level, and location-level hierarchy with role-based permissions. Monitor hundreds of RUB sites from a single dashboard with region and division filters.</p>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- â•â• FOOTER â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â• -->
+<footer>
+  <div class="ft-in">
+    <div class="ft-grid">
+      <div>
+        <div class="ft-brand-name">ðŸŒŠ FloodGuard by Jenix</div>
+        <div class="ft-brand-sub">Jenix FloodGuard â€” RUB Water Level Monitoring &amp; Alarm System</div>
+        <p class="ft-brand-desc">Real-time flood monitoring and automated alert system for Railway Under Bridges and low-lying road infrastructure. Government-grade audit trail, solar-powered, offline-resilient.</p>
+        <div style="margin-top:14px;font-size:14px;color:#64748b">à¤œà¤² à¤¸à¥à¤°à¤•à¥à¤·à¤¾ à¤¨à¤¿à¤—à¤°à¤¾à¤¨à¥€ à¤ªà¥à¤°à¤£à¤¾à¤²à¥€</div>
+      </div>
+      <div>
+        <div class="ft-col-title">System</div>
+        <a class="ft-link">Live Dashboard</a>
+        <a class="ft-link">Location Management</a>
+        <a class="ft-link">Audit Logs</a>
+        <a class="ft-link">Incident Reports</a>
+        <a class="ft-link">Device Config</a>
+      </div>
+      <div>
+        <div class="ft-col-title">Technology</div>
+        <a class="ft-link">ESP32-S3 Firmware</a>
+        <a class="ft-link">RS485 Ultrasonic</a>
+        <a class="ft-link">MQTT / 4G</a>
+        <a class="ft-link">Android App (APK)</a>
+        <a class="ft-link">OTA Updates</a>
+      </div>
+      <div>
+        <div class="ft-col-title">Jenix</div>
+        <a class="ft-link">About Jenix</a>
+        <a class="ft-link">Contact Support</a>
+        <a class="ft-link">VPS: FGServer.jenix.in</a>
+        <a class="ft-link">Deployment Guide</a>
+        <a class="ft-link">Data Policy</a>
+      </div>
+    </div>
+    <div class="ft-bottom">
+      <div>Â© 2026 Jenix. All rights reserved. &nbsp;Â·&nbsp; FloodGuardÂ® by Jenix &nbsp;Â·&nbsp; Made for Indian Railways &amp; PWD</div>
+      <div class="cert-chips">
+        <span class="cert">IoT Security Compliant</span>
+        <span class="cert">NDRF Compatible</span>
+        <span class="cert">Solar Powered</span>
+      </div>
+    </div>
+  </div>
+</footer>
+
+<!-- â•â• FORCE CLEAR MODAL â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â• -->
+<div class="modal-bg" id="fc-modal">
+  <div class="modal">
+    <h3>ðŸ”“ Force Clear Incident â€” RUB-043</h3>
+    <p>This will deactivate all alarms and mark the incident as cleared. A mandatory reason is required. This action will be permanently logged.</p>
+    <input class="modal-inp" id="fc-reason" placeholder="Enter reason for force clear (e.g. Site inspected, water drained)..." />
+    <div style="font-size:11px;color:#92400e;background:#fef3c7;padding:8px 12px;border-radius:6px;margin-bottom:16px;border:1px solid #fde68a;">
+      âš ï¸ Beacon will remain ON until water level drops below 300mm
+    </div>
+    <div class="modal-btns">
+      <button class="mbt-cancel" onclick="document.getElementById('fc-modal').classList.remove('show')">Cancel</button>
+      <button class="mbt-confirm" onclick="forceClear()">Confirm Force Clear</button>
+    </div>
+  </div>
+</div>
+
+<!-- Auth Modal -->
+<div class="auth-modal-bg" id="auth-modal">
+  <div class="auth-modal">
+    <h3>FloodGuard Login</h3>
+    <p>Sign in to load live VPS data.</p>
+    <label class="auth-lbl">API Base URL</label>
+    <input class="auth-inp" id="auth-api-base" placeholder="https://api.floodguard.iotsoft.in" />
+    <label class="auth-lbl">Login ID</label>
+    <input class="auth-inp" id="auth-login-id" placeholder="operator_rub043" />
+    <label class="auth-lbl">Password</label>
+    <input class="auth-inp" id="auth-password" type="password" placeholder="Enter password" />
+    <label class="auth-lbl">Device API Key (optional)</label>
+    <input class="auth-inp" id="auth-api-key" placeholder="FG_LOCAL_DEV_KEY" />
+    <div class="auth-row">
+      <button class="auth-btn auth-btn-primary" onclick="loginToDashboard()">Connect</button>
+      <button class="auth-btn auth-btn-secondary" onclick="logoutDashboard()">Reset Session</button>
+    </div>
+    <div class="auth-error" id="auth-error"></div>
+  </div>
+</div>
+
+<!-- â•â• TOAST â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â• -->
+<div id="toast"></div>
+
+<!-- â•â• JAVASCRIPT â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â• -->
+<script src="./dashboard-app.js"></script>
+</body>
+</html>
+
+

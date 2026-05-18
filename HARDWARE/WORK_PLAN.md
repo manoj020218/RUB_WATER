@@ -8,6 +8,9 @@ BT ID - JNX-FGXXXX ( xxxx last 4 digit of MAC ID)
 PID - FLOODGUARD-S3-01 with detail store in system as used
 future PID for LilligoT  - FLOODGUARD-LT-01
 
+does it have OTA update ? 
+OTA pipeline 
+
 IS1- for RS485 module US sensor 
 IS2- TTL sensor 
 IS3 - DRY sensor GND in

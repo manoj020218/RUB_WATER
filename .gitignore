@@ -1,2 +1,56 @@
+# -----------------------------
+# OS / editor
+# -----------------------------
+.DS_Store
+Thumbs.db
+.idea/
+.vscode/
+
+# -----------------------------
+# Local workspace helpers
+# -----------------------------
 .qodo/
+
+# -----------------------------
+# Hardware (PlatformIO)
+# -----------------------------
 HARDWARE/firmware/.pio/
+HARDWARE/firmware/.pioenvs/
+HARDWARE/firmware/.piolibdeps/
+HARDWARE/firmware/.sconsign.dblite
+
+# -----------------------------
+# VPS backend (Node)
+# -----------------------------
+VPS/backend/node_modules/
+VPS/backend/.npm-cache/
+VPS/backend/logs/
+VPS/backend/coverage/
+VPS/backend/.env
+VPS/backend/.env.*
+!VPS/backend/.env.example
+VPS/backend/*.log
+
+# -----------------------------
+# APK app (Node + Capacitor/Android)
+# -----------------------------
+APK/node_modules/
+APK/.env
+APK/.env.*
+!APK/.env.example
+APK/*.log
+APK/www/dist/
+APK/www/build/
+
+# Android generated artifacts
+APK/android/.gradle/
+APK/android/.cxx/
+APK/android/local.properties
+APK/android/captures/
+APK/android/build/
+APK/android/app/build/
+APK/android/app/debug/
+APK/android/app/release/
+
+# Capacitor temporary outputs
+APK/android/app/src/main/assets/public/

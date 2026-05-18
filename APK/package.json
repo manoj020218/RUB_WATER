@@ -1,0 +1,20 @@
+{
+  "name": "floodguard-android-app",
+  "version": "1.0.0",
+  "private": true,
+  "description": "FloodGuard by Jenix Android app (Capacitor)",
+  "scripts": {
+    "build:web": "node -e \"console.log('Web assets ready in ./www')\"",
+    "cap:add:android": "npx cap add android",
+    "cap:sync": "npx cap sync android",
+    "android:debug": "cd android && gradlew.bat assembleDebug"
+  },
+  "dependencies": {
+    "@capacitor/android": "^6.1.2",
+    "@capacitor/core": "^6.1.2"
+  },
+  "devDependencies": {
+    "@capacitor/cli": "^6.1.2",
+    "fs-extra": "^11.3.4"
+  }
+}
