@@ -42,7 +42,7 @@
   function normalizeApiBase(value) {
     let next = String(value || '').trim();
     if (!next) {
-      next = 'http://127.0.0.1:4080/api';
+      next = 'https://api.floodguard.iotsoft.in/api';
     }
 
     if (!/^https?:\/\//i.test(next) && next[0] !== '/') {
