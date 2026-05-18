@@ -1,9 +1,16 @@
 #include "wifi_manager.h"
 
+#include <Preferences.h>
 #include <WiFi.h>
 #include <cstring>
 
 #include "device_profile.h"
+
+namespace {
+constexpr const char* kPrefsNamespace = "fgcfg";
+constexpr const char* kPrefsWifiSsidKey = "wifi_ssid";
+constexpr const char* kPrefsWifiPassKey = "wifi_pass";
+}
 
 WifiManager& WifiManager::getInstance() {
     static WifiManager instance;
@@ -20,6 +27,8 @@ void WifiManager::begin(const char* ssid, const char* password) {
     if (password) {
         std::strncpy(_password, password, sizeof(_password) - 1);
     }
+
+    loadPersistedCredentials();
 
     WiFi.mode(WIFI_STA);
     WiFi.setAutoReconnect(true);
@@ -45,6 +54,37 @@ void WifiManager::loop() {
     WiFi.begin(_ssid, _password);
 }
 
+void WifiManager::setCredentials(const char* ssid, const char* password, bool persistToNvs) {
+    std::memset(_ssid, 0, sizeof(_ssid));
+    std::memset(_password, 0, sizeof(_password));
+    if (ssid) {
+        std::strncpy(_ssid, ssid, sizeof(_ssid) - 1);
+    }
+    if (password) {
+        std::strncpy(_password, password, sizeof(_password) - 1);
+    }
+
+    if (persistToNvs) {
+        persistCredentials();
+    }
+
+    _lastConnectAttemptMs = 0;
+    WiFi.disconnect(false, false);
+}
+
+bool WifiManager::connectNow(uint32_t timeoutMs) {
+    if (_ssid[0] == '\0' || std::strcmp(_ssid, "CHANGE_WIFI_SSID") == 0) {
+        return false;
+    }
+
+    WiFi.begin(_ssid, _password);
+    const unsigned long start = millis();
+    while (WiFi.status() != WL_CONNECTED && (millis() - start) < timeoutMs) {
+        delay(150);
+    }
+    return WiFi.status() == WL_CONNECTED;
+}
+
 bool WifiManager::isConnected() const {
     return WiFi.status() == WL_CONNECTED;
 }
@@ -55,4 +95,39 @@ int32_t WifiManager::getRssi() const {
 
 String WifiManager::getLocalIp() const {
     return isConnected() ? WiFi.localIP().toString() : String("0.0.0.0");
+}
+
+String WifiManager::getConfiguredSsid() const {
+    return String(_ssid);
+}
+
+void WifiManager::loadPersistedCredentials() {
+    Preferences prefs;
+    if (!prefs.begin(kPrefsNamespace, true)) {
+        return;
+    }
+
+    const String savedSsid = prefs.getString(kPrefsWifiSsidKey, "");
+    const String savedPass = prefs.getString(kPrefsWifiPassKey, "");
+    prefs.end();
+
+    if (savedSsid.length() == 0) {
+        return;
+    }
+
+    std::memset(_ssid, 0, sizeof(_ssid));
+    std::memset(_password, 0, sizeof(_password));
+    std::strncpy(_ssid, savedSsid.c_str(), sizeof(_ssid) - 1);
+    std::strncpy(_password, savedPass.c_str(), sizeof(_password) - 1);
+}
+
+void WifiManager::persistCredentials() {
+    Preferences prefs;
+    if (!prefs.begin(kPrefsNamespace, false)) {
+        return;
+    }
+
+    prefs.putString(kPrefsWifiSsidKey, String(_ssid));
+    prefs.putString(kPrefsWifiPassKey, String(_password));
+    prefs.end();
 }

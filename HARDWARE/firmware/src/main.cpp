@@ -3,6 +3,7 @@
 #include <time.h>
 
 #include "alarm_state_machine.h"
+#include "ble_provisioning.h"
 #include "command_handler.h"
 #include "config_manager.h"
 #include "http_fallback.h"
@@ -207,6 +208,7 @@ void setup() {
     AlarmStateMachine::getInstance().begin(config.thresholds);
     RelayController::getInstance().begin(config.gpio);
     CommandHandler::getInstance().begin();
+    BleProvisioningService::getInstance().begin(config);
 
     LocalEventQueue::getInstance().begin();
     HttpFallbackService::getInstance().begin(config.httpBaseUrl, config.deviceId);
@@ -246,6 +248,7 @@ void loop() {
         WifiManager::getInstance().getLocalIp()
     );
     const NetworkDiagnostics& diagnostics = NetworkDiagnosticsService::getInstance().getData();
+    BleProvisioningService::getInstance().loop(config, diagnostics, MqttClientService::getInstance().isConnected());
 
     publishStateEventIfChanged(state, config);
     publishHeartbeat(config, diagnostics);

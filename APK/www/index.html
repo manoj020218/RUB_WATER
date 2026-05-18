@@ -131,6 +131,61 @@
         </div>
       </section>
 
+      <section class="view" id="view-install">
+        <div class="card">
+          <div class="row between">
+            <h2 class="view-title">Vendor Install</h2>
+            <span class="chip" id="ble-role-chip">VENDOR</span>
+          </div>
+          <p class="view-subtitle">BLE provisioning for ESP32-S3 (JNX-FGXXXX) and site diagnostics.</p>
+
+          <div class="diag-grid">
+            <div class="mini-card">
+              <div class="mini-label">App -> VPS</div>
+              <div class="mini-value" id="ble-app-vps-status">--</div>
+            </div>
+            <div class="mini-card">
+              <div class="mini-label">Device Link</div>
+              <div class="mini-value" id="ble-link-status">DISCONNECTED</div>
+            </div>
+          </div>
+
+          <label class="lbl">VPS Health URL</label>
+          <input class="inp" id="ble-vps-url" placeholder="https://api.floodguard.iotsoft.in/health">
+
+          <div class="row install-actions">
+            <button class="control-btn info" style="margin-top:0" onclick="bleScanDevicesApp()">Scan BLE Devices</button>
+            <button class="ghost-btn" onclick="bleDisconnectApp()">Disconnect</button>
+          </div>
+
+          <div class="timeline" id="ble-device-list" style="margin-top:10px">
+            <div class="empty">No scan yet. Tap "Scan BLE Devices".</div>
+          </div>
+
+          <div class="meta" id="ble-selected-device" style="margin-top:8px">Selected: --</div>
+
+          <button class="control-btn warn" onclick="bleReadHealthApp()">Check Device Health + VPS</button>
+          <pre class="diag-log" id="ble-health-output">No health response yet.</pre>
+
+          <div class="row between" style="margin-top:12px">
+            <h3 style="margin:0;font-size:14px">Wi-Fi Provisioning</h3>
+            <button class="ghost-btn" style="padding:6px 10px" onclick="bleScanWifiApp()">Scan Wi-Fi</button>
+          </div>
+
+          <div class="timeline" id="ble-wifi-list" style="margin-top:8px">
+            <div class="empty">No Wi-Fi scan yet.</div>
+          </div>
+
+          <label class="lbl">SSID</label>
+          <input class="inp" id="ble-wifi-ssid" placeholder="Select from list or enter manually">
+          <label class="lbl">Password</label>
+          <input class="inp" id="ble-wifi-password" type="password" placeholder="Wi-Fi password">
+
+          <button class="control-btn info" onclick="bleProvisionWifiApp()">Provision Wi-Fi + Check VPS</button>
+          <pre class="diag-log" id="ble-provision-output">No provisioning response yet.</pre>
+        </div>
+      </section>
+
       <section class="view" id="view-audit">
         <div class="card">
           <h2 class="view-title">Audit Timeline</h2>
@@ -145,6 +200,7 @@
       <button class="nav-btn active" data-view="view-locations" onclick="openView('view-locations')">Locations</button>
       <button class="nav-btn" data-view="view-dashboard" onclick="openView('view-dashboard')">Live</button>
       <button class="nav-btn" data-view="view-controls" onclick="openView('view-controls')">Controls</button>
+      <button class="nav-btn" id="vendor-install-tab" data-view="view-install" onclick="openView('view-install')" style="display:none">Install</button>
       <button class="nav-btn" data-view="view-audit" onclick="openView('view-audit')">Audit</button>
     </nav>
   </div>

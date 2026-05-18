@@ -415,7 +415,7 @@ body {
   border-top: 1px solid var(--border);
   background: #ffffff;
   display: grid;
-  grid-template-columns: repeat(4, minmax(0, 1fr));
+  grid-template-columns: repeat(var(--nav-count, 4), minmax(0, 1fr));
   gap: 4px;
   padding: 8px;
 }
@@ -433,6 +433,53 @@ body {
 .nav-btn.active {
   background: #eff6ff;
   color: #1e40af;
+}
+
+.diag-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 8px;
+  margin-bottom: 8px;
+}
+
+.diag-log {
+  margin: 8px 0 0;
+  min-height: 96px;
+  max-height: 220px;
+  overflow: auto;
+  border: 1px solid #cbd5e1;
+  border-radius: 10px;
+  background: #0f172a;
+  color: #dbeafe;
+  padding: 10px;
+  font-size: 11px;
+  line-height: 1.4;
+  white-space: pre-wrap;
+}
+
+.install-actions .control-btn {
+  flex: 1;
+}
+
+.ble-device-row,
+.ble-wifi-row {
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  padding: 10px;
+  background: #f8fafc;
+}
+
+.ble-device-name,
+.ble-wifi-name {
+  font-size: 13px;
+  font-weight: 800;
+}
+
+.ble-device-meta,
+.ble-wifi-meta {
+  margin-top: 4px;
+  font-size: 11px;
+  color: var(--sub);
 }
 
 .toast {
