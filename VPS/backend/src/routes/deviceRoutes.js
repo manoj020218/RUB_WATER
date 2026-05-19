@@ -11,6 +11,7 @@ router.post('/event', deviceController.ingestEvent);
 router.get('/:deviceId/commands/pending', deviceController.getPendingCommands);
 router.post('/commands/:commandId/ack', deviceController.ackCommand);
 router.post('/command_ack', deviceController.ackCommandLegacy);
+router.post('/config_ack', deviceController.ackConfig);
 router.get('/:deviceId/config', deviceController.getDeviceConfig);
 router.get('/:deviceId/firmware/latest', deviceController.getLatestFirmware);
 

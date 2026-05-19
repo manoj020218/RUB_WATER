@@ -78,6 +78,14 @@ String MqttClientService::commandAckTopic() const {
     return String("rub/") + _deviceId + "/command_ack";
 }
 
+String MqttClientService::configTopic() const {
+    return String("rub/") + _deviceId + "/config";
+}
+
+String MqttClientService::configAckTopic() const {
+    return String("rub/") + _deviceId + "/config_ack";
+}
+
 String MqttClientService::otaTopic() const {
     return String("rub/") + _deviceId + "/ota";
 }
@@ -104,7 +112,7 @@ bool MqttClientService::connect() {
 
 void MqttClientService::subscribe() {
     _client.subscribe(commandTopic().c_str());
-    _client.subscribe((String("rub/") + _deviceId + "/config").c_str());
+    _client.subscribe(configTopic().c_str());
     _client.subscribe(otaTopic().c_str());
 }
 
@@ -121,10 +129,9 @@ void MqttClientService::onMessage(char* topic, uint8_t* payload, unsigned int le
     message[copyLen] = '\0';
 
     const String topicStr = String(topic);
-    const String configTopic = String("rub/") + _deviceId + "/config";
     const bool fromCommandTopic = (topicStr == commandTopic());
     const bool fromOtaTopic = (topicStr == otaTopic());
-    const bool fromConfigTopic = (topicStr == configTopic);
+    const bool fromConfigTopic = (topicStr == configTopic());
     if (!fromCommandTopic && !fromOtaTopic && !fromConfigTopic) {
         return;
     }

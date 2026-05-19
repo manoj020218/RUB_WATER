@@ -3,10 +3,12 @@ const telemetryRepository = require('../repositories/telemetryRepository');
 const deviceRepository = require('../repositories/deviceRepository');
 const locationRepository = require('../repositories/locationRepository');
 const commandRepository = require('../repositories/commandRepository');
+const deviceConfigRepository = require('../repositories/deviceConfigRepository');
 const { createTelemetryRecord } = require('../models/telemetryModel');
 const { createEventRecord } = require('../models/eventModel');
 const incidentService = require('./incidentService');
 const notificationService = require('./notificationService');
+const auditService = require('./auditService');
 const { notFound } = require('../utils/errors');
 const { toIso } = require('../utils/time');
 
@@ -70,6 +72,22 @@ function ingestEvent(payload) {
       reason: event.reason
     });
     notificationService.publishNotification('DANGER_AUTO_CLEARED', event);
+  }
+
+  if (event.event_type === 'LOCAL_CONFIG_CHANGED') {
+    auditService.writeAuditLog({
+      locationId: event.location_id,
+      eventType: 'LOCAL_CONFIG_CHANGED_ON_DEVICE',
+      performedBy: event.device_id,
+      loginId: event.device_id,
+      sessionId: null,
+      deviceName: event.device_id,
+      ipAddress: null,
+      details: {
+        source: event.reason || event.source || 'device_local_page',
+        event
+      }
+    });
   }
 
   return {
@@ -153,6 +171,28 @@ function getDeviceConfig(deviceId) {
     throw notFound('Location not found');
   }
 
+  const saved = deviceConfigRepository.getCurrentByDevice(deviceId);
+  const config = saved ? {
+    alert_level_mm: saved.alert_level_mm,
+    danger_level_mm: saved.danger_level_mm,
+    clear_level_mm: saved.clear_level_mm,
+    trigger_delay_seconds: saved.trigger_delay_seconds,
+    clear_delay_seconds: saved.clear_delay_seconds,
+    rs485_sensor_enabled: saved.rs485_sensor_enabled,
+    switch_sensor_enabled: saved.switch_sensor_enabled,
+    switch_level_1_mm: saved.switch_level_1_mm,
+    switch_level_2_mm: saved.switch_level_2_mm,
+    sensor_mount_height_mm: saved.sensor_mount_height_mm,
+    mismatch_duration_seconds: saved.mismatch_duration_seconds,
+    config_version: saved.config_version,
+    last_ack_status: saved.last_ack_status
+  } : {
+    sensor_mount_height_mm: location.sensor_mount_height_mm,
+    alert_level_mm: location.alert_level_mm,
+    danger_level_mm: location.danger_level_mm,
+    clear_level_mm: location.danger_clear_level_mm
+  };
+
   return {
     device_id: device._id,
     location_id: device.location_id,
@@ -161,10 +201,7 @@ function getDeviceConfig(deviceId) {
       daily_reboot_time: device.config.daily_reboot_time,
       timezone: device.config.timezone,
       reporting_profile: device.config.reporting_profile,
-      sensor_mount_height_mm: location.sensor_mount_height_mm,
-      alert_level_mm: location.alert_level_mm,
-      danger_level_mm: location.danger_level_mm,
-      danger_clear_level_mm: location.danger_clear_level_mm
+      ...config
     }
   };
 }

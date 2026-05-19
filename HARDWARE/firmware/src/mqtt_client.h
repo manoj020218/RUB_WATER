@@ -24,6 +24,8 @@ public:
     String heartbeatTopic() const;
     String commandTopic() const;
     String commandAckTopic() const;
+    String configTopic() const;
+    String configAckTopic() const;
     String otaTopic() const;
 
 private:

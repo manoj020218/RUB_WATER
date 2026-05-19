@@ -4,24 +4,42 @@
 
 enum class AlarmState : uint8_t {
     NORMAL = 0,
-    WATER_DETECTED,
-    ALERT_PENDING,
-    ALERT,
+    ALERT_PENDING_VERIFICATION,
+    ALERT_ORANGE,
+    ALERT_ORANGE_CONFIRMED,
+    ALERT_SENSOR_MISMATCH,
     DANGER_PENDING,
-    DANGER,
-    MUTED_DANGER,
+    DANGER_CONFIRMED,
+    DANGER_WITH_SENSOR_MISMATCH,
+    DANGER_WITH_RS485_FAULT,
+    ALERT_WITH_RS485_FAULT,
     CLEAR_PENDING,
     SENSOR_FAULT,
     OFFLINE_LOCAL_MODE
 };
 
-struct ThresholdConfig {
-    int32_t sensorMountHeightMm;
-    int32_t alertLevelMm;
-    int32_t dangerLevelMm;
-    int32_t dangerClearLevelMm;
-    uint32_t triggerConfirmMs;
-    uint32_t clearConfirmMs;
+struct FloodGuardRuntimeConfig {
+    uint16_t alertLevelMm;
+    uint16_t dangerLevelMm;
+    uint16_t clearLevelMm;
+    uint16_t triggerDelaySeconds;
+    uint16_t clearDelaySeconds;
+
+    bool rs485SensorEnabled;
+    bool switchSensorEnabled;
+
+    uint16_t switchLevel1Mm;
+    uint16_t switchLevel2Mm;
+
+    uint16_t sensorMountHeightMm;
+    uint16_t mismatchDurationSeconds;
+
+    char deviceId[40];
+    char locationId[40];
+    char localAdminPinHash[24];
+
+    uint32_t configVersion;
+    uint32_t lastSavedEpoch;
 };
 
 struct ReportingProfile {
@@ -75,10 +93,16 @@ struct DeviceConfig {
     char otaChannel[24];
     uint32_t otaCheckIntervalMs;
     char firmwareVersion[32];
-    ThresholdConfig thresholds;
     ReportingProfile reporting;
     RouterDiagnosticsConfig diagnostics;
     GpioConfig gpio;
+};
+
+struct ConfigChangeNotice {
+    bool pending;
+    bool localSource;
+    uint32_t configVersion;
+    char source[32];
 };
 
 class ConfigManager {
@@ -87,9 +111,28 @@ public:
 
     void begin();
     const DeviceConfig& getConfig() const;
+    const FloodGuardRuntimeConfig& getRuntimeConfig() const;
+    bool applyRuntimeConfigFromJson(const char* payload, String& reason, const char* source = "mqtt");
+    bool applyRuntimeConfig(const FloodGuardRuntimeConfig& nextConfig, String& reason, const char* source = "mqtt");
+    bool setLocalAdminPin(const String& pin, String& reason);
+    bool verifyLocalPin(const String& pin) const;
+    bool consumeChangeNotice(ConfigChangeNotice& notice);
+    bool buildRuntimeConfigJson(char* out, size_t outSize) const;
+    static const char* localAdminPinHint();
 
 private:
     ConfigManager() = default;
     DeviceConfig _config{};
+    FloodGuardRuntimeConfig _runtimeConfig{};
+    ConfigChangeNotice _changeNotice{};
+
     void loadDefaults();
+    void loadRuntimeDefaults();
+    bool loadRuntimeConfigFromNvs();
+    bool persistRuntimeConfigToNvs();
+    void syncRuntimeIdentifiers();
+    static void copyCString(char* dest, size_t destSize, const char* src);
+    static String hashPin(const String& pin);
+    static bool parseRuntimeConfigJson(const char* payload, const FloodGuardRuntimeConfig& base, FloodGuardRuntimeConfig& outConfig, String& reason);
+    static bool validateRuntimeConfig(const FloodGuardRuntimeConfig& cfg, String& reason);
 };

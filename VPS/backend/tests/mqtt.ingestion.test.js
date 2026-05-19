@@ -206,6 +206,55 @@ test('MQTT dummy ingestion works with firmware-style payloads', async () => {
   });
   assert.equal(legacyAck.response.status, 200);
 
+  const vendorLogin = await requestJson('/api/auth/login', {
+    method: 'POST',
+    headers: { 'content-type': 'application/json' },
+    body: JSON.stringify({
+      login_id: 'vendor_admin',
+      password: 'Pass@123',
+      device_name: 'MQTT Config Runner',
+      app_type: 'PWA'
+    })
+  });
+  assert.equal(vendorLogin.response.status, 200);
+  const vendorToken = vendorLogin.body.data.token;
+
+  const putConfig = await requestJson('/api/devices/RUB043-CTRL01/config', {
+    method: 'PUT',
+    headers: {
+      'content-type': 'application/json',
+      authorization: `Bearer ${vendorToken}`
+    },
+    body: JSON.stringify({
+      alert_level_mm: 230,
+      danger_level_mm: 560,
+      clear_level_mm: 480,
+      trigger_delay_seconds: 90,
+      clear_delay_seconds: 360,
+      rs485_sensor_enabled: true,
+      switch_sensor_enabled: true,
+      sensor_mount_height_mm: 1300
+    })
+  });
+  assert.equal(putConfig.response.status, 202);
+  const cfgCommandId = putConfig.body.data.command_id;
+  assert.ok(cfgCommandId);
+
+  const configAckOutcome = handleIncomingMqttMessage(
+    'rub/RUB043-CTRL01/config_ack',
+    JSON.stringify({
+      command_id: cfgCommandId,
+      device_id: 'RUB043-CTRL01',
+      status: 'SUCCESS',
+      applied_config_version: 2,
+      saved_to_nvs: true
+    }),
+    { topicBase: 'rub' }
+  );
+  assert.equal(configAckOutcome.handled, true);
+  assert.equal(configAckOutcome.channel, 'config_ack');
+  assert.equal(configAckOutcome.result.status, 'SUCCESS');
+
   const dashboard = await requestJson('/api/locations/RUB043/dashboard', {
     method: 'GET',
     headers: {

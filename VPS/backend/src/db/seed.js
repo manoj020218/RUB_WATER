@@ -100,6 +100,63 @@ function seedIfEmpty() {
     }
   ];
 
+  dataStore.deviceConfigs = [
+    {
+      _id: 'cfg_current_rub043_ctrl01',
+      device_id: 'RUB043-CTRL01',
+      location_id: 'RUB043',
+      alert_level_mm: 200,
+      danger_level_mm: 500,
+      clear_level_mm: 450,
+      trigger_delay_seconds: 60,
+      clear_delay_seconds: 300,
+      rs485_sensor_enabled: true,
+      switch_sensor_enabled: true,
+      switch_level_1_mm: 300,
+      switch_level_2_mm: 500,
+      sensor_mount_height_mm: 1200,
+      mismatch_duration_seconds: 120,
+      config_version: 1,
+      state: 'ACTIVE',
+      last_applied_at: new Date().toISOString(),
+      last_applied_by: 'seed',
+      last_ack_at: new Date().toISOString(),
+      last_ack_status: 'SUCCESS',
+      last_ack_message: 'seed'
+    }
+  ];
+
+  dataStore.deviceConfigHistory = [
+    {
+      _id: 'cfg_hist_rub043_ctrl01_v1',
+      device_id: 'RUB043-CTRL01',
+      location_id: 'RUB043',
+      config_version: 1,
+      state: 'ACTIVE',
+      source: 'seed',
+      requested_by: 'seed',
+      requested_at: new Date().toISOString(),
+      config: {
+        alert_level_mm: 200,
+        danger_level_mm: 500,
+        clear_level_mm: 450,
+        trigger_delay_seconds: 60,
+        clear_delay_seconds: 300,
+        rs485_sensor_enabled: true,
+        switch_sensor_enabled: true,
+        switch_level_1_mm: 300,
+        switch_level_2_mm: 500,
+        sensor_mount_height_mm: 1200,
+        mismatch_duration_seconds: 120
+      },
+      ack: {
+        status: 'SUCCESS',
+        at: new Date().toISOString(),
+        message: 'seed'
+      }
+    }
+  ];
+
   dataStore.firmwareVersions = [
     {
       _id: 'fw_floodguard_s3_0_2_0',

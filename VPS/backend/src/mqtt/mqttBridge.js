@@ -23,7 +23,8 @@ function buildSubscriptions(topicBase) {
     `${topicBase}/+/telemetry`,
     `${topicBase}/+/event`,
     `${topicBase}/+/heartbeat`,
-    `${topicBase}/+/command_ack`
+    `${topicBase}/+/command_ack`,
+    `${topicBase}/+/config_ack`
   ];
 }
 

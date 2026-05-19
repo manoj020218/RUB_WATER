@@ -1,6 +1,7 @@
-﻿const deviceRepository = require('../repositories/deviceRepository');
+const deviceRepository = require('../repositories/deviceRepository');
 const deviceService = require('../services/deviceService');
 const commandService = require('../services/commandService');
+const deviceConfigService = require('../services/deviceConfigService');
 const { parseTopic } = require('./topicParser');
 
 function parsePayload(payload) {
@@ -108,6 +109,15 @@ function handleIncomingMqttMessage(topic, payload, options = {}) {
     return {
       handled: true,
       channel: 'command_ack',
+      result: ack
+    };
+  }
+
+  if (parsedTopic.channel === 'config_ack') {
+    const ack = deviceConfigService.ackDeviceConfig(enriched);
+    return {
+      handled: true,
+      channel: 'config_ack',
       result: ack
     };
   }

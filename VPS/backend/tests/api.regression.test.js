@@ -74,6 +74,25 @@ test('FloodGuard VPS API regression suite', async () => {
   });
   assert.equal(viewerMute.response.status, 403);
 
+  const viewerConfigUpdate = await requestJson('/api/devices/RUB043-CTRL01/config', {
+    method: 'PUT',
+    headers: {
+      'content-type': 'application/json',
+      authorization: `Bearer ${viewerToken}`
+    },
+    body: JSON.stringify({
+      alert_level_mm: 210,
+      danger_level_mm: 520,
+      clear_level_mm: 460,
+      trigger_delay_seconds: 60,
+      clear_delay_seconds: 300,
+      rs485_sensor_enabled: true,
+      switch_sensor_enabled: true,
+      sensor_mount_height_mm: 1300
+    })
+  });
+  assert.equal(viewerConfigUpdate.response.status, 403);
+
   const operatorMute = await requestJson('/api/commands/mute', {
     method: 'POST',
     headers: {
@@ -160,6 +179,64 @@ test('FloodGuard VPS API regression suite', async () => {
   });
   assert.equal(vendorLogin.response.status, 200);
   const vendorToken = vendorLogin.body.data.token;
+
+  const putConfig = await requestJson('/api/devices/RUB043-CTRL01/config', {
+    method: 'PUT',
+    headers: {
+      'content-type': 'application/json',
+      authorization: `Bearer ${vendorToken}`
+    },
+    body: JSON.stringify({
+      alert_level_mm: 220,
+      danger_level_mm: 540,
+      clear_level_mm: 470,
+      trigger_delay_seconds: 80,
+      clear_delay_seconds: 360,
+      rs485_sensor_enabled: true,
+      switch_sensor_enabled: true,
+      switch_level_1_mm: 300,
+      switch_level_2_mm: 500,
+      sensor_mount_height_mm: 1300
+    })
+  });
+  assert.equal(putConfig.response.status, 202);
+  const configCommandId = putConfig.body.data.command_id;
+  assert.ok(configCommandId);
+
+  const configAck = await requestJson('/api/device/config_ack', {
+    method: 'POST',
+    headers: {
+      'content-type': 'application/json',
+      'x-api-key': 'FG_LOCAL_DEV_KEY'
+    },
+    body: JSON.stringify({
+      command_id: configCommandId,
+      device_id: 'RUB043-CTRL01',
+      status: 'SUCCESS',
+      applied_config_version: 2,
+      saved_to_nvs: true
+    })
+  });
+  assert.equal(configAck.response.status, 200);
+  assert.equal(configAck.body.data.status, 'SUCCESS');
+
+  const currentConfig = await requestJson('/api/devices/RUB043-CTRL01/config', {
+    method: 'GET',
+    headers: {
+      authorization: `Bearer ${vendorToken}`
+    }
+  });
+  assert.equal(currentConfig.response.status, 200);
+  assert.equal(currentConfig.body.data.config_version, 2);
+
+  const configHistory = await requestJson('/api/devices/RUB043-CTRL01/config/history', {
+    method: 'GET',
+    headers: {
+      authorization: `Bearer ${vendorToken}`
+    }
+  });
+  assert.equal(configHistory.response.status, 200);
+  assert.ok(configHistory.body.data.length >= 1);
 
   const adminUserList = await requestJson('/api/admin/users', {
     method: 'GET',

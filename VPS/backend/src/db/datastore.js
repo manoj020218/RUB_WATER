@@ -8,7 +8,9 @@
   auditLogs: [],
   firmwareVersions: [],
   appVersions: [],
-  commands: []
+  commands: [],
+  deviceConfigs: [],
+  deviceConfigHistory: []
 };
 
 function resetStore() {

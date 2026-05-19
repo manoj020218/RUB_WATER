@@ -16,6 +16,9 @@ public:
     void begin(const DeviceConfig& config);
     void loop(
         AlarmState state,
+        const char* statusColor,
+        const char* statusNote,
+        const FloodGuardRuntimeConfig& runtimeConfig,
         const SensorSnapshot& sensor,
         const SwitchSnapshot& switches,
         const RelaySnapshot& relays,
@@ -32,4 +35,3 @@ private:
     uint32_t currentIntervalMs(AlarmState state, int32_t waterLevelMm) const;
     const char* stateToString(AlarmState state) const;
 };
-

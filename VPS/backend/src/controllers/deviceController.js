@@ -1,6 +1,7 @@
-﻿const deviceService = require('../services/deviceService');
+const deviceService = require('../services/deviceService');
 const commandService = require('../services/commandService');
 const firmwareService = require('../services/firmwareService');
+const deviceConfigService = require('../services/deviceConfigService');
 
 function ingestTelemetry(req, res, next) {
   try {
@@ -54,6 +55,15 @@ function ackCommandLegacy(req, res, next) {
   }
 }
 
+function ackConfig(req, res, next) {
+  try {
+    const ack = deviceConfigService.ackDeviceConfig(req.body);
+    res.json({ ok: true, data: ack });
+  } catch (error) {
+    next(error);
+  }
+}
+
 function getDeviceConfig(req, res, next) {
   try {
     const config = deviceService.getDeviceConfig(req.params.deviceId);
@@ -78,6 +88,7 @@ module.exports = {
   getPendingCommands,
   ackCommand,
   ackCommandLegacy,
+  ackConfig,
   getDeviceConfig,
   getLatestFirmware
 };

@@ -30,7 +30,10 @@ void RelayController::setMuted(bool muted) {
 
 void RelayController::loop(AlarmState state) {
     const unsigned long now = millis();
-    const bool dangerActive = (state == AlarmState::DANGER || state == AlarmState::MUTED_DANGER);
+    const bool dangerActive =
+        (state == AlarmState::DANGER_CONFIRMED ||
+         state == AlarmState::DANGER_WITH_SENSOR_MISMATCH ||
+         state == AlarmState::DANGER_WITH_RS485_FAULT);
 
     if (!dangerActive) {
         _sirenCycleStartMs = now;
@@ -47,7 +50,7 @@ void RelayController::loop(AlarmState state) {
     digitalWrite(_gpio.rfTriggerEntryPin, DeviceProfile::RF_ACTIVE_LEVEL);
     digitalWrite(_gpio.rfTriggerExitPin, DeviceProfile::RF_ACTIVE_LEVEL);
 
-    if (_muted || state == AlarmState::MUTED_DANGER) {
+    if (_muted) {
         _snapshot.siren = false;
         _snapshot.voice = false;
         setRelayPin(_gpio.relaySirenPin, false);

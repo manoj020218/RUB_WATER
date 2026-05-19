@@ -1,5 +1,6 @@
 #include <Arduino.h>
 #include <ArduinoJson.h>
+#include <cstring>
 #include <time.h>
 
 #include "alarm_state_machine.h"
@@ -7,6 +8,7 @@
 #include "command_handler.h"
 #include "config_manager.h"
 #include "http_fallback.h"
+#include "local_config_server.h"
 #include "local_event_queue.h"
 #include "mqtt_client.h"
 #include "network_diagnostics.h"
@@ -22,16 +24,21 @@
 namespace {
 AlarmState gPreviousState = AlarmState::NORMAL;
 unsigned long gLastHeartbeatMs = 0;
+bool gSwitchFaultEventPublished = false;
+bool gObstructionEventPublished = false;
 
 const char* stateToString(AlarmState state) {
     switch (state) {
         case AlarmState::NORMAL: return "NORMAL";
-        case AlarmState::WATER_DETECTED: return "WATER_DETECTED";
-        case AlarmState::ALERT_PENDING: return "ALERT_PENDING";
-        case AlarmState::ALERT: return "ALERT";
+        case AlarmState::ALERT_PENDING_VERIFICATION: return "ALERT_PENDING_VERIFICATION";
+        case AlarmState::ALERT_ORANGE: return "ALERT_ORANGE";
+        case AlarmState::ALERT_ORANGE_CONFIRMED: return "ALERT_ORANGE_CONFIRMED";
+        case AlarmState::ALERT_SENSOR_MISMATCH: return "ALERT_SENSOR_MISMATCH";
         case AlarmState::DANGER_PENDING: return "DANGER_PENDING";
-        case AlarmState::DANGER: return "DANGER";
-        case AlarmState::MUTED_DANGER: return "MUTED_DANGER";
+        case AlarmState::DANGER_CONFIRMED: return "DANGER_CONFIRMED";
+        case AlarmState::DANGER_WITH_SENSOR_MISMATCH: return "DANGER_WITH_SENSOR_MISMATCH";
+        case AlarmState::DANGER_WITH_RS485_FAULT: return "DANGER_WITH_RS485_FAULT";
+        case AlarmState::ALERT_WITH_RS485_FAULT: return "ALERT_WITH_RS485_FAULT";
         case AlarmState::CLEAR_PENDING: return "CLEAR_PENDING";
         case AlarmState::SENSOR_FAULT: return "SENSOR_FAULT";
         case AlarmState::OFFLINE_LOCAL_MODE: return "OFFLINE_LOCAL_MODE";
@@ -51,6 +58,8 @@ bool publishWithFallback(const char* queueTopic, const String& mqttTopic, const 
         httpPosted = HttpFallbackService::getInstance().postTelemetry(payload);
     } else if (queueTopicStr == "command_ack") {
         httpPosted = HttpFallbackService::getInstance().postCommandAck(payload);
+    } else if (queueTopicStr == "config_ack") {
+        httpPosted = HttpFallbackService::getInstance().postConfigAck(payload);
     } else {
         httpPosted = HttpFallbackService::getInstance().postEvent(payload);
     }
@@ -61,6 +70,13 @@ bool publishWithFallback(const char* queueTopic, const String& mqttTopic, const 
 
     LocalEventQueue::getInstance().enqueue(queueTopic, payload);
     return false;
+}
+
+void applyRuntimeConfigToModules() {
+    const FloodGuardRuntimeConfig& runtimeConfig = ConfigManager::getInstance().getRuntimeConfig();
+    SensorRs485::getInstance().setMountHeightMm(runtimeConfig.sensorMountHeightMm);
+    SensorRs485::getInstance().setEnabled(runtimeConfig.rs485SensorEnabled);
+    SwitchInputs::getInstance().setEnabled(runtimeConfig.switchSensorEnabled);
 }
 
 void publishCommandAck(const DeviceConfig& config, const char* command, const char* commandId, bool success) {
@@ -78,40 +94,58 @@ void publishCommandAck(const DeviceConfig& config, const char* command, const ch
     publishWithFallback("command_ack", MqttClientService::getInstance().commandAckTopic(), payload);
 }
 
-void onMqttCommand(const char* command, const char* payload) {
-    bool success = CommandHandler::getInstance().onCommand(command, payload);
-    const DeviceConfig& config = ConfigManager::getInstance().getConfig();
-    const char* commandId = "";
-
-    if (payload && payload[0] != '\0') {
-        StaticJsonDocument<256> doc;
-        if (deserializeJson(doc, payload) == DeserializationError::Ok) {
-            commandId = doc["command_id"] | "";
-        }
+void publishConfigAck(const DeviceConfig& config, const char* commandId, bool success, const char* reason) {
+    StaticJsonDocument<512> doc;
+    const FloodGuardRuntimeConfig& runtimeConfig = ConfigManager::getInstance().getRuntimeConfig();
+    doc["command_id"] = (commandId && commandId[0] != '\0') ? commandId : "cfg_local";
+    doc["device_id"] = config.deviceId;
+    doc["location_id"] = config.locationId;
+    doc["status"] = success ? "SUCCESS" : "REJECTED";
+    doc["applied_config_version"] = runtimeConfig.configVersion;
+    doc["saved_to_nvs"] = success;
+    doc["timestamp_epoch"] = static_cast<uint32_t>(time(nullptr));
+    if (!success && reason && reason[0] != '\0') {
+        doc["reason"] = reason;
     }
 
-    publishCommandAck(config, command, commandId, success);
+    char payload[512]{};
+    serializeJson(doc, payload, sizeof(payload));
+    publishWithFallback("config_ack", MqttClientService::getInstance().configAckTopic(), payload);
 }
 
-void publishStateEventIfChanged(AlarmState currentState, const DeviceConfig& config) {
+void publishStateEventIfChanged(AlarmState currentState, const DeviceConfig& config, const char* note, const char* color) {
     if (currentState == gPreviousState) {
         return;
     }
 
-    StaticJsonDocument<320> eventDoc;
+    StaticJsonDocument<512> eventDoc;
     eventDoc["device_id"] = config.deviceId;
     eventDoc["location_id"] = config.locationId;
     eventDoc["event_type"] = "STATE_CHANGE";
     eventDoc["previous_state"] = stateToString(gPreviousState);
     eventDoc["new_state"] = stateToString(currentState);
+    eventDoc["status_color"] = color ? color : "NORMAL";
+    eventDoc["status_note"] = note ? note : "";
     eventDoc["timestamp_ms"] = millis();
 
-    char payload[320]{};
+    char payload[512]{};
     serializeJson(eventDoc, payload, sizeof(payload));
-
     publishWithFallback("event", MqttClientService::getInstance().eventTopic(), payload);
 
     gPreviousState = currentState;
+}
+
+void publishGenericEvent(const DeviceConfig& config, const char* eventType, const char* note) {
+    StaticJsonDocument<448> eventDoc;
+    eventDoc["device_id"] = config.deviceId;
+    eventDoc["location_id"] = config.locationId;
+    eventDoc["event_type"] = eventType;
+    eventDoc["reason"] = note ? note : "";
+    eventDoc["timestamp_ms"] = millis();
+
+    char payload[448]{};
+    serializeJson(eventDoc, payload, sizeof(payload));
+    publishWithFallback("event", MqttClientService::getInstance().eventTopic(), payload);
 }
 
 void publishHeartbeat(const DeviceConfig& config, const NetworkDiagnostics& diagnostics) {
@@ -153,6 +187,8 @@ void replayOfflineQueue() {
             topic = MqttClientService::getInstance().eventTopic();
         } else if (queueTopic == "command_ack") {
             topic = MqttClientService::getInstance().commandAckTopic();
+        } else if (queueTopic == "config_ack") {
+            topic = MqttClientService::getInstance().configAckTopic();
         } else {
             topic = MqttClientService::getInstance().heartbeatTopic();
         }
@@ -164,6 +200,31 @@ void replayOfflineQueue() {
         ++sent;
     }
 }
+
+void onIncomingCommand(const char* command, const char* payload) {
+    const DeviceConfig& config = ConfigManager::getInstance().getConfig();
+    const char* commandId = "";
+
+    StaticJsonDocument<1024> doc;
+    if (payload && payload[0] != '\0') {
+        if (deserializeJson(doc, payload) == DeserializationError::Ok) {
+            commandId = doc["command_id"] | "";
+        }
+    }
+
+    if (command && (strcmp(command, "UPDATE_CONFIG") == 0 || strcmp(command, "update_config") == 0)) {
+        String reason;
+        const bool applied = ConfigManager::getInstance().applyRuntimeConfigFromJson(payload, reason, "mqtt_config");
+        if (applied) {
+            applyRuntimeConfigToModules();
+        }
+        publishConfigAck(config, commandId, applied, reason.c_str());
+        return;
+    }
+
+    const bool success = CommandHandler::getInstance().onCommand(command, payload);
+    publishCommandAck(config, command, commandId, success);
+}
 }  // namespace
 
 void setup() {
@@ -173,6 +234,8 @@ void setup() {
 
     ConfigManager::getInstance().begin();
     const DeviceConfig& config = ConfigManager::getInstance().getConfig();
+    const FloodGuardRuntimeConfig& runtimeConfig = ConfigManager::getInstance().getRuntimeConfig();
+
     Serial.printf(
         "PID=%s HW=%s FW=%s Device=%s Location=%s\n",
         config.productPid,
@@ -181,21 +244,14 @@ void setup() {
         config.deviceId,
         config.locationId
     );
-    Serial.printf("GPIO RS485(RX/TX/DE): %d/%d/%d\n", config.gpio.rs485RxPin, config.gpio.rs485TxPin, config.gpio.rs485DeRePin);
     Serial.printf(
-        "GPIO Relay(S/B/V/BR/SP): %d/%d/%d/%d/%d\n",
-        config.gpio.relaySirenPin,
-        config.gpio.relayBeaconPin,
-        config.gpio.relayVoicePin,
-        config.gpio.relayBarrierPin,
-        config.gpio.relaySparePin
-    );
-    Serial.printf(
-        "OTA Base=%s Manifest=%s Channel=%s IntervalMs=%lu\n",
-        config.otaBaseUrl,
-        config.otaManifestPath,
-        config.otaChannel,
-        static_cast<unsigned long>(config.otaCheckIntervalMs)
+        "Runtime cfg version=%lu alert=%u danger=%u clear=%u rs485=%d switch=%d\n",
+        static_cast<unsigned long>(runtimeConfig.configVersion),
+        runtimeConfig.alertLevelMm,
+        runtimeConfig.dangerLevelMm,
+        runtimeConfig.clearLevelMm,
+        runtimeConfig.rs485SensorEnabled,
+        runtimeConfig.switchSensorEnabled
     );
 
     WifiManager::getInstance().begin(config.wifiSsid, config.wifiPass);
@@ -203,9 +259,9 @@ void setup() {
     TimeSyncService::getInstance().begin();
     WatchdogService::getInstance().begin();
 
-    SensorRs485::getInstance().begin(config.thresholds.sensorMountHeightMm);
-    SwitchInputs::getInstance().begin(config.gpio.switch300Pin, config.gpio.switch500Pin);
-    AlarmStateMachine::getInstance().begin(config.thresholds);
+    SensorRs485::getInstance().begin(runtimeConfig.sensorMountHeightMm, runtimeConfig.rs485SensorEnabled);
+    SwitchInputs::getInstance().begin(config.gpio.switch300Pin, config.gpio.switch500Pin, runtimeConfig.switchSensorEnabled);
+    AlarmStateMachine::getInstance().begin();
     RelayController::getInstance().begin(config.gpio);
     CommandHandler::getInstance().begin();
     BleProvisioningService::getInstance().begin(config);
@@ -213,7 +269,8 @@ void setup() {
     LocalEventQueue::getInstance().begin();
     HttpFallbackService::getInstance().begin(config.httpBaseUrl, config.deviceId);
     MqttClientService::getInstance().begin(config.mqttHost, config.mqttPort, config.mqttUser, config.mqttPass, config.deviceId);
-    MqttClientService::getInstance().setCommandCallback(onMqttCommand);
+    MqttClientService::getInstance().setCommandCallback(onIncomingCommand);
+    LocalConfigServer::getInstance().begin();
 
     TelemetryManager::getInstance().begin(config);
     OtaManager::getInstance().begin(config);
@@ -222,6 +279,7 @@ void setup() {
 
 void loop() {
     const DeviceConfig& config = ConfigManager::getInstance().getConfig();
+    const FloodGuardRuntimeConfig& runtimeConfig = ConfigManager::getInstance().getRuntimeConfig();
 
     WifiManager::getInstance().loop();
     const bool wifiConnected = WifiManager::getInstance().isConnected();
@@ -236,8 +294,10 @@ void loop() {
     const SensorSnapshot& sensor = SensorRs485::getInstance().getSnapshot();
     const SwitchSnapshot& switches = SwitchInputs::getInstance().getSnapshot();
 
-    AlarmStateMachine::getInstance().update(sensor, switches);
+    AlarmStateMachine::getInstance().update(runtimeConfig, sensor, switches);
     const AlarmState state = AlarmStateMachine::getInstance().getState();
+    const char* statusNote = AlarmStateMachine::getInstance().getStatusNote();
+    const char* statusColor = AlarmStateMachine::getInstance().getStatusColor();
 
     RelayController::getInstance().setMuted(CommandHandler::getInstance().isMuted());
     RelayController::getInstance().loop(state);
@@ -250,17 +310,60 @@ void loop() {
     const NetworkDiagnostics& diagnostics = NetworkDiagnosticsService::getInstance().getData();
     BleProvisioningService::getInstance().loop(config, diagnostics, MqttClientService::getInstance().isConnected());
 
-    publishStateEventIfChanged(state, config);
+    LocalConfigServer::getInstance().loop(state, sensor, switches, MqttClientService::getInstance().isConnected());
+
+    publishStateEventIfChanged(state, config, statusNote, statusColor);
     publishHeartbeat(config, diagnostics);
+
+    ConfigChangeNotice notice{};
+    if (ConfigManager::getInstance().consumeChangeNotice(notice)) {
+        publishGenericEvent(
+            config,
+            notice.localSource ? "LOCAL_CONFIG_CHANGED" : "REMOTE_CONFIG_CHANGED",
+            notice.source
+        );
+    }
+
+    if (AlarmStateMachine::getInstance().shouldRaiseSwitchFaultEvent() && !gSwitchFaultEventPublished) {
+        gSwitchFaultEventPublished = true;
+        publishGenericEvent(
+            config,
+            "SWITCH_SENSOR_POSSIBLE_FAULT",
+            "RS485 crossed danger threshold but Level 2 switch did not trigger within mismatch duration."
+        );
+    }
+    if (AlarmStateMachine::getInstance().shouldRaiseRs485ObstructionEvent() && !gObstructionEventPublished) {
+        gObstructionEventPublished = true;
+        publishGenericEvent(
+            config,
+            "POSSIBLE_RS485_OBSTRUCTION_OR_FALSE_ECHO",
+            "RS485 indicates high level but switches are open. Possible obstruction under sensor."
+        );
+    }
+    if (state == AlarmState::NORMAL) {
+        gSwitchFaultEventPublished = false;
+        gObstructionEventPublished = false;
+    }
 
     TelemetryManager::getInstance().loop(
         state,
+        statusColor,
+        statusNote,
+        runtimeConfig,
         sensor,
         switches,
         RelayController::getInstance().getSnapshot(),
         diagnostics,
         MqttClientService::getInstance().isConnected()
     );
+
+    if (!MqttClientService::getInstance().isConnected()) {
+        String polledCommand;
+        String polledPayload;
+        if (HttpFallbackService::getInstance().fetchPendingCommand(polledCommand, polledPayload)) {
+            onIncomingCommand(polledCommand.c_str(), polledPayload.c_str());
+        }
+    }
 
     replayOfflineQueue();
     OtaManager::getInstance().loop(AlarmStateMachine::getInstance().isDangerActive(), wifiConnected);
