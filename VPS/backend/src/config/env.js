@@ -65,6 +65,7 @@ module.exports = {
   mqttPass: process.env.MQTT_PASS || messaging.mqttPass || '',
   mqttTopicBase: process.env.MQTT_TOPIC_BASE || messaging.mqttTopicBase || 'rub',
   mqttUrl: process.env.MQTT_URL || `${mqttProtocol}://${mqttHost}:${mqttPort}`,
+  deviceTokenTtlHours: readNumber('DEVICE_TOKEN_TTL_HOURS', Number(security.deviceTokenTtlHours || 720)),
   jwtSecret: process.env.JWT_SECRET || security.jwtSecret || 'floodguard-dev-secret',
   jwtTtl: process.env.JWT_TTL || '8h',
   apiKey: process.env.API_KEY || security.apiKey || 'FG_LOCAL_DEV_KEY',

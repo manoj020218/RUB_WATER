@@ -20,6 +20,10 @@ function forbidden(message) {
   return new AppError(403, message || 'Forbidden', 'FORBIDDEN');
 }
 
+function conflict(message, details) {
+  return new AppError(409, message || 'Conflict', 'CONFLICT', details);
+}
+
 function notFound(message) {
   return new AppError(404, message || 'Not found', 'NOT_FOUND');
 }
@@ -29,5 +33,6 @@ module.exports = {
   badRequest,
   unauthorized,
   forbidden,
+  conflict,
   notFound
 };

@@ -1,4 +1,4 @@
-﻿const env = require('../config/env');
+const env = require('../config/env');
 const deviceRepository = require('../repositories/deviceRepository');
 const { unauthorized } = require('../utils/errors');
 
@@ -20,17 +20,29 @@ function requireApiKey(req, res, next) {
 
 function requireApiKeyOrKnownDevice(req, res, next) {
   if (hasValidApiKey(req)) {
+    req.deviceAuth = { mode: 'api_key' };
     return next();
   }
 
-  if (env.allowDeviceIdAuth) {
-    const deviceId = resolveDeviceId(req);
-    if (deviceId && deviceRepository.findById(deviceId)) {
-      return next();
-    }
+  const deviceId = resolveDeviceId(req);
+  const deviceToken = String(req.headers['x-device-token'] || req.headers['x-provision-token'] || '').trim();
+  if (deviceId && deviceToken && deviceRepository.verifyDeviceToken(deviceId, deviceToken)) {
+    req.deviceAuth = {
+      mode: 'device_token',
+      device_id: deviceId
+    };
+    return next();
   }
 
-  return next(unauthorized('Valid x-api-key header or known device_id is required'));
+  if (env.allowDeviceIdAuth && deviceId && deviceRepository.findById(deviceId)) {
+    req.deviceAuth = {
+      mode: 'device_id',
+      device_id: deviceId
+    };
+    return next();
+  }
+
+  return next(unauthorized('Valid x-api-key, x-device-token, or known device_id is required'));
 }
 
 function attachProxyActor(req, res, next) {

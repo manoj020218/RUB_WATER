@@ -24,6 +24,6 @@
     "security":  {
                      "apiKey":  "FG_LOCAL_DEV_KEY",
                      "jwtSecret":  "CHANGE_THIS_IN_PRODUCTION",
-                     "allowDeviceIdAuth":  true
+                     "allowDeviceIdAuth":  false
                  }
 }
