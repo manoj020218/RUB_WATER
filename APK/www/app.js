@@ -47,6 +47,7 @@
       scanTriggered: false,
       scanInProgress: false,
       provisioningComplete: false,
+      provisionInProgress: false,
       commandQueue: null
     }
   };
@@ -1527,6 +1528,10 @@
     renderPhoneWifiSsid();
     syncVoltageInputsFromState();
     updateVpsUrlInput();
+    if (state.ble.provisionInProgress) {
+      updateBleStatusLabel();
+      return;
+    }
     await checkAppVpsHealth();
     renderInstallCloudStatuses();
     renderBleDeviceList();
@@ -2153,6 +2158,7 @@
       state.ble.scanTriggered = false;
       state.ble.scanInProgress = false;
       state.ble.provisioningComplete = false;
+      state.ble.provisionInProgress = false;
       state.ble.commandQueue = null;
       state.install.tokenExpiresAt = '';
       setBleScanProgress(false);
@@ -2501,14 +2507,17 @@
       return;
     }
 
-    if (!Array.isArray(state.ble.wifiNetworks) || state.ble.wifiNetworks.length === 0) {
-      await bleScanWifiApp();
-    } else {
-      renderBleWifiList();
-      renderBleWifiSelect();
-    }
+    renderBleWifiList();
+    renderBleWifiSelect();
 
-    // Avoid forcing keyboard open immediately after BLE selection.
+    const preferred = choosePreferredSsid(
+      state.ble.wifiNetworks.map((item) => String(item?.ssid || '').trim()),
+      String(state.ble.phoneWifiSsid || '').trim()
+    );
+    if (preferred) {
+      setBleWifiSsidValue(preferred);
+    }
+    showToast('Device selected. Enter Wi-Fi password and tap Apply.');
   }
 
   function pickBleWifiSsidApp(ssid) {
@@ -2748,6 +2757,7 @@
     if (provisionBtn) {
       provisionBtn.disabled = true;
     }
+    state.ble.provisionInProgress = true;
     showToast('Starting provisioning...');
     startProvisionModal(ssid);
 
@@ -2767,7 +2777,8 @@
       const mqttAuthMode = String(cloud?.mqtt?.auth_mode || '').trim().toLowerCase();
       const shouldSendMqttAuth = mqttAuthMode === 'token'
         || mqttAuthMode === 'credentials'
-        || mqttAuthMode === 'password';
+        || mqttAuthMode === 'password'
+        || Boolean(mqttUser || mqttPassword);
       state.install.tokenExpiresAt = String(provisionProfile?.token_expires_at || '').trim();
 
       const expiryLabel = state.install.tokenExpiresAt ? formatDateTime(state.install.tokenExpiresAt) : '--';
@@ -3022,6 +3033,7 @@
       setProvisionCloseEnabled(true);
       showToast(`Provisioning failed: ${error.message}`, true);
     } finally {
+      state.ble.provisionInProgress = false;
       if (provisionBtn) {
         provisionBtn.disabled = false;
       }

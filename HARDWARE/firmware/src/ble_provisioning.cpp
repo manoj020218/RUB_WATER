@@ -490,6 +490,12 @@ String BleProvisioningService::handleCommand(const String& request, const Device
             mqttPass = String(reqDoc["mqtt_pass"] | "");
         }
         mqttPass.trim();
+        if (mqttPass.length() == 0 && deviceToken.length() > 0) {
+            mqttPass = deviceToken;
+        }
+        if (mqttUser.length() == 0 && mqttPass.length() > 0) {
+            mqttUser = String(config.deviceId);
+        }
 
         float dividerRatio = VoltageMonitor::getInstance().dividerRatio();
         float calibrationFactor = VoltageMonitor::getInstance().calibrationFactor();
@@ -647,6 +653,12 @@ String BleProvisioningService::handleCommand(const String& request, const Device
             mqttPass = String(reqDoc["mqtt_pass"] | "");
         }
         mqttPass.trim();
+        if (mqttPass.length() == 0 && deviceToken.length() > 0) {
+            mqttPass = deviceToken;
+        }
+        if (mqttUser.length() == 0 && mqttPass.length() > 0) {
+            mqttUser = String(config.deviceId);
+        }
 
         float dividerRatio = VoltageMonitor::getInstance().dividerRatio();
         float calibrationFactor = VoltageMonitor::getInstance().calibrationFactor();

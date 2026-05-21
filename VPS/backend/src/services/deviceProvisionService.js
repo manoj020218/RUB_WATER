@@ -39,7 +39,8 @@ function buildCloudInfo(deviceId) {
     mqtt: {
       host: env.mqttHost,
       port: env.mqttPort,
-      username: deviceId
+      username: deviceId,
+      auth_mode: 'token'
     },
     auth_headers: {
       device_token: 'x-device-token'
