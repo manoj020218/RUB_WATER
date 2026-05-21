@@ -1,6 +1,7 @@
 #include "ble_provisioning.h"
 
 #include <cmath>
+#include <cctype>
 #include <ArduinoJson.h>
 #include <BLEAdvertising.h>
 #include <BLECharacteristic.h>
@@ -139,6 +140,189 @@ void appendUniqueUrl(String* urls, size_t& count, size_t maxCount, const String&
         }
     }
     urls[count++] = candidate;
+}
+
+String normalizeBaseUrl(const String& raw) {
+    String out = raw;
+    out.trim();
+    if (out.length() == 0) {
+        return out;
+    }
+    if (!out.startsWith("http://") && !out.startsWith("https://")) {
+        out = String("https://") + out;
+    }
+    while (out.endsWith("/")) {
+        out.remove(out.length() - 1);
+    }
+    if (out.endsWith("/health")) {
+        out = out.substring(0, out.length() - 7);
+    }
+    if (out.endsWith("/api")) {
+        out = out.substring(0, out.length() - 4);
+    }
+    while (out.endsWith("/")) {
+        out.remove(out.length() - 1);
+    }
+    return out;
+}
+
+String extractHostFromUrl(const String& url) {
+    String work = url;
+    work.trim();
+    if (work.length() == 0) {
+        return "";
+    }
+    const int schemePos = work.indexOf("://");
+    if (schemePos >= 0) {
+        work = work.substring(schemePos + 3);
+    }
+    const int slashPos = work.indexOf('/');
+    if (slashPos >= 0) {
+        work = work.substring(0, slashPos);
+    }
+    const int colonPos = work.lastIndexOf(':');
+    if (colonPos > 0) {
+        bool numericPort = true;
+        for (int i = colonPos + 1; i < work.length(); ++i) {
+            if (!std::isdigit(static_cast<unsigned char>(work.charAt(i)))) {
+                numericPort = false;
+                break;
+            }
+        }
+        if (numericPort) {
+            work = work.substring(0, colonPos);
+        }
+    }
+    work.trim();
+    return work;
+}
+
+bool beginHttpRequest(HTTPClient& client, WiFiClient& plainClient, WiFiClientSecure& secureClient, const String& url) {
+    client.setConnectTimeout(5000);
+    client.setTimeout(8000);
+    client.setFollowRedirects(HTTPC_STRICT_FOLLOW_REDIRECTS);
+    if (url.startsWith("https://")) {
+        secureClient.setInsecure();
+        return client.begin(secureClient, url);
+    }
+    return client.begin(plainClient, url);
+}
+
+bool registerDeviceAndFetchKey(
+    const String& rawBaseUrl,
+    const DeviceConfig& config,
+    const String& provisionKey,
+    String& outDeviceKey,
+    String& outMqttHost,
+    uint16_t& outMqttPort,
+    String* errorText = nullptr
+) {
+    outDeviceKey = "";
+    outMqttHost = "";
+    if (errorText != nullptr) {
+        *errorText = "";
+    }
+
+    if (WiFi.status() != WL_CONNECTED) {
+        if (errorText != nullptr) {
+            *errorText = "wifi_not_connected";
+        }
+        return false;
+    }
+
+    const String baseUrl = normalizeBaseUrl(rawBaseUrl);
+    if (baseUrl.length() == 0) {
+        if (errorText != nullptr) {
+            *errorText = "empty_vps_base_url";
+        }
+        return false;
+    }
+
+    const String registerUrl = baseUrl + "/api/device/register";
+    DynamicJsonDocument reqDoc(320);
+    reqDoc["device_id"] = config.deviceId;
+    reqDoc["location_id"] = config.locationId;
+    reqDoc["hardware_code"] = config.hardwareCode;
+    reqDoc["firmware_version"] = config.firmwareVersion;
+    String body;
+    serializeJson(reqDoc, body);
+
+    HTTPClient client;
+    WiFiClient plainClient;
+    WiFiClientSecure secureClient;
+    if (!beginHttpRequest(client, plainClient, secureClient, registerUrl)) {
+        if (errorText != nullptr) {
+            *errorText = "register_begin_failed";
+        }
+        return false;
+    }
+
+    client.addHeader("Content-Type", "application/json");
+    if (provisionKey.length() > 0) {
+        client.addHeader("x-provision-key", provisionKey);
+    }
+
+    const int code = client.POST(body);
+    String response = client.getString();
+    client.end();
+
+    if (code < 200 || code >= 300) {
+        if (errorText != nullptr) {
+            if (response.length() == 0) {
+                *errorText = String("register_http_") + String(code);
+            } else {
+                response.replace('\n', ' ');
+                response.replace('\r', ' ');
+                response.trim();
+                if (response.length() > 96) {
+                    response = response.substring(0, 96);
+                }
+                *errorText = response;
+            }
+        }
+        return false;
+    }
+
+    DynamicJsonDocument rsp(2048);
+    if (deserializeJson(rsp, response) != DeserializationError::Ok) {
+        if (errorText != nullptr) {
+            *errorText = "register_parse_failed";
+        }
+        return false;
+    }
+
+    JsonObject root = rsp.as<JsonObject>();
+    JsonObject data = root["data"].is<JsonObject>() ? root["data"].as<JsonObject>() : root;
+    outDeviceKey = String(data["device_key"] | "");
+    if (outDeviceKey.length() == 0) {
+        outDeviceKey = String(data["device_token"] | "");
+    }
+    if (outDeviceKey.length() == 0) {
+        outDeviceKey = String(data["api_key"] | "");
+    }
+    outDeviceKey.trim();
+    if (outDeviceKey.length() == 0) {
+        if (errorText != nullptr) {
+            *errorText = "register_missing_device_key";
+        }
+        return false;
+    }
+
+    JsonObject cloud = data["cloud"].is<JsonObject>() ? data["cloud"].as<JsonObject>() : JsonObject();
+    if (!cloud.isNull()) {
+        JsonObject mqtt = cloud["mqtt"].is<JsonObject>() ? cloud["mqtt"].as<JsonObject>() : JsonObject();
+        if (!mqtt.isNull()) {
+            const String host = String(mqtt["host"] | "");
+            if (host.length() > 0) {
+                outMqttHost = extractHostFromUrl(host);
+            }
+            const uint16_t port = static_cast<uint16_t>(mqtt["port"] | outMqttPort);
+            if (port > 0) {
+                outMqttPort = port;
+            }
+        }
+    }
+    return true;
 }
 
 bool httpGetHealth(const String& healthUrl, int& statusCode, uint32_t& elapsedMs, String* errorText = nullptr) {
@@ -631,19 +815,57 @@ String BleProvisioningService::handleCommand(const String& request, const Device
             deviceToken = String(reqDoc["token"] | "");
         }
         deviceToken.trim();
+        String provisionKey = String(reqDoc["provision_key"] | "");
+        if (provisionKey.length() == 0) {
+            provisionKey = String(reqDoc["pk"] | "");
+        }
+        provisionKey.trim();
 
         String mqttHost = String(reqDoc["mqtt_host"] | "");
         if (mqttHost.length() == 0) {
             mqttHost = String(reqDoc["mh"] | "");
         }
         mqttHost.trim();
-        const uint16_t mqttPort = static_cast<uint16_t>((reqDoc["mqtt_port"] | reqDoc["mp"]) | config.mqttPort);
+        uint16_t mqttPort = static_cast<uint16_t>((reqDoc["mqtt_port"] | reqDoc["mp"]) | config.mqttPort);
 
         String mqttUser = String(reqDoc["mqtt_user"] | "");
         if (mqttUser.length() == 0) {
             mqttUser = String(reqDoc["mu"] | "");
         }
         mqttUser.trim();
+
+        bool keyFetchedFromProvision = false;
+        if (deviceToken.length() == 0 && provisionKey.length() > 0) {
+            String registerError;
+            String fetchedKey;
+            String fetchedMqttHost;
+            uint16_t fetchedMqttPort = mqttPort;
+            const bool registered = registerDeviceAndFetchKey(
+                vpsBase,
+                config,
+                provisionKey,
+                fetchedKey,
+                fetchedMqttHost,
+                fetchedMqttPort,
+                &registerError
+            );
+            if (!registered) {
+                String err = "device_register_failed";
+                if (registerError.length() > 0) {
+                    err += ":";
+                    err += registerError;
+                }
+                return responseError(err.c_str());
+            }
+            deviceToken = fetchedKey;
+            keyFetchedFromProvision = true;
+            if (mqttHost.length() == 0 && fetchedMqttHost.length() > 0) {
+                mqttHost = fetchedMqttHost;
+            }
+            if (fetchedMqttPort > 0) {
+                mqttPort = fetchedMqttPort;
+            }
+        }
 
         String mqttPass = String(reqDoc["mqtt_password"] | "");
         if (mqttPass.length() == 0) {
@@ -693,6 +915,7 @@ String BleProvisioningService::handleCommand(const String& request, const Device
         const bool hasAnyCloudInput =
             vpsBase.length() > 0 ||
             deviceToken.length() > 0 ||
+            provisionKey.length() > 0 ||
             mqttHost.length() > 0 ||
             mqttUser.length() > 0 ||
             mqttPass.length() > 0 ||
@@ -732,6 +955,13 @@ String BleProvisioningService::handleCommand(const String& request, const Device
                 resDoc["ta"] = true;
             } else {
                 resDoc["token_applied"] = true;
+            }
+        }
+        if (keyFetchedFromProvision) {
+            if (compactMode) {
+                resDoc["ra"] = true;
+            } else {
+                resDoc["device_key_registered"] = true;
             }
         }
         if (mqttHost.length() > 0) {

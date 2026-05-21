@@ -4,6 +4,8 @@ const { requireApiKeyOrKnownDevice, attachProxyActor } = require('../middleware/
 
 const router = express.Router();
 
+router.post('/register', deviceController.registerDevice);
+
 router.use(requireApiKeyOrKnownDevice, attachProxyActor);
 
 router.post('/telemetry', deviceController.ingestTelemetry);

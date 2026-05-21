@@ -33,6 +33,7 @@
       localIp: '',
       lastCloudReason: '--',
       tokenExpiresAt: '',
+      provisionKey: '',
       lastDeviceBatteryVoltage: null,
       adcDividerRatio: 5.0,
       adcCalibrationFactor: 1.0
@@ -166,6 +167,7 @@
         session: state.session,
         install: {
           localUrl: state.install.localUrl || '',
+          provisionKey: String(state.install.provisionKey || ''),
           adcDividerRatio: Number(state.install.adcDividerRatio || 5.0),
           adcCalibrationFactor: Number(state.install.adcCalibrationFactor || 1.0)
         },
@@ -389,9 +391,11 @@
   function updateBleStatusLabel() {
     const isConnected = Boolean(state.ble.connectedDeviceId);
     const cloudLinked = Boolean(state.install.deviceCloudReachable);
+    const cloudVerifiedByLocal = state.install.localReachable === true && state.install.deviceCloudReachable === true;
     const bleCard = byId('ble-device-ble-card');
     if (bleCard) {
-      const hideCard = cloudLinked && state.ble.provisioningComplete;
+      // Hide BLE card only after explicit success and local device confirms cloud is up.
+      const hideCard = cloudVerifiedByLocal && state.ble.provisioningComplete;
       bleCard.style.display = hideCard ? 'none' : '';
     }
     if (cloudLinked && !isConnected) {
@@ -934,7 +938,6 @@
       && Array.isArray(state.ble.scanResults)
       && state.ble.scanResults.length > 0
       && selectedDeviceReady
-      && state.install.deviceCloudReachable !== true
       && state.ble.provisioningComplete !== true;
 
     section.style.display = canShow ? 'block' : 'none';
@@ -2124,6 +2127,43 @@
     }
   }
 
+  function vpsBaseFromHealthUrl(rawUrl) {
+    const raw = String(rawUrl || '').trim();
+    if (!raw) {
+      return '';
+    }
+    try {
+      const parsed = new URL(raw);
+      const path = String(parsed.pathname || '').replace(/\/+$/, '');
+      if (/\/api\/health$/i.test(path)) {
+        parsed.pathname = path.replace(/\/api\/health$/i, '');
+      } else if (/\/health$/i.test(path)) {
+        parsed.pathname = path.replace(/\/health$/i, '');
+      }
+      if (!parsed.pathname) {
+        parsed.pathname = '/';
+      }
+      parsed.search = '';
+      parsed.hash = '';
+      return parsed.toString().replace(/\/+$/, '');
+    } catch (error) {
+      return raw.replace(/\/+$/, '').replace(/\/api\/health$/i, '').replace(/\/health$/i, '');
+    }
+  }
+
+  function hostFromUrl(rawUrl) {
+    const raw = String(rawUrl || '').trim();
+    if (!raw) {
+      return '';
+    }
+    try {
+      return new URL(raw).hostname || '';
+    } catch (error) {
+      const noScheme = raw.replace(/^https?:\/\//i, '');
+      return noScheme.split('/')[0].split(':')[0].trim();
+    }
+  }
+
   function applyAdminPanelVisibility() {
     const panel = byId('mobile-user-admin-panel');
     if (!panel) {
@@ -2739,6 +2779,9 @@
     const ssid = String(byId('ble-wifi-ssid')?.value || '').trim();
     const password = String(byId('ble-wifi-password')?.value || '');
     const vpsUrl = resolveVpsHealthUrl();
+    const provisionKey = String(byId('ble-provision-key')?.value || state.install.provisionKey || '').trim();
+    state.install.provisionKey = provisionKey;
+    saveSession();
     console.log(`[FG][PROVISION] apply tapped ssid=${ssid || '-'} vps=${vpsUrl || '-'}`);
 
     if (!ssid) {
@@ -2758,31 +2801,49 @@
       provisionBtn.disabled = true;
     }
     state.ble.provisionInProgress = true;
+    // Reset transient cloud flag for this provisioning run.
+    state.install.deviceCloudReachable = false;
+    updateBleStatusLabel();
+    updateBleProvisionSectionVisibility();
     showToast('Starting provisioning...');
     startProvisionModal(ssid);
 
     let activeStep = 1;
     try {
+      const preProvisionBackendUpdateMs = Number(new Date(selectedLocationRecord()?.last_update || 0).getTime()) || 0;
       await delay(220);
-      setProvisionStep(1, 'active', 'Claiming device and fetching cloud token...');
+      let provisionProfile = null;
+      let cloudVpsUrl = vpsBaseFromHealthUrl(vpsUrl) || String(vpsUrl || '').trim();
+      let cloudVpsProbeUrl = String(vpsUrl || '').trim() || cloudVpsUrl;
+      let mqttHost = hostFromUrl(cloudVpsUrl);
+      let mqttPort = 1883;
+      let mqttUser = '';
+      let mqttPassword = '';
+      let shouldSendMqttAuth = false;
 
-      const provisionProfile = await requestDeviceProvisionProfile();
-      const cloud = provisionProfile?.cloud || {};
-      const cloudVpsUrl = String(cloud.vps_base_url || vpsUrl || '').trim() || vpsUrl;
-      const cloudVpsProbeUrl = String(cloud.vps_check_url || cloudVpsUrl || '').trim() || cloudVpsUrl;
-      const mqttHost = String(cloud?.mqtt?.host || '').trim();
-      const mqttPort = Number(cloud?.mqtt?.port || 0);
-      const mqttUser = String(cloud?.mqtt?.username || '').trim();
-      const mqttPassword = String(cloud?.mqtt?.password || provisionProfile?.device_token || '').trim();
-      const mqttAuthMode = String(cloud?.mqtt?.auth_mode || '').trim().toLowerCase();
-      const shouldSendMqttAuth = mqttAuthMode === 'token'
-        || mqttAuthMode === 'credentials'
-        || mqttAuthMode === 'password'
-        || Boolean(mqttUser || mqttPassword);
-      state.install.tokenExpiresAt = String(provisionProfile?.token_expires_at || '').trim();
-
-      const expiryLabel = state.install.tokenExpiresAt ? formatDateTime(state.install.tokenExpiresAt) : '--';
-      setProvisionStep(1, 'done', `Token ready (expires ${expiryLabel}).`);
+      if (provisionKey) {
+        setProvisionStep(1, 'active', 'Using provision key for device registration...');
+        state.install.tokenExpiresAt = '';
+        setProvisionStep(1, 'done', 'Provision key ready. Device will fetch x-device-key from VPS.');
+      } else {
+        setProvisionStep(1, 'active', 'Provision key missing. Falling back to cloud token profile...');
+        provisionProfile = await requestDeviceProvisionProfile();
+        const cloud = provisionProfile?.cloud || {};
+        cloudVpsUrl = String(cloud.vps_base_url || cloudVpsUrl || vpsUrl || '').trim() || cloudVpsUrl || vpsUrl;
+        cloudVpsProbeUrl = String(cloud.vps_check_url || cloudVpsUrl || cloudVpsProbeUrl || '').trim() || cloudVpsUrl;
+        mqttHost = String(cloud?.mqtt?.host || mqttHost || '').trim() || mqttHost;
+        mqttPort = Number(cloud?.mqtt?.port || mqttPort || 1883);
+        mqttUser = String(cloud?.mqtt?.username || '').trim();
+        mqttPassword = String(cloud?.mqtt?.password || provisionProfile?.device_token || '').trim();
+        const mqttAuthMode = String(cloud?.mqtt?.auth_mode || '').trim().toLowerCase();
+        shouldSendMqttAuth = mqttAuthMode === 'token'
+          || mqttAuthMode === 'credentials'
+          || mqttAuthMode === 'password'
+          || Boolean(mqttUser || mqttPassword);
+        state.install.tokenExpiresAt = String(provisionProfile?.token_expires_at || '').trim();
+        const expiryLabel = state.install.tokenExpiresAt ? formatDateTime(state.install.tokenExpiresAt) : '--';
+        setProvisionStep(1, 'done', `Token ready (expires ${expiryLabel}).`);
+      }
       activeStep = 2;
       setProvisionStep(2, 'active', `Checking current Wi-Fi state for "${ssid}"...`);
 
@@ -2870,13 +2931,17 @@
       const cloudCommandPayload = {
         cmd: 'c',
         u: cloudVpsUrl,
-        vps_url: cloudVpsUrl,
         vu: cloudVpsProbeUrl,
-        cv: true,
-        t: provisionProfile.device_token,
+        // Avoid long blocking probe inside BLE command; we verify cloud in following checks.
+        cv: false,
         ar: voltageSettings.divider,
         ac: voltageSettings.calibration
       };
+      if (provisionKey) {
+        cloudCommandPayload.pk = provisionKey;
+      } else if (provisionProfile?.device_token) {
+        cloudCommandPayload.t = provisionProfile.device_token;
+      }
       if (mqttHost) {
         cloudCommandPayload.mh = mqttHost;
       }
@@ -2892,6 +2957,9 @@
       const cloudDebugPayload = { ...cloudCommandPayload };
       if (cloudDebugPayload.t) {
         cloudDebugPayload.t = '***';
+      }
+      if (cloudDebugPayload.pk) {
+        cloudDebugPayload.pk = '***';
       }
       if (cloudDebugPayload.mw) {
         cloudDebugPayload.mw = '***';
@@ -2915,12 +2983,14 @@
       let cloudReachable = false;
       let cloudNote = 'No cloud status from device.';
       let hasVpsFlag = false;
+      let cloudProfileSaved = false;
 
       if (cloudResponse) {
         console.log(`[FG][PROVISION] cloud response ${prettyJson(cloudResponse)}`);
         setBleOutputs(null, prettyJson(cloudResponse));
         applyVoltageSettingsFromPayload(cloudResponse);
         syncVoltageInputsFromState();
+        cloudProfileSaved = cloudResponse?.cs === true || cloudResponse?.cloud_saved === true;
 
         hasVpsFlag = typeof cloudResponse?.vps_reachable === 'boolean' || typeof cloudResponse?.vr === 'boolean';
         if (hasVpsFlag) {
@@ -2945,7 +3015,9 @@
           cloudNote = cloudResponse.mqtt_connected ? 'MQTT connected.' : 'MQTT not connected.';
         } else {
           state.install.deviceCloudReachable = false;
-          cloudNote = 'Cloud command response did not include status.';
+          cloudNote = cloudProfileSaved
+            ? 'Cloud profile saved on device. Waiting for cloud connection signal...'
+            : 'Cloud response received. Waiting for cloud connection signal...';
         }
       } else {
         if (!isBleNoResponseError(cloudCommandError)) {
@@ -2955,6 +3027,32 @@
         setBleOutputs(null, `Cloud response pending: ${msg}`);
         setProvisionStep(3, 'active', 'BLE response delayed. Verifying via local + backend...');
         cloudNote = `No BLE cloud response (${msg}).`;
+
+        // Recovery path: ask a compact health response to confirm MQTT link after cloud apply.
+        try {
+          const bleHealth = await bleSendCommand(
+            { cmd: 'health', check_vps: false },
+            {
+              expectCmd: 'health',
+              maxWaitMs: 12000,
+              readTimeoutMs: 4500,
+              initialDelayMs: 300,
+              pollIntervalMs: 500
+            }
+          );
+          if (typeof bleHealth?.mqtt_connected === 'boolean') {
+            cloudReachable = bleHealth.mqtt_connected;
+            state.install.deviceCloudReachable = cloudReachable;
+            setInstallMetric('ble-device-cloud-status', cloudReachable ? 'UP' : 'DOWN', cloudReachable ? 'good' : 'bad');
+            updateBleStatusLabel();
+            cloudNote += ` | BLE health MQTT ${cloudReachable ? 'UP' : 'DOWN'}`;
+          }
+          if (bleHealth?.ip) {
+            updateLocalUrlFromState(bleHealth.ip);
+          }
+        } catch (healthError) {
+          cloudNote += ` | BLE health check failed (${String(healthError?.message || 'error')})`;
+        }
       }
 
       setProvisionStep(3, 'active', 'Checking device local + cloud over HTTP...');
@@ -2976,30 +3074,59 @@
       }
 
       if (!cloudReachable && !state.loading) {
-        try {
-          await refreshAppData();
-        } catch (error) {
-          // ignore backend refresh errors in fallback path
+        const backendPollWindowMs = 90000;
+        const backendPollEveryMs = 5000;
+        const pollStartedAt = Date.now();
+        let lastBackendReason = 'Backend not checked';
+        let firstPoll = true;
+
+        while (!cloudReachable && (Date.now() - pollStartedAt) < backendPollWindowMs) {
+          setProvisionStep(3, 'active', firstPoll
+            ? 'Waiting for cloud heartbeat on backend...'
+            : 'Still waiting for backend cloud confirmation...');
+          firstPoll = false;
+
+          try {
+            await refreshAppData();
+          } catch (error) {
+            // ignore backend refresh errors in fallback path
+          }
+          const backendHealth = evaluateDeviceCloudHealth();
+          lastBackendReason = backendHealth.reason;
+          const backendLastUpdateMs = Number(new Date(selectedLocationRecord()?.last_update || 0).getTime()) || 0;
+          const hasFreshPostProvisionTelemetry = backendLastUpdateMs > (preProvisionBackendUpdateMs + 1000);
+          if (backendHealth.healthy && hasFreshPostProvisionTelemetry) {
+            cloudReachable = true;
+            state.install.deviceCloudReachable = true;
+            setInstallMetric('ble-device-cloud-status', 'UP', 'good');
+            updateBleStatusLabel();
+            cloudNote += ` | Backend telemetry confirms cloud UP (${backendHealth.reason})`;
+            break;
+          }
+          if (backendHealth.healthy && !hasFreshPostProvisionTelemetry) {
+            lastBackendReason = `${backendHealth.reason} (waiting for fresh telemetry after apply)`;
+          }
+          await delay(backendPollEveryMs);
         }
-        const backendHealth = evaluateDeviceCloudHealth();
-        if (backendHealth.healthy) {
-          cloudReachable = true;
-          state.install.deviceCloudReachable = true;
-          setInstallMetric('ble-device-cloud-status', 'UP', 'good');
-          updateBleStatusLabel();
-          cloudNote += ` | Backend telemetry confirms cloud UP (${backendHealth.reason})`;
-        } else {
-          cloudNote += ` | Backend telemetry: ${backendHealth.reason}`;
+
+        if (!cloudReachable) {
+          cloudNote += ` | Backend telemetry: ${lastBackendReason}`;
         }
       }
 
       if (!cloudReachable) {
         setProvisionFinalStepTitle('failed');
         setProvisionStep(3, 'error', cloudNote);
-        setProvisionStep(4, 'error', 'Wi-Fi is set, but cloud is not connected.');
-        setProvisionModalNote('Device saved Wi-Fi but cloud check failed.');
+        setProvisionStep(4, 'error', cloudProfileSaved
+          ? 'Cloud profile saved, but device has not reached cloud yet.'
+          : 'Wi-Fi is set, but cloud is not connected.');
+        setProvisionModalNote(cloudProfileSaved
+          ? 'Cloud profile is saved on device. Wait for internet/cloud reachability and retry check.'
+          : 'Device saved Wi-Fi but cloud check failed.');
         setProvisionCloseEnabled(true);
-        showToast('Wi-Fi saved, but cloud is not reachable from device.', true);
+        showToast(cloudProfileSaved
+          ? 'Cloud profile saved. Device is still not reaching cloud.'
+          : 'Wi-Fi saved, but cloud is not reachable from device.', true);
       } else {
         setProvisionFinalStepTitle('success');
         setProvisionStep(3, 'done', cloudNote);
@@ -3319,6 +3446,7 @@
       state.user = saved.user || null;
       state.session = saved.session || null;
       state.install.localUrl = normalizeLocalDeviceUrl(saved.install?.localUrl || '');
+      state.install.provisionKey = String(saved.install?.provisionKey || '').trim();
       state.install.adcDividerRatio = Number(saved.install?.adcDividerRatio || 5.0);
       state.install.adcCalibrationFactor = Number(saved.install?.adcCalibrationFactor || 1.0);
       state.ble.phoneWifiSsid = String(saved.ble?.phoneWifiSsid || '').trim();
@@ -3336,6 +3464,9 @@
     }
     if (byId('login-password') && !byId('login-password').value) {
       byId('login-password').value = '123456';
+    }
+    if (byId('ble-provision-key') && state.install.provisionKey) {
+      byId('ble-provision-key').value = state.install.provisionKey;
     }
 
     const ok = await verifySession();

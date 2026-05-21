@@ -24,6 +24,8 @@
     "security":  {
                      "apiKey":  "FG_LOCAL_DEV_KEY",
                      "jwtSecret":  "CHANGE_THIS_IN_PRODUCTION",
+                     "deviceProvisionKey":  "FloodGuard@302020",
+                     "requireDeviceProvisionKey":  true,
                      "allowDeviceIdAuth":  false
                  }
 }

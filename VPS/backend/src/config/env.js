@@ -69,6 +69,8 @@ module.exports = {
   jwtSecret: process.env.JWT_SECRET || security.jwtSecret || 'floodguard-dev-secret',
   jwtTtl: process.env.JWT_TTL || '8h',
   apiKey: process.env.API_KEY || security.apiKey || 'FG_LOCAL_DEV_KEY',
+  deviceProvisionKey: process.env.DEVICE_PROVISION_KEY || security.deviceProvisionKey || '',
+  requireDeviceProvisionKey: readBool('REQUIRE_DEVICE_PROVISION_KEY', security.requireDeviceProvisionKey !== false),
   allowDeviceIdAuth: readBool('ALLOW_DEVICE_ID_AUTH', security.allowDeviceIdAuth !== false),
   timezone: process.env.TZ_NAME || deployment.timezone || 'Asia/Kolkata',
   retentionNoWaterHours: readNumber('RETENTION_NO_WATER_HOURS', 24),

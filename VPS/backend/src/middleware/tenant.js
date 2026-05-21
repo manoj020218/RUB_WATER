@@ -25,10 +25,15 @@ function requireApiKeyOrKnownDevice(req, res, next) {
   }
 
   const deviceId = resolveDeviceId(req);
-  const deviceToken = String(req.headers['x-device-token'] || req.headers['x-provision-token'] || '').trim();
+  const deviceToken = String(
+    req.headers['x-device-key']
+      || req.headers['x-device-token']
+      || req.headers['x-provision-token']
+      || ''
+  ).trim();
   if (deviceId && deviceToken && deviceRepository.verifyDeviceToken(deviceId, deviceToken)) {
     req.deviceAuth = {
-      mode: 'device_token',
+      mode: 'device_key',
       device_id: deviceId
     };
     return next();
@@ -42,7 +47,7 @@ function requireApiKeyOrKnownDevice(req, res, next) {
     return next();
   }
 
-  return next(unauthorized('Valid x-api-key, x-device-token, or known device_id is required'));
+  return next(unauthorized('Valid x-api-key, x-device-key, x-device-token, or known device_id is required'));
 }
 
 function attachProxyActor(req, res, next) {

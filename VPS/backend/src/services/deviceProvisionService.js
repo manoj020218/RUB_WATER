@@ -43,9 +43,29 @@ function buildCloudInfo(deviceId) {
       auth_mode: 'token'
     },
     auth_headers: {
+      device_key: 'x-device-key',
       device_token: 'x-device-token'
     }
   };
+}
+
+function assertProvisionKey(providedKey) {
+  const requiredKey = String(env.deviceProvisionKey || '').trim();
+  const provided = String(providedKey || '').trim();
+
+  if (env.requireDeviceProvisionKey) {
+    if (!requiredKey) {
+      throw forbidden('Device registration is locked: server provision key is not configured');
+    }
+    if (!provided || provided !== requiredKey) {
+      throw forbidden('Invalid or missing x-provision-key');
+    }
+    return;
+  }
+
+  if (requiredKey && provided && provided !== requiredKey) {
+    throw forbidden('Invalid x-provision-key');
+  }
 }
 
 function getDeviceWithAccess(deviceId, authContext) {
@@ -141,6 +161,7 @@ function createProvisionProfile({ deviceId, authContext, ipAddress }) {
     claimed_by_user_id: claimed.security?.claimed_by_user_id || null,
     claimed_by_name: claimed.security?.claimed_by_name || null,
     token_expires_at: expiresAt.toISOString(),
+    device_key: token,
     device_token: token,
     cloud: {
       ...cloud,
@@ -152,7 +173,60 @@ function createProvisionProfile({ deviceId, authContext, ipAddress }) {
   };
 }
 
+function registerDeviceWithProvisionKey({ deviceId, provisionKey, ipAddress }) {
+  assertProvisionKey(provisionKey);
+  const normalizedDeviceId = String(deviceId || '').trim().toUpperCase();
+  if (!normalizedDeviceId) {
+    throw notFound('Device not found');
+  }
+
+  const device = deviceRepository.findById(normalizedDeviceId);
+  if (!device) {
+    throw notFound('Device not found');
+  }
+
+  const ttlHours = Number.isFinite(Number(env.deviceTokenTtlHours))
+    ? Math.max(1, Number(env.deviceTokenTtlHours))
+    : 720;
+  const issuedAt = new Date();
+  const expiresAt = new Date(issuedAt.getTime() + (ttlHours * 60 * 60 * 1000));
+  const deviceKey = `fgk_${crypto.randomBytes(24).toString('base64url')}`;
+  const updated = deviceRepository.setDeviceToken(device._id, deviceKey, expiresAt.toISOString(), null);
+  const cloud = buildCloudInfo(device._id);
+
+  auditService.writeAuditLog({
+    locationId: device.location_id,
+    eventType: 'DEVICE_KEY_ISSUED_BY_PROVISION_KEY',
+    performedBy: 'device_register',
+    loginId: 'device_register',
+    sessionId: null,
+    deviceName: device._id,
+    ipAddress,
+    details: {
+      token_expires_at: expiresAt.toISOString(),
+      token_hint: updated?.security?.token_hint || null
+    }
+  });
+
+  return {
+    device_id: device._id,
+    location_id: device.location_id,
+    token_expires_at: expiresAt.toISOString(),
+    device_key: deviceKey,
+    device_token: deviceKey,
+    cloud: {
+      ...cloud,
+      mqtt: {
+        ...cloud.mqtt,
+        auth_mode: 'device_key',
+        password: deviceKey
+      }
+    }
+  };
+}
+
 module.exports = {
   claimDevice,
-  createProvisionProfile
+  createProvisionProfile,
+  registerDeviceWithProvisionKey
 };

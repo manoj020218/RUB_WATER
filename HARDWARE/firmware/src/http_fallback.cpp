@@ -217,6 +217,7 @@ void HttpFallbackService::persistCloudAuth() {
 void HttpFallbackService::applyAuthHeaders(HTTPClient& client) {
     client.addHeader("x-device-id", String(_deviceId));
     if (_deviceToken[0] != '\0') {
+        client.addHeader("x-device-key", String(_deviceToken));
         client.addHeader("x-device-token", String(_deviceToken));
     }
 }

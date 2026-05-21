@@ -179,6 +179,33 @@ test('FloodGuard VPS API regression suite', async () => {
   });
   assert.equal(vendorLogin.response.status, 200);
   const vendorToken = vendorLogin.body.data.token;
+  const provisionProfile = await requestJson('/api/devices/RUB043-CTRL01/provision-profile', {
+    method: 'POST',
+    headers: {
+      authorization: `Bearer ${vendorToken}`
+    }
+  });
+  assert.equal(provisionProfile.response.status, 200);
+  assert.ok(provisionProfile.body.data.device_key);
+
+  const telemetryByDeviceKey = await requestJson('/api/device/telemetry', {
+    method: 'POST',
+    headers: {
+      'content-type': 'application/json',
+      'x-device-key': provisionProfile.body.data.device_key
+    },
+    body: JSON.stringify({
+      device_id: 'RUB043-CTRL01',
+      location_id: 'RUB043',
+      status: 'NORMAL',
+      water_level_mm: 10,
+      distance_mm: 1190,
+      switch_300mm: false,
+      switch_500mm: false,
+      firmware_version: '0.2.0-dev'
+    })
+  });
+  assert.equal(telemetryByDeviceKey.response.status, 201);
 
   const putConfig = await requestJson('/api/devices/RUB043-CTRL01/config', {
     method: 'PUT',

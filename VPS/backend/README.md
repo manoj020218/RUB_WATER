@@ -83,7 +83,8 @@ src/
 - `GET /api/auth/me`
 - `POST /api/auth/logout`
 
-### Device ingress and fallback (`x-api-key` required)
+### Device ingress and fallback (`x-api-key` or `x-device-key`)
+- `POST /api/device/register` (`x-provision-key` + `device_id` body)
 - `POST /api/device/telemetry`
 - `POST /api/device/event`
 - `GET /api/device/:deviceId/commands/pending`

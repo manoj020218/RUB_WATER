@@ -2,11 +2,25 @@ const deviceService = require('../services/deviceService');
 const commandService = require('../services/commandService');
 const firmwareService = require('../services/firmwareService');
 const deviceConfigService = require('../services/deviceConfigService');
+const deviceProvisionService = require('../services/deviceProvisionService');
 
 function ingestTelemetry(req, res, next) {
   try {
     const record = deviceService.ingestTelemetry(req.body);
     res.status(201).json({ ok: true, data: record });
+  } catch (error) {
+    next(error);
+  }
+}
+
+function registerDevice(req, res, next) {
+  try {
+    const data = deviceProvisionService.registerDeviceWithProvisionKey({
+      deviceId: req.body?.device_id || req.body?.deviceId || req.query?.device_id || req.query?.deviceId,
+      provisionKey: req.headers['x-provision-key'] || req.body?.provision_key || req.body?.provisionKey,
+      ipAddress: req.ip
+    });
+    res.status(201).json({ ok: true, data });
   } catch (error) {
     next(error);
   }
@@ -83,6 +97,7 @@ function getLatestFirmware(req, res, next) {
 }
 
 module.exports = {
+  registerDevice,
   ingestTelemetry,
   ingestEvent,
   getPendingCommands,

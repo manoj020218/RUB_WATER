@@ -231,6 +231,9 @@
               <input class="inp" id="ble-wifi-password" type="password" placeholder="Wi-Fi password">
               <button class="ghost-btn eye-btn" type="button" id="ble-pass-toggle-btn" onclick="toggleBleWifiPasswordVisibility()">Show</button>
             </div>
+            <label class="lbl">Provision Key</label>
+            <input class="inp" id="ble-provision-key" type="password" placeholder="x-provision-key for device registration">
+            <div class="meta">Used once to register device and get `x-device-key` automatically.</div>
             <label class="lbl">ADC Divider Ratio</label>
             <input class="inp" id="ble-adc-divider-ratio" type="number" min="1.0" max="25.0" step="0.01" value="5.00">
             <label class="lbl">ADC Calibration Factor</label>
