@@ -46,7 +46,8 @@
       phoneWifiSsid: '',
       scanTriggered: false,
       scanInProgress: false,
-      provisioningComplete: false
+      provisioningComplete: false,
+      commandQueue: null
     }
   };
 
@@ -491,10 +492,15 @@
 
   function renderInstallCloudStatuses() {
     const cloud = evaluateDeviceCloudHealth();
-    state.install.deviceCloudReachable = cloud.healthy;
-    state.install.lastCloudReason = cloud.reason;
-    setInstallMetric('ble-device-cloud-status', cloud.healthy ? 'UP' : 'DOWN', cloud.healthy ? 'good' : 'bad');
+    const localCloudHintUp = state.install.localReachable === true && state.install.deviceCloudReachable === true;
+    const effectiveCloudUp = cloud.healthy || localCloudHintUp;
+    state.install.deviceCloudReachable = effectiveCloudUp;
+    state.install.lastCloudReason = cloud.healthy
+      ? cloud.reason
+      : (localCloudHintUp ? `${cloud.reason} | local device reports cloud UP` : cloud.reason);
+    setInstallMetric('ble-device-cloud-status', effectiveCloudUp ? 'UP' : 'DOWN', effectiveCloudUp ? 'good' : 'bad');
     updateBleStatusLabel();
+    updateBleProvisionSectionVisibility();
   }
 
   function statusMeta(rawStatus) {
@@ -927,6 +933,7 @@
       && Array.isArray(state.ble.scanResults)
       && state.ble.scanResults.length > 0
       && selectedDeviceReady
+      && state.install.deviceCloudReachable !== true
       && state.ble.provisioningComplete !== true;
 
     section.style.display = canShow ? 'block' : 'none';
@@ -989,6 +996,17 @@
   function startProvisionModal(ssid) {
     clearTimeout(startProvisionModal.autoCloseTimer);
     startProvisionModal.autoCloseTimer = null;
+    try {
+      if (document.activeElement && typeof document.activeElement.blur === 'function') {
+        document.activeElement.blur();
+      }
+    } catch (error) {
+      // ignore blur failures
+    }
+    const passInput = byId('ble-wifi-password');
+    if (passInput && typeof passInput.blur === 'function') {
+      passInput.blur();
+    }
     setProvisionModalVisible(true);
     setProvisionCloseEnabled(true);
     setProvisionModalNote(`Provisioning SSID "${ssid}"...`);
@@ -1156,6 +1174,10 @@
       applyLocalStatus(payload, localUrl);
       return true;
     } catch (error) {
+      if (silent && state.install.localReachable === true) {
+        // Do not downgrade UI cards on transient background/local-network hiccups.
+        return false;
+      }
       state.install.localReachable = false;
       setInstallMetric('ble-device-local-status', 'DOWN', 'bad');
       setText('ble-device-local-address', `Address: ${state.install.localIp || localUrl}`);
@@ -1209,6 +1231,24 @@
       || text.includes('device was disconnected')
       || text.includes('gatt')
       || text.includes('status 133');
+  }
+
+  function isBleNoResponseError(error) {
+    const text = String(error?.message || '').toLowerCase();
+    return text.includes('no response received from device over ble')
+      || text.includes('no matching ble response')
+      || text.includes('ble read timeout')
+      || text.includes('not connected to device')
+      || text.includes('connection timeout');
+  }
+
+  function enqueueBleCommand(task) {
+    const previous = state.ble.commandQueue || Promise.resolve();
+    const run = previous.then(() => task());
+    state.ble.commandQueue = run.catch(() => {
+      // Keep queue alive after failures so next command can still run.
+    });
+    return run;
   }
 
   function wifiStatusTextFromCode(code) {
@@ -1289,6 +1329,9 @@
           });
           text = String(hexToText(read?.value || '') || '').trim();
         } catch (error) {
+          if (shouldRetryBleConnection(error)) {
+            throw error;
+          }
           if (Date.now() - started >= maxWaitMs) {
             throw new Error(`BLE read timeout: ${error.message}`);
           }
@@ -1353,16 +1396,18 @@
         : 'No response received from device over BLE.');
     };
 
-    try {
-      return await runCommandOnce(false);
-    } catch (error) {
-      if (shouldRetryBleConnection(error)) {
-        state.ble.connectedDeviceId = '';
-        await delay(300);
-        return runCommandOnce(true);
+    return enqueueBleCommand(async () => {
+      try {
+        return await runCommandOnce(false);
+      } catch (error) {
+        if (shouldRetryBleConnection(error)) {
+          state.ble.connectedDeviceId = '';
+          await delay(300);
+          return runCommandOnce(true);
+        }
+        throw error;
       }
-      throw error;
-    }
+    });
   }
 
   function updateVpsUrlInput() {
@@ -1484,7 +1529,6 @@
     updateVpsUrlInput();
     await checkAppVpsHealth();
     renderInstallCloudStatuses();
-    await refreshLocalDeviceStatusApp(true);
     renderBleDeviceList();
     renderBleWifiList();
     renderBleWifiSelect();
@@ -2109,6 +2153,7 @@
       state.ble.scanTriggered = false;
       state.ble.scanInProgress = false;
       state.ble.provisioningComplete = false;
+      state.ble.commandQueue = null;
       state.install.tokenExpiresAt = '';
       setBleScanProgress(false);
       renderBleDeviceList();
@@ -2463,10 +2508,7 @@
       renderBleWifiSelect();
     }
 
-    const passInput = byId('ble-wifi-password');
-    if (passInput) {
-      passInput.focus();
-    }
+    // Avoid forcing keyboard open immediately after BLE selection.
   }
 
   function pickBleWifiSsidApp(ssid) {
@@ -2485,6 +2527,7 @@
     state.ble.selectedDeviceId = '';
     state.ble.connectedDeviceId = '';
     state.ble.wifiNetworks = [];
+    state.ble.commandQueue = null;
     state.ble.phoneWifiSsid = readPhoneWifiSsid();
     renderPhoneWifiSsid();
     setText('ble-selected-device', 'Selected: tap a BLE device to continue');
@@ -2687,6 +2730,7 @@
     const ssid = String(byId('ble-wifi-ssid')?.value || '').trim();
     const password = String(byId('ble-wifi-password')?.value || '');
     const vpsUrl = resolveVpsHealthUrl();
+    console.log(`[FG][PROVISION] apply tapped ssid=${ssid || '-'} vps=${vpsUrl || '-'}`);
 
     if (!ssid) {
       showToast('SSID not detected. Scan Wi-Fi once and retry.', true);
@@ -2704,6 +2748,7 @@
     if (provisionBtn) {
       provisionBtn.disabled = true;
     }
+    showToast('Starting provisioning...');
     startProvisionModal(ssid);
 
     let activeStep = 1;
@@ -2842,46 +2887,67 @@
       }
       console.log(`[FG][PROVISION] cloud command ${prettyJson(cloudDebugPayload)}`);
 
-      const cloudResponse = await bleSendCommand(cloudCommandPayload, {
-        expectCmd: 'c',
-        maxWaitMs: 25000,
-        readTimeoutMs: 6000,
-        initialDelayMs: 450,
-        pollIntervalMs: 650
-      });
-      console.log(`[FG][PROVISION] cloud response ${prettyJson(cloudResponse)}`);
-      setBleOutputs(null, prettyJson(cloudResponse));
-      applyVoltageSettingsFromPayload(cloudResponse);
-      syncVoltageInputsFromState();
-      setProvisionStep(3, 'active', 'Checking device local + cloud over HTTP...');
+      let cloudResponse = null;
+      let cloudCommandError = null;
+      try {
+        cloudResponse = await bleSendCommand(cloudCommandPayload, {
+          expectCmd: 'c',
+          maxWaitMs: 45000,
+          readTimeoutMs: 6500,
+          initialDelayMs: 450,
+          pollIntervalMs: 700
+        });
+      } catch (error) {
+        cloudCommandError = error;
+      }
 
       let cloudReachable = false;
       let cloudNote = 'No cloud status from device.';
-      const hasVpsFlag = typeof cloudResponse?.vps_reachable === 'boolean' || typeof cloudResponse?.vr === 'boolean';
-      if (hasVpsFlag) {
-        const vpsReachable = (typeof cloudResponse?.vps_reachable === 'boolean')
-          ? cloudResponse.vps_reachable
-          : cloudResponse.vr;
-        state.install.deviceCloudReachable = vpsReachable;
-        setInstallMetric('ble-device-cloud-status', vpsReachable ? 'UP' : 'DOWN', vpsReachable ? 'good' : 'bad');
-        updateBleStatusLabel();
-        cloudReachable = vpsReachable;
-        const httpCode = Number.isFinite(Number(cloudResponse?.vps_http_code))
-          ? Number(cloudResponse?.vps_http_code)
-          : Number(cloudResponse?.vh);
-        const code = Number.isFinite(httpCode) ? `HTTP ${httpCode}` : 'No HTTP code';
-        const detail = String(cloudResponse?.vps_error || cloudResponse?.ve || '').trim();
-        cloudNote = `${vpsReachable ? 'VPS reachable' : 'VPS not reachable'} (${code})${detail ? ` - ${detail}` : ''}`;
-      } else if (typeof cloudResponse?.mqtt_connected === 'boolean') {
-        state.install.deviceCloudReachable = cloudResponse.mqtt_connected;
-        setInstallMetric('ble-device-cloud-status', cloudResponse.mqtt_connected ? 'UP' : 'DOWN', cloudResponse.mqtt_connected ? 'good' : 'bad');
-        updateBleStatusLabel();
-        cloudReachable = cloudResponse.mqtt_connected;
-        cloudNote = cloudResponse.mqtt_connected ? 'MQTT connected.' : 'MQTT not connected.';
+      let hasVpsFlag = false;
+
+      if (cloudResponse) {
+        console.log(`[FG][PROVISION] cloud response ${prettyJson(cloudResponse)}`);
+        setBleOutputs(null, prettyJson(cloudResponse));
+        applyVoltageSettingsFromPayload(cloudResponse);
+        syncVoltageInputsFromState();
+
+        hasVpsFlag = typeof cloudResponse?.vps_reachable === 'boolean' || typeof cloudResponse?.vr === 'boolean';
+        if (hasVpsFlag) {
+          const vpsReachable = (typeof cloudResponse?.vps_reachable === 'boolean')
+            ? cloudResponse.vps_reachable
+            : cloudResponse.vr;
+          state.install.deviceCloudReachable = vpsReachable;
+          setInstallMetric('ble-device-cloud-status', vpsReachable ? 'UP' : 'DOWN', vpsReachable ? 'good' : 'bad');
+          updateBleStatusLabel();
+          cloudReachable = vpsReachable;
+          const httpCode = Number.isFinite(Number(cloudResponse?.vps_http_code))
+            ? Number(cloudResponse?.vps_http_code)
+            : Number(cloudResponse?.vh);
+          const code = Number.isFinite(httpCode) ? `HTTP ${httpCode}` : 'No HTTP code';
+          const detail = String(cloudResponse?.vps_error || cloudResponse?.ve || '').trim();
+          cloudNote = `${vpsReachable ? 'VPS reachable' : 'VPS not reachable'} (${code})${detail ? ` - ${detail}` : ''}`;
+        } else if (typeof cloudResponse?.mqtt_connected === 'boolean') {
+          state.install.deviceCloudReachable = cloudResponse.mqtt_connected;
+          setInstallMetric('ble-device-cloud-status', cloudResponse.mqtt_connected ? 'UP' : 'DOWN', cloudResponse.mqtt_connected ? 'good' : 'bad');
+          updateBleStatusLabel();
+          cloudReachable = cloudResponse.mqtt_connected;
+          cloudNote = cloudResponse.mqtt_connected ? 'MQTT connected.' : 'MQTT not connected.';
+        } else {
+          state.install.deviceCloudReachable = false;
+          cloudNote = 'Cloud command response did not include status.';
+        }
       } else {
-        state.install.deviceCloudReachable = false;
-        cloudNote = 'Could not read local HTTP status from device.';
+        if (!isBleNoResponseError(cloudCommandError)) {
+          throw cloudCommandError;
+        }
+        const msg = String(cloudCommandError?.message || 'BLE response timeout');
+        setBleOutputs(null, `Cloud response pending: ${msg}`);
+        setProvisionStep(3, 'active', 'BLE response delayed. Verifying via local + backend...');
+        cloudNote = `No BLE cloud response (${msg}).`;
       }
+
+      setProvisionStep(3, 'active', 'Checking device local + cloud over HTTP...');
+
       const localUrlAfterCloud = updateLocalUrlFromState(wifiResponse?.ip || '');
       const localOk = localUrlAfterCloud ? await refreshLocalDeviceStatusApp(true) : false;
       if (localOk) {
@@ -2894,7 +2960,25 @@
           cloudNote += ` | Local MQTT ${localCloudState ? 'UP' : 'DOWN'}`;
         } else {
           cloudReachable = localCloudState;
-          cloudNote = localCloudState ? 'HTTP local status says cloud is connected.' : 'HTTP local status says cloud is not connected.';
+          cloudNote += ` | Local HTTP says cloud is ${localCloudState ? 'UP' : 'DOWN'}`;
+        }
+      }
+
+      if (!cloudReachable && !state.loading) {
+        try {
+          await refreshAppData();
+        } catch (error) {
+          // ignore backend refresh errors in fallback path
+        }
+        const backendHealth = evaluateDeviceCloudHealth();
+        if (backendHealth.healthy) {
+          cloudReachable = true;
+          state.install.deviceCloudReachable = true;
+          setInstallMetric('ble-device-cloud-status', 'UP', 'good');
+          updateBleStatusLabel();
+          cloudNote += ` | Backend telemetry confirms cloud UP (${backendHealth.reason})`;
+        } else {
+          cloudNote += ` | Backend telemetry: ${backendHealth.reason}`;
         }
       }
 
@@ -2921,7 +3005,6 @@
       }
 
       await checkAppVpsHealth();
-      await refreshLocalDeviceStatusApp(true);
     } catch (error) {
       if (error?.rawResponse && typeof error.rawResponse === 'object') {
         setBleOutputs(null, `Error: ${error.message}\n\nRaw:\n${prettyJson(error.rawResponse)}`);
