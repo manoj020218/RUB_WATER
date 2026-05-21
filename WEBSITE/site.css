@@ -71,10 +71,28 @@ a {
 }
 
 .brand-block {
-  display: flex;
-  flex-direction: column;
-  gap: 0.2rem;
+  display: grid;
+  grid-template-columns: auto 1fr;
+  column-gap: 0.55rem;
+  row-gap: 0.12rem;
+  align-items: center;
   min-width: max-content;
+}
+
+.brand-logo {
+  width: 32px;
+  height: 32px;
+  grid-row: 1 / span 2;
+  grid-column: 1;
+  flex-shrink: 0;
+}
+
+.brand-name {
+  grid-column: 2;
+}
+
+.brand-sub {
+  grid-column: 2;
 }
 
 .brand-name {
@@ -646,4 +664,3 @@ a {
     grid-template-columns: 1fr;
   }
 }
-

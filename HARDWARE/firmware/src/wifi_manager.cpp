@@ -89,6 +89,26 @@ bool WifiManager::isConnected() const {
     return WiFi.status() == WL_CONNECTED;
 }
 
+int WifiManager::currentStatus() const {
+    return WiFi.status();
+}
+
+const char* WifiManager::statusText(int status) const {
+    switch (status) {
+        case WL_IDLE_STATUS: return "IDLE";
+        case WL_NO_SSID_AVAIL: return "NO_SSID";
+        case WL_SCAN_COMPLETED: return "SCAN_COMPLETED";
+        case WL_CONNECTED: return "CONNECTED";
+        case WL_CONNECT_FAILED: return "CONNECT_FAILED";
+        case WL_CONNECTION_LOST: return "CONNECTION_LOST";
+        case WL_DISCONNECTED: return "DISCONNECTED";
+#ifdef WL_NO_SHIELD
+        case WL_NO_SHIELD: return "NO_SHIELD";
+#endif
+        default: return "UNKNOWN";
+    }
+}
+
 int32_t WifiManager::getRssi() const {
     return isConnected() ? WiFi.RSSI() : -127;
 }

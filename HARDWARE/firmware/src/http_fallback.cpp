@@ -2,7 +2,49 @@
 
 #include <ArduinoJson.h>
 #include <HTTPClient.h>
+#include <Preferences.h>
+#include <WiFi.h>
+#include <WiFiClientSecure.h>
 #include <cstring>
+
+namespace {
+constexpr const char* kPrefsNamespace = "fgcfg";
+constexpr const char* kPrefsHttpBaseUrlKey = "http_base_url";
+constexpr const char* kPrefsDeviceTokenKey = "device_token";
+constexpr uint32_t kHttpConnectTimeoutMs = 5000;
+constexpr uint32_t kHttpRequestTimeoutMs = 8000;
+
+void copyCString(char* out, size_t outSize, const String& value) {
+    if (!out || outSize == 0) {
+        return;
+    }
+    std::memset(out, 0, outSize);
+    if (value.length() == 0) {
+        return;
+    }
+    std::strncpy(out, value.c_str(), outSize - 1);
+}
+
+String normalizeBaseUrl(const String& raw) {
+    String out = raw;
+    out.trim();
+    while (out.endsWith("/")) {
+        out.remove(out.length() - 1);
+    }
+    return out;
+}
+
+bool beginHttpRequest(HTTPClient& client, WiFiClient& plainClient, WiFiClientSecure& secureClient, const String& url) {
+    client.setConnectTimeout(kHttpConnectTimeoutMs);
+    client.setTimeout(kHttpRequestTimeoutMs);
+    client.setFollowRedirects(HTTPC_STRICT_FOLLOW_REDIRECTS);
+    if (url.startsWith("https://")) {
+        secureClient.setInsecure();
+        return client.begin(secureClient, url);
+    }
+    return client.begin(plainClient, url);
+}
+}
 
 HttpFallbackService& HttpFallbackService::getInstance() {
     static HttpFallbackService instance;
@@ -12,8 +54,26 @@ HttpFallbackService& HttpFallbackService::getInstance() {
 void HttpFallbackService::begin(const char* baseUrl, const char* deviceId) {
     std::memset(_baseUrl, 0, sizeof(_baseUrl));
     std::memset(_deviceId, 0, sizeof(_deviceId));
+    std::memset(_deviceToken, 0, sizeof(_deviceToken));
+
     std::strncpy(_baseUrl, baseUrl ? baseUrl : "", sizeof(_baseUrl) - 1);
     std::strncpy(_deviceId, deviceId ? deviceId : "", sizeof(_deviceId) - 1);
+    loadPersistedCloudAuth();
+}
+
+void HttpFallbackService::updateCloudAuth(const char* baseUrl, const char* deviceToken, bool persistToNvs) {
+    if (baseUrl != nullptr) {
+        const String normalized = normalizeBaseUrl(baseUrl);
+        copyCString(_baseUrl, sizeof(_baseUrl), normalized);
+    }
+    if (deviceToken != nullptr) {
+        String token = String(deviceToken);
+        token.trim();
+        copyCString(_deviceToken, sizeof(_deviceToken), token);
+    }
+    if (persistToNvs) {
+        persistCloudAuth();
+    }
 }
 
 bool HttpFallbackService::postTelemetry(const char* payload) {
@@ -46,12 +106,15 @@ bool HttpFallbackService::fetchPendingCommand(String& outCommand, String& outPay
     }
     _lastPollMs = now;
 
-    HTTPClient client;
     const String url = String(_baseUrl) + "/api/device/" + _deviceId + "/commands/pending";
-    if (!client.begin(url)) {
+    HTTPClient client;
+    WiFiClient plainClient;
+    WiFiClientSecure secureClient;
+    if (!beginHttpRequest(client, plainClient, secureClient, url)) {
         return false;
     }
 
+    applyAuthHeaders(client);
     const int code = client.GET();
     if (code < 200 || code >= 300) {
         client.end();
@@ -107,14 +170,53 @@ bool HttpFallbackService::postJson(const String& path, const char* payload) {
         return false;
     }
 
-    HTTPClient client;
     const String url = String(_baseUrl) + path;
-    if (!client.begin(url)) {
+    HTTPClient client;
+    WiFiClient plainClient;
+    WiFiClientSecure secureClient;
+    if (!beginHttpRequest(client, plainClient, secureClient, url)) {
         return false;
     }
 
     client.addHeader("Content-Type", "application/json");
+    applyAuthHeaders(client);
     const int code = client.POST(payload ? payload : "{}");
     client.end();
     return code >= 200 && code < 300;
+}
+
+void HttpFallbackService::loadPersistedCloudAuth() {
+    Preferences prefs;
+    if (!prefs.begin(kPrefsNamespace, true)) {
+        return;
+    }
+
+    const String savedBaseUrl = normalizeBaseUrl(prefs.getString(kPrefsHttpBaseUrlKey, ""));
+    const String savedToken = prefs.getString(kPrefsDeviceTokenKey, "");
+    prefs.end();
+
+    if (savedBaseUrl.length() > 0) {
+        copyCString(_baseUrl, sizeof(_baseUrl), savedBaseUrl);
+    }
+    if (savedToken.length() > 0) {
+        copyCString(_deviceToken, sizeof(_deviceToken), savedToken);
+    }
+}
+
+void HttpFallbackService::persistCloudAuth() {
+    Preferences prefs;
+    if (!prefs.begin(kPrefsNamespace, false)) {
+        return;
+    }
+
+    prefs.putString(kPrefsHttpBaseUrlKey, String(_baseUrl));
+    prefs.putString(kPrefsDeviceTokenKey, String(_deviceToken));
+    prefs.end();
+}
+
+void HttpFallbackService::applyAuthHeaders(HTTPClient& client) {
+    client.addHeader("x-device-id", String(_deviceId));
+    if (_deviceToken[0] != '\0') {
+        client.addHeader("x-device-token", String(_deviceToken));
+    }
 }

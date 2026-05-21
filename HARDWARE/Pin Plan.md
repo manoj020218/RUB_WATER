@@ -57,6 +57,37 @@ Notes:
 - SIM800 is planned for backup path if main 4G router path fails.
 - Power design for SIM800 must support high current bursts and clean grounding.
 
+### F) 12V Supply/Battery Voltage (ADC Module)
+- `GPIO10` -> ADC module analog output
+
+Notes:
+- Firmware publishes this value in telemetry as `battery_voltage`.
+- Divider defaults:
+  - `battery_adc_divider_ratio = 5.0`
+  - `battery_adc_calibration_factor = 1.0`
+- These two values are now runtime configurable via BLE and stored in NVS:
+  - `voltage_config_set` (or `adc_config_set`)
+  - `voltage_config_get` (or `adc_config_get`)
+- Calibration formula:
+  - `calibration_factor = multimeter_voltage / device_reported_voltage`
+
+### G) Onboard RGB Status LED (ESP32-S3)
+- `GPIO48` -> onboard RGB LED data pin (ESP32-S3 DevKitC-1 default)
+
+Notes:
+- Firmware uses `RGB_BUILTIN` / `PIN_NEOPIXEL` when available; on this board that maps to onboard RGB LED.
+- If custom S3 hardware uses a different LED pin, update board definition or LED module mapping.
+- Onboard LED behavior:
+  - White breathing = booting (first ~6s)
+  - Red blink = Wi-Fi not connected
+  - Yellow blink = Wi-Fi connected but internet unavailable
+  - Blue pulse = Wi-Fi/local connected, but cloud (MQTT/VPS path) not connected
+  - Green solid = cloud connected (MQTT connected)
+  - Orange blink = alert states
+  - Magenta fast blink = danger states
+  - Red strobe = sensor fault
+  - Cyan solid = offline local mode
+
 ## 3) Reserved/Important Design Rules
 - Avoid reassigning boot strapping pins for this plan (`GPIO0`, `GPIO3`, `GPIO45`, `GPIO46`).
 - Keep one shared ground reference across ESP32, RS485, relay input logic, RF input logic, and future SIM800 logic.

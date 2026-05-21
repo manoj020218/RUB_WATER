@@ -1,12 +1,14 @@
 #pragma once
 
 #include <Arduino.h>
+#include <HTTPClient.h>
 
 class HttpFallbackService {
 public:
     static HttpFallbackService& getInstance();
 
     void begin(const char* baseUrl, const char* deviceId);
+    void updateCloudAuth(const char* baseUrl, const char* deviceToken, bool persistToNvs = true);
     bool postTelemetry(const char* payload);
     bool postEvent(const char* payload);
     bool postCommandAck(const char* commandAckPayload);
@@ -17,7 +19,11 @@ private:
     HttpFallbackService() = default;
     char _baseUrl[128]{};
     char _deviceId[32]{};
+    char _deviceToken[160]{};
     unsigned long _lastPollMs = 0;
 
+    void loadPersistedCloudAuth();
+    void persistCloudAuth();
+    void applyAuthHeaders(HTTPClient& client);
     bool postJson(const String& path, const char* payload);
 };

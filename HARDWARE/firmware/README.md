@@ -11,6 +11,8 @@ This firmware workspace follows the module style used in `relay-app`, adapted fo
 - `sensor_rs485.*`
 - `switch_inputs.*`
 - `relay_controller.*`
+- `status_led_s3.*` (ESP32-S3 onboard LED status map)
+- `voltage_monitor.*` (ESP32-S3 ADC voltage + calibration persistence)
 - `alarm_state_machine.*`
 - `telemetry_manager.*`
 - `command_handler.*`
@@ -77,3 +79,25 @@ pio device monitor -b 115200
   "ota_host": "http://flash.iotsoft.in"
 }
 ```
+
+## ADC Voltage Calibration (12V via Divider)
+- Default ADC pin: `GPIO10` (`BATTERY_ADC_PIN`)
+- Default divider ratio: `5.0`
+- Default calibration factor: `1.0`
+- Both values are persisted in NVS and can be updated over BLE.
+
+### BLE Commands
+- `voltage_config_get` (alias: `adc_config_get`)
+- `voltage_config_set` (alias: `adc_config_set`)
+
+### BLE Payload Example
+```json
+{
+  "cmd": "voltage_config_set",
+  "adc_divider_ratio": 5.0,
+  "adc_calibration_factor": 1.032
+}
+```
+
+### Calibration Formula
+- `calibration_factor = multimeter_voltage / device_reported_voltage`

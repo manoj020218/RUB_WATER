@@ -6,6 +6,7 @@
   const BLE_SERVICE_UUID = '0000ff00-0000-1000-8000-00805f9b34fb';
   const BLE_CHARACTERISTIC_UUID = '0000ff01-0000-1000-8000-00805f9b34fb';
   const BLE_NAME_PREFIX = 'JNX-FG';
+  const DEFAULT_VPS_HEALTH_URL = 'https://api.floodguard.iotsoft.in/health';
 
   const state = {
     apiBase: '',
@@ -16,16 +17,36 @@
     selectedLocationId: null,
     selectedDeviceId: null,
     activeIncident: null,
+    latestTelemetry: null,
+    deviceConfig: null,
+    deviceConfigHistory: [],
+    configDeviceId: null,
     adminUsers: [],
     refreshTimer: null,
     incidentTimer: null,
     loading: false,
+    install: {
+      appCloudReachable: false,
+      deviceCloudReachable: false,
+      localReachable: false,
+      localUrl: '',
+      localIp: '',
+      lastCloudReason: '--',
+      tokenExpiresAt: '',
+      lastDeviceBatteryVoltage: null,
+      adcDividerRatio: 5.0,
+      adcCalibrationFactor: 1.0
+    },
     ble: {
       initialized: false,
       scanResults: [],
       selectedDeviceId: '',
       connectedDeviceId: '',
-      wifiNetworks: []
+      wifiNetworks: [],
+      phoneWifiSsid: '',
+      scanTriggered: false,
+      scanInProgress: false,
+      provisioningComplete: false
     }
   };
 
@@ -80,13 +101,75 @@
     }, 3200);
   }
 
+  function triggerTouchFeedback() {
+    try {
+      if (typeof navigator !== 'undefined' && typeof navigator.vibrate === 'function') {
+        navigator.vibrate(12);
+      }
+    } catch (error) {
+      // ignore unsupported vibration API
+    }
+
+    try {
+      const Ctx = window.AudioContext || window.webkitAudioContext;
+      if (!Ctx) {
+        return;
+      }
+      if (!triggerTouchFeedback.ctx) {
+        triggerTouchFeedback.ctx = new Ctx();
+      }
+      const ctx = triggerTouchFeedback.ctx;
+      if (!ctx) {
+        return;
+      }
+      const now = ctx.currentTime;
+      const oscillator = ctx.createOscillator();
+      const gain = ctx.createGain();
+      oscillator.type = 'sine';
+      oscillator.frequency.setValueAtTime(880, now);
+      gain.gain.setValueAtTime(0.0001, now);
+      gain.gain.exponentialRampToValueAtTime(0.05, now + 0.008);
+      gain.gain.exponentialRampToValueAtTime(0.0001, now + 0.06);
+      oscillator.connect(gain);
+      gain.connect(ctx.destination);
+      oscillator.start(now);
+      oscillator.stop(now + 0.07);
+    } catch (error) {
+      // ignore audio feedback failures
+    }
+  }
+
+  function installButtonPressFeedback() {
+    if (installButtonPressFeedback.bound) {
+      return;
+    }
+    document.addEventListener('click', (event) => {
+      const btn = event?.target?.closest?.('button');
+      if (!btn) {
+        return;
+      }
+      btn.classList.add('pressed-feedback');
+      setTimeout(() => btn.classList.remove('pressed-feedback'), 150);
+      triggerTouchFeedback();
+    });
+    installButtonPressFeedback.bound = true;
+  }
+
   function saveSession() {
     try {
       localStorage.setItem(STORAGE_KEY, JSON.stringify({
         apiBase: state.apiBase,
         token: state.token,
         user: state.user,
-        session: state.session
+        session: state.session,
+        install: {
+          localUrl: state.install.localUrl || '',
+          adcDividerRatio: Number(state.install.adcDividerRatio || 5.0),
+          adcCalibrationFactor: Number(state.install.adcCalibrationFactor || 1.0)
+        },
+        ble: {
+          phoneWifiSsid: String(state.ble.phoneWifiSsid || '')
+        }
       }));
     } catch (error) {
       // ignore
@@ -120,6 +203,10 @@
       showToast('Vendor install tools are available only for vendor logins.', true);
       return;
     }
+    if (viewId === 'view-config' && !canViewConfig()) {
+      showToast('Configuration screen is not available for this role.', true);
+      return;
+    }
 
     document.querySelectorAll('.view').forEach((view) => {
       view.classList.toggle('active', view.id === viewId);
@@ -131,6 +218,11 @@
 
     if (viewId === 'view-install') {
       refreshVendorInstallStatus().catch(() => {
+        // handled internally
+      });
+    }
+    if (viewId === 'view-config') {
+      refreshDeviceConfigApp().catch(() => {
         // handled internally
       });
     }
@@ -172,8 +264,217 @@
     }).format(dt);
   }
 
+  function normalizeLocalDeviceUrl(raw, fallbackIp = '') {
+    let next = String(raw || '').trim();
+    if (!next && fallbackIp) {
+      next = `http://${fallbackIp}`;
+    }
+    if (!next) {
+      return '';
+    }
+    if (!/^https?:\/\//i.test(next)) {
+      next = `http://${next}`;
+    }
+    return next.replace(/\/+$/, '');
+  }
+
+  function withTimeoutMs(ms) {
+    const controller = new AbortController();
+    const timer = setTimeout(() => controller.abort(), ms);
+    return {
+      controller,
+      clear: () => clearTimeout(timer)
+    };
+  }
+
+  function getCapacitorHttpPlugin() {
+    if (window?.Capacitor?.Plugins?.CapacitorHttp) {
+      return window.Capacitor.Plugins.CapacitorHttp;
+    }
+    if (window?.CapacitorHttp) {
+      return window.CapacitorHttp;
+    }
+    return null;
+  }
+
+  async function requestViaNativeHttp(options) {
+    const plugin = getCapacitorHttpPlugin();
+    if (!plugin || typeof plugin.request !== 'function') {
+      return null;
+    }
+    try {
+      return await plugin.request(options);
+    } catch (error) {
+      return null;
+    }
+  }
+
+  function setInstallMetric(id, text, tone = 'neutral') {
+    const el = byId(id);
+    if (!el) {
+      return;
+    }
+    el.textContent = text;
+    if (tone === 'good') {
+      el.style.color = '#059669';
+    } else if (tone === 'bad') {
+      el.style.color = '#b91c1c';
+    } else if (tone === 'warn') {
+      el.style.color = '#b45309';
+    } else {
+      el.style.color = '';
+    }
+  }
+
+  function setLocalCheckButtonAttention(active) {
+    const btn = byId('ble-local-check-btn');
+    if (!btn) {
+      return;
+    }
+    btn.classList.toggle('local-check-attn', Boolean(active));
+  }
+
+  function setBleCardDimmed(dimmed) {
+    const card = byId('ble-device-ble-card');
+    if (!card) {
+      return;
+    }
+    card.classList.toggle('dim', Boolean(dimmed));
+  }
+
+  function updateBleStatusLabel() {
+    const isConnected = Boolean(state.ble.connectedDeviceId);
+    const cloudLinked = Boolean(state.install.deviceCloudReachable);
+    const bleCard = byId('ble-device-ble-card');
+    if (bleCard) {
+      const hideCard = cloudLinked && state.ble.provisioningComplete;
+      bleCard.style.display = hideCard ? 'none' : '';
+    }
+    if (cloudLinked && !isConnected) {
+      setInstallMetric('ble-link-status', 'NOT REQUIRED', 'warn');
+      setBleCardDimmed(true);
+      return;
+    }
+
+    if (isConnected) {
+      const selected = findSelectedBleDevice();
+      const label = selected?.name ? `CONNECTED (${selected.name})` : 'CONNECTED';
+      setInstallMetric('ble-link-status', label, 'good');
+      setBleCardDimmed(false);
+      return;
+    }
+
+    setInstallMetric('ble-link-status', 'DISCONNECTED', 'bad');
+    setBleCardDimmed(cloudLinked);
+  }
+
+  function selectedLocationRecord() {
+    return state.locations.find((item) => item.location_id === state.selectedLocationId) || null;
+  }
+
+  function selectedProvisionDeviceId() {
+    const selected = String(state.selectedDeviceId || '').trim();
+    if (selected) {
+      return selected;
+    }
+    const fromLocation = String(selectedLocationRecord()?.device_id || '').trim();
+    return fromLocation;
+  }
+
+  async function requestDeviceProvisionProfile() {
+    const deviceId = selectedProvisionDeviceId();
+    if (!deviceId) {
+      throw new Error('Select a location mapped to a device before provisioning.');
+    }
+
+    const profile = await apiRequest(`/devices/${encodeURIComponent(deviceId)}/provision-profile`, {
+      method: 'POST',
+      auth: true
+    });
+
+    if (!profile?.device_token) {
+      throw new Error('Provision profile is missing device token.');
+    }
+    return profile;
+  }
+
+  function evaluateDeviceCloudHealth() {
+    const location = selectedLocationRecord();
+    const latest = state.latestTelemetry || null;
+
+    if (!location || !state.selectedDeviceId) {
+      return {
+        healthy: false,
+        reason: 'Select a location first'
+      };
+    }
+
+    const status = String(location.device_status || '').toUpperCase();
+    if (status !== 'ONLINE') {
+      return {
+        healthy: false,
+        reason: `Device status ${status || 'UNKNOWN'}`
+      };
+    }
+
+    const lastUpdateMs = new Date(location.last_update || 0).getTime();
+    const ageSec = Number.isFinite(lastUpdateMs)
+      ? Math.max(0, Math.floor((Date.now() - lastUpdateMs) / 1000))
+      : 999999;
+    if (ageSec > 180) {
+      return {
+        healthy: false,
+        reason: `Last telemetry ${ageSec}s ago`
+      };
+    }
+
+    if (latest && latest.wifi_connected === false) {
+      return {
+        healthy: false,
+        reason: 'Device Wi-Fi disconnected'
+      };
+    }
+    if (latest && latest.internet_available === false) {
+      return {
+        healthy: false,
+        reason: 'Device internet unavailable'
+      };
+    }
+
+    return {
+      healthy: true,
+      reason: `Healthy (${ageSec}s freshness)`
+    };
+  }
+
+  function renderInstallCloudStatuses() {
+    const cloud = evaluateDeviceCloudHealth();
+    state.install.deviceCloudReachable = cloud.healthy;
+    state.install.lastCloudReason = cloud.reason;
+    setInstallMetric('ble-device-cloud-status', cloud.healthy ? 'UP' : 'DOWN', cloud.healthy ? 'good' : 'bad');
+    updateBleStatusLabel();
+  }
+
   function statusMeta(rawStatus) {
     const status = String(rawStatus || 'OFFLINE').toUpperCase();
+    const statusMap = {
+      NORMAL: { label: 'NORMAL', cls: 'ok' },
+      ALERT_PENDING_VERIFICATION: { label: 'ALERT PENDING', cls: 'warn' },
+      ALERT_ORANGE: { label: 'ORANGE ALERT', cls: 'warn' },
+      ALERT_ORANGE_CONFIRMED: { label: 'ALERT CONFIRMED', cls: 'warn' },
+      ALERT_SENSOR_MISMATCH: { label: 'ALERT MISMATCH', cls: 'warn' },
+      ALERT_WITH_RS485_FAULT: { label: 'ALERT RS485 FAULT', cls: 'warn' },
+      DANGER_PENDING: { label: 'DANGER PENDING', cls: 'danger' },
+      DANGER_CONFIRMED: { label: 'DANGER', cls: 'danger' },
+      DANGER_WITH_SENSOR_MISMATCH: { label: 'DANGER MISMATCH', cls: 'danger' },
+      DANGER_WITH_RS485_FAULT: { label: 'DANGER RS485 FAULT', cls: 'danger' },
+      CLEAR_PENDING: { label: 'CLEAR PENDING', cls: 'warn' },
+      SENSOR_FAULT: { label: 'SENSOR FAULT', cls: 'off' },
+      OFFLINE_LOCAL_MODE: { label: 'OFFLINE LOCAL', cls: 'off' }
+    };
+    if (statusMap[status]) {
+      return statusMap[status];
+    }
     if (status.includes('DANGER')) {
       return { label: 'DANGER', cls: 'danger' };
     }
@@ -333,9 +634,101 @@
     return state.ble.scanResults.find((item) => item.deviceId === state.ble.selectedDeviceId) || null;
   }
 
+  function setBleScanProgress(active, label = '') {
+    state.ble.scanInProgress = Boolean(active);
+    const scanBtn = byId('ble-scan-btn');
+    const spinner = byId('ble-scan-spinner');
+    const labelEl = byId('ble-scan-label');
+    if (scanBtn) {
+      scanBtn.disabled = Boolean(active);
+    }
+    if (spinner) {
+      spinner.classList.toggle('on', Boolean(active));
+    }
+    if (labelEl) {
+      labelEl.textContent = label || (active ? 'Scanning BLE...' : 'Scan BLE Devices');
+    }
+  }
+
+  function nativeBridge() {
+    if (typeof window === 'undefined') {
+      return null;
+    }
+    if (window.FGAndroid && typeof window.FGAndroid.getCurrentWifiSsid === 'function') {
+      return window.FGAndroid;
+    }
+    return null;
+  }
+
+  function readPhoneWifiSsid() {
+    const bridge = nativeBridge();
+    if (!bridge) {
+      return '';
+    }
+    try {
+      const value = String(bridge.getCurrentWifiSsid() || '').trim();
+      if (!value || /^<unknown ssid>$/i.test(value) || value === '0x') {
+        return '';
+      }
+      return value.replace(/^"+|"+$/g, '');
+    } catch (error) {
+      return '';
+    }
+  }
+
+  function renderPhoneWifiSsid() {
+    const el = byId('ble-phone-wifi-ssid');
+    if (!el) {
+      return;
+    }
+    const value = String(state.ble.phoneWifiSsid || '').trim();
+    el.value = value || '';
+    el.placeholder = value ? 'Phone Wi-Fi detected' : 'Phone Wi-Fi not detected';
+  }
+
+  function choosePreferredSsid(candidateList = [], fallback = '') {
+    const phone = String(state.ble.phoneWifiSsid || '').trim();
+    const seen = new Set();
+    const normalizedCandidates = [];
+    for (const item of candidateList) {
+      const ssid = String(item || '').trim();
+      if (!ssid || seen.has(ssid)) {
+        continue;
+      }
+      seen.add(ssid);
+      normalizedCandidates.push(ssid);
+    }
+
+    if (phone && normalizedCandidates.includes(phone)) {
+      return phone;
+    }
+
+    const current = String(byId('ble-wifi-ssid')?.value || '').trim();
+    if (current && normalizedCandidates.includes(current)) {
+      return current;
+    }
+
+    if (phone) {
+      return phone;
+    }
+
+    const fallbackTrimmed = String(fallback || '').trim();
+    if (fallbackTrimmed) {
+      return fallbackTrimmed;
+    }
+
+    return normalizedCandidates[0] || '';
+  }
+
   function renderBleDeviceList() {
     const list = byId('ble-device-list');
     if (!list) {
+      return;
+    }
+
+    if (state.ble.provisioningComplete) {
+      list.innerHTML = '<div class="empty">Provisioning complete. BLE device picker is hidden.</div>';
+      setText('ble-selected-device', 'Selected: hidden after successful apply');
       return;
     }
 
@@ -347,8 +740,13 @@
     list.innerHTML = state.ble.scanResults.map((device) => {
       const selected = state.ble.selectedDeviceId === device.deviceId;
       const connected = state.ble.connectedDeviceId === device.deviceId;
+      const rowClass = [
+        'ble-device-row',
+        selected ? 'selected' : '',
+        connected ? 'connected' : ''
+      ].filter(Boolean).join(' ');
       return `
-        <div class="ble-device-row">
+        <div class="${rowClass}" onclick="selectBleDeviceApp('${escapeHtml(device.deviceId)}')">
           <div class="ble-device-name">${escapeHtml(device.name || 'Unknown')} ${selected ? '• Selected' : ''}</div>
           <div class="ble-device-meta">${escapeHtml(device.deviceId)} · RSSI ${escapeHtml(String(device.rssi ?? '--'))}</div>
           <div class="row" style="margin-top:8px;justify-content:flex-end">
@@ -356,6 +754,7 @@
               ${selected ? 'Selected' : 'Use Device'}
             </button>
             ${connected ? '<span class="chip">CONNECTED</span>' : ''}
+            ${selected && !connected ? '<span class="chip">TOUCH CONFIRMED</span>' : ''}
           </div>
         </div>
       `;
@@ -384,6 +783,82 @@
     `).join('');
   }
 
+  function setBleWifiSsidValue(ssid) {
+    const value = String(ssid || '').trim();
+    if (byId('ble-wifi-ssid')) {
+      byId('ble-wifi-ssid').value = value;
+    }
+    if (byId('ble-wifi-ssid-select')) {
+      byId('ble-wifi-ssid-select').value = value;
+    }
+  }
+
+  function renderBleWifiSelect() {
+    const select = byId('ble-wifi-ssid-select');
+    if (!select) {
+      return;
+    }
+
+    const currentInput = String(byId('ble-wifi-ssid')?.value || '').trim();
+    const unique = [];
+    const seen = new Set();
+    for (const network of Array.isArray(state.ble.wifiNetworks) ? state.ble.wifiNetworks : []) {
+      const ssid = String(network?.ssid || '').trim();
+      if (!ssid || seen.has(ssid)) {
+        continue;
+      }
+      seen.add(ssid);
+      unique.push(network);
+    }
+
+    if (unique.length === 0) {
+      select.innerHTML = '<option value="">Scan Wi-Fi to load SSIDs</option>';
+      select.disabled = true;
+      const preferredFallback = choosePreferredSsid([], '');
+      if (preferredFallback) {
+        setBleWifiSsidValue(preferredFallback);
+      }
+      return;
+    }
+
+    select.disabled = false;
+    const ssidList = unique.map((network) => String(network.ssid || '').trim()).filter(Boolean);
+    const preferredSsid = choosePreferredSsid(ssidList, String(unique[0]?.ssid || '').trim());
+    select.innerHTML = unique.map((network, idx) => {
+      const ssid = String(network.ssid || '').trim();
+      const rssi = Number.isFinite(network.rssi) ? ` (${Math.round(network.rssi)} dBm)` : '';
+      const selected = preferredSsid
+        ? (preferredSsid === ssid ? ' selected' : '')
+        : (currentInput
+          ? (currentInput === ssid ? ' selected' : '')
+          : (idx === 0 ? ' selected' : ''));
+      return `<option value="${escapeHtml(ssid)}"${selected}>${escapeHtml(ssid + rssi)}</option>`;
+    }).join('');
+
+    const effective = preferredSsid || currentInput || String(unique[0]?.ssid || '').trim();
+    if (effective) {
+      setBleWifiSsidValue(effective);
+    }
+  }
+
+  function selectBleWifiOptionApp() {
+    const selected = String(byId('ble-wifi-ssid-select')?.value || '').trim();
+    if (selected) {
+      setBleWifiSsidValue(selected);
+    }
+  }
+
+  function toggleBleWifiPasswordVisibility() {
+    const passInput = byId('ble-wifi-password');
+    const toggleBtn = byId('ble-pass-toggle-btn');
+    if (!passInput || !toggleBtn) {
+      return;
+    }
+    const nextType = passInput.type === 'password' ? 'text' : 'password';
+    passInput.type = nextType;
+    toggleBtn.textContent = nextType === 'password' ? 'Show' : 'Hide';
+  }
+
   function setBleOutputs(healthText, provisionText) {
     if (byId('ble-health-output') && typeof healthText === 'string') {
       byId('ble-health-output').textContent = healthText;
@@ -393,38 +868,279 @@
     }
   }
 
-  async function checkAppVpsHealth() {
-    const statusEl = byId('ble-app-vps-status');
-    if (!statusEl || !canVendorInstall()) {
+  function updateBleProvisionSectionVisibility() {
+    const section = byId('ble-wifi-provision-section');
+    if (!section) {
       return;
     }
 
-    const healthUrl = defaultVpsHealthUrl();
-    try {
-      const controller = new AbortController();
-      const timeout = setTimeout(() => controller.abort(), 6000);
-      const res = await fetch(healthUrl, { signal: controller.signal });
-      clearTimeout(timeout);
-      statusEl.textContent = res.ok ? `UP (${res.status})` : `DOWN (${res.status})`;
-      statusEl.style.color = res.ok ? '#059669' : '#b91c1c';
-    } catch (error) {
-      statusEl.textContent = 'DOWN';
-      statusEl.style.color = '#b91c1c';
+    const canShow = canVendorInstall()
+      && state.ble.scanTriggered === true
+      && Array.isArray(state.ble.scanResults)
+      && state.ble.scanResults.length > 0
+      && state.ble.provisioningComplete !== true;
+
+    section.style.display = canShow ? 'block' : 'none';
+    renderPhoneWifiSsid();
+  }
+
+  function setProvisionModalVisible(visible) {
+    const modal = byId('provision-progress-modal');
+    if (!modal) {
+      return;
+    }
+    modal.style.display = visible ? 'flex' : 'none';
+  }
+
+  function setProvisionModalNote(note) {
+    const el = byId('provision-modal-note');
+    if (el) {
+      el.textContent = String(note || '').trim() || '--';
     }
   }
 
-  async function ensureBleConnected() {
+  function setProvisionCloseEnabled(enabled) {
+    const closeBtn = byId('provision-modal-close');
+    if (closeBtn) {
+      closeBtn.disabled = !enabled;
+    }
+  }
+
+  function setProvisionStep(stepNo, status, note) {
+    const row = byId(`prov-step-${stepNo}`);
+    const noteEl = byId(`prov-step-note-${stepNo}`);
+    if (row) {
+      row.classList.remove('active', 'done', 'error');
+      if (status === 'active' || status === 'done' || status === 'error') {
+        row.classList.add(status);
+      }
+    }
+    if (noteEl && typeof note === 'string') {
+      noteEl.textContent = note;
+    }
+  }
+
+  function setProvisionFinalStepTitle(outcome) {
+    const titleEl = byId('prov-step-title-4');
+    if (!titleEl) {
+      return;
+    }
+    const normalized = String(outcome || '').trim().toLowerCase();
+    if (normalized === 'success') {
+      titleEl.textContent = '4. Success';
+      return;
+    }
+    if (normalized === 'failed') {
+      titleEl.textContent = '4. Failed';
+      return;
+    }
+    titleEl.textContent = '4. Pending';
+  }
+
+  function startProvisionModal(ssid) {
+    clearTimeout(startProvisionModal.autoCloseTimer);
+    startProvisionModal.autoCloseTimer = null;
+    setProvisionModalVisible(true);
+    setProvisionCloseEnabled(true);
+    setProvisionModalNote(`Provisioning SSID "${ssid}"...`);
+    setProvisionFinalStepTitle('pending');
+    setProvisionStep(1, 'active', 'Sending Wi-Fi details to device...');
+    setProvisionStep(2, '', 'Waiting...');
+    setProvisionStep(3, '', 'Waiting...');
+    setProvisionStep(4, '', 'Waiting...');
+  }
+
+  function scheduleProvisionModalAutoClose(ms = 1600) {
+    clearTimeout(startProvisionModal.autoCloseTimer);
+    startProvisionModal.autoCloseTimer = setTimeout(() => {
+      setProvisionModalVisible(false);
+      startProvisionModal.autoCloseTimer = null;
+    }, ms);
+  }
+
+  function closeProvisionProgressModalApp() {
+    clearTimeout(startProvisionModal.autoCloseTimer);
+    startProvisionModal.autoCloseTimer = null;
+    setProvisionModalVisible(false);
+  }
+
+  function cancelBleProvisionFlowApp() {
+    clearTimeout(startProvisionModal.autoCloseTimer);
+    startProvisionModal.autoCloseTimer = null;
+    setProvisionModalVisible(false);
+    const passInput = byId('ble-wifi-password');
+    if (passInput) {
+      passInput.value = '';
+    }
+    showToast('Apply cancelled.');
+  }
+
+  async function checkAppVpsHealth() {
+    if (!byId('ble-app-cloud-status') || !canVendorInstall()) {
+      return false;
+    }
+
+    const primaryHealthUrl = resolveVpsHealthUrl();
+    const fallbackHealthUrl = alternateVpsHealthUrl(primaryHealthUrl);
+    const candidates = [primaryHealthUrl];
+    if (fallbackHealthUrl && fallbackHealthUrl !== primaryHealthUrl) {
+      candidates.push(fallbackHealthUrl);
+    }
+
+    let lastStatus = null;
+    for (const healthUrl of candidates) {
+      try {
+        const t = withTimeoutMs(6000);
+        const res = await fetch(healthUrl, { signal: t.controller.signal });
+        t.clear();
+        if (res.ok) {
+          state.install.appCloudReachable = true;
+          setInstallMetric('ble-app-cloud-status', `UP (${res.status})`, 'good');
+          return true;
+        }
+        lastStatus = res.status;
+      } catch (error) {
+        // try fallback URL if available
+      }
+    }
+
+    state.install.appCloudReachable = false;
+    setInstallMetric('ble-app-cloud-status', lastStatus === null ? 'DOWN' : `DOWN (${lastStatus})`, 'bad');
+    return false;
+  }
+
+  function updateLocalUrlFromState(ipCandidate = '') {
+    const localInput = byId('ble-local-url');
+    if (!localInput) {
+      return '';
+    }
+
+    const fallbackIp = String(ipCandidate || state.install.localIp || '').trim();
+    let preferredUrl = localInput.value || state.install.localUrl || '';
+    if (fallbackIp) {
+      // When device reports a fresh IP after provisioning, prefer that over stale cached local URLs.
+      preferredUrl = `http://${fallbackIp}`;
+    }
+    const normalized = normalizeLocalDeviceUrl(preferredUrl, fallbackIp);
+    if (normalized) {
+      localInput.value = normalized;
+      state.install.localUrl = normalized;
+      saveSession();
+    }
+    return normalized;
+  }
+
+  function applyLocalStatus(statusPayload, localUrl) {
+    const ip = String(statusPayload?.ip || '').trim();
+    if (ip) {
+      state.install.localIp = ip;
+    }
+    if (localUrl) {
+      state.install.localUrl = localUrl;
+    }
+
+    state.install.localReachable = true;
+    applyVoltageSettingsFromPayload(statusPayload);
+    setInstallMetric('ble-device-local-status', 'UP', 'good');
+    const addressText = ip || localUrl || '--';
+    setText('ble-device-local-address', `Address: ${addressText}`);
+    if (typeof statusPayload?.mqtt_connected === 'boolean') {
+      state.install.deviceCloudReachable = statusPayload.mqtt_connected;
+      setInstallMetric('ble-device-cloud-status', statusPayload.mqtt_connected ? 'UP' : 'DOWN', statusPayload.mqtt_connected ? 'good' : 'bad');
+    }
+    updateBleStatusLabel();
+    syncVoltageInputsFromState();
+    saveSession();
+    setLocalCheckButtonAttention(false);
+  }
+
+  async function fetchLocalDeviceStatus(localUrl) {
+    const nativeResponse = await requestViaNativeHttp({
+      url: `${localUrl}/status`,
+      method: 'GET',
+      connectTimeout: 5000,
+      readTimeout: 5000,
+      responseType: 'json'
+    });
+    if (nativeResponse && Number(nativeResponse.status) >= 200 && Number(nativeResponse.status) < 300) {
+      if (nativeResponse.data && typeof nativeResponse.data === 'object') {
+        return nativeResponse.data;
+      }
+      if (typeof nativeResponse.data === 'string' && nativeResponse.data.trim()) {
+        return JSON.parse(nativeResponse.data);
+      }
+    }
+
+    const t = withTimeoutMs(5000);
+    try {
+      const res = await fetch(`${localUrl}/status`, { signal: t.controller.signal });
+      t.clear();
+      if (!res.ok) {
+        throw new Error(`HTTP ${res.status}`);
+      }
+      return await res.json();
+    } catch (error) {
+      t.clear();
+      throw error;
+    }
+  }
+
+  async function refreshLocalDeviceStatusApp(silent = false) {
+    if (!canVendorInstall()) {
+      return false;
+    }
+
+    const localUrl = updateLocalUrlFromState();
+    if (!localUrl) {
+      state.install.localReachable = false;
+      setInstallMetric('ble-device-local-status', 'SET URL', 'warn');
+      setText('ble-device-local-address', 'Address: --');
+      setLocalCheckButtonAttention(true);
+      if (!silent) {
+        showToast('Set Device Local URL first.', true);
+      }
+      return false;
+    }
+
+    try {
+      const payload = await fetchLocalDeviceStatus(localUrl);
+      applyLocalStatus(payload, localUrl);
+      return true;
+    } catch (error) {
+      state.install.localReachable = false;
+      setInstallMetric('ble-device-local-status', 'DOWN', 'bad');
+      setText('ble-device-local-address', `Address: ${state.install.localIp || localUrl}`);
+      updateBleStatusLabel();
+      setLocalCheckButtonAttention(true);
+      if (!silent) {
+        showToast(`Local device check failed: ${error.message}`, true);
+      }
+      return false;
+    }
+  }
+
+  async function ensureBleConnected(options = {}) {
+    const { forceReconnect = false } = options;
     const ble = await ensureBleReady();
     const selected = findSelectedBleDevice();
     if (!selected) {
       throw new Error('Select BLE device first.');
     }
 
-    if (state.ble.connectedDeviceId !== selected.deviceId) {
+    if (forceReconnect && state.ble.connectedDeviceId) {
+      try {
+        await ble.disconnect({ deviceId: state.ble.connectedDeviceId, timeout: 3000 });
+      } catch (error) {
+        // ignore cleanup failure for stale BLE links
+      }
+      state.ble.connectedDeviceId = '';
+    }
+
+    if (state.ble.connectedDeviceId !== selected.deviceId || forceReconnect) {
       await ble.connect({ deviceId: selected.deviceId, timeout: 12000 });
       state.ble.connectedDeviceId = selected.deviceId;
       await ble.discoverServices({ deviceId: selected.deviceId, timeout: 10000 });
-      setText('ble-link-status', `CONNECTED (${selected.name || selected.deviceId})`);
+      updateBleStatusLabel();
     }
 
     return {
@@ -433,58 +1149,298 @@
     };
   }
 
-  async function bleSendCommand(command) {
-    const { ble, device } = await ensureBleConnected();
+  function bleCommandName(payload) {
+    return String(payload?.cmd || payload?.op || '').trim().toLowerCase();
+  }
+
+  function shouldRetryBleConnection(error) {
+    const text = String(error?.message || '').toLowerCase();
+    return text.includes('not connected')
+      || text.includes('disconnected')
+      || text.includes('device was disconnected')
+      || text.includes('gatt')
+      || text.includes('status 133');
+  }
+
+  function wifiStatusTextFromCode(code) {
+    const n = Number(code);
+    switch (n) {
+      case 0: return 'IDLE';
+      case 1: return 'NO_SSID';
+      case 2: return 'SCAN_COMPLETED';
+      case 3: return 'CONNECTED';
+      case 4: return 'CONNECT_FAILED';
+      case 5: return 'CONNECTION_LOST';
+      case 6: return 'DISCONNECTED';
+      default: return 'UNKNOWN';
+    }
+  }
+
+  function bleErrorMessage(parsed) {
+    if (!parsed || typeof parsed !== 'object') {
+      return 'Device returned error';
+    }
+    const code = String(parsed.error || parsed.code || '').trim().toLowerCase();
+    const map = {
+      invalid_json: 'Device could not parse request payload.',
+      missing_cmd: 'Device did not receive a command field.',
+      ssid_required: 'SSID is missing. Please select or enter SSID.',
+      wifi_scan_failed: 'Device Wi-Fi scan failed. Try again near router.',
+      unknown_cmd: 'Device firmware rejected command (unknown_cmd).'
+    };
+    if (code && map[code]) {
+      return `${map[code]} [${code}]`;
+    }
+
+    const message = parsed.error || parsed.message || parsed.reason;
+    if (message && String(message).trim()) {
+      return String(message).trim();
+    }
+    try {
+      return `Device returned error: ${JSON.stringify(parsed).slice(0, 220)}`;
+    } catch (error) {
+      return 'Device returned error';
+    }
+  }
+
+  async function bleSendCommand(command, options = {}) {
+    const {
+      expectCmd = bleCommandName(command),
+      readTimeoutMs = 5000,
+      maxWaitMs = 15000,
+      initialDelayMs = 450,
+      pollIntervalMs = 550,
+      errorGraceMs = 2500
+    } = options;
+
     const payload = JSON.stringify(command || {});
 
-    await ble.write({
-      deviceId: device.deviceId,
-      service: BLE_SERVICE_UUID,
-      characteristic: BLE_CHARACTERISTIC_UUID,
-      value: textToHex(payload),
-      timeout: 10000
-    });
+    const runCommandOnce = async (forceReconnect) => {
+      const { ble, device } = await ensureBleConnected({ forceReconnect });
+      await ble.write({
+        deviceId: device.deviceId,
+        service: BLE_SERVICE_UUID,
+        characteristic: BLE_CHARACTERISTIC_UUID,
+        value: textToHex(payload),
+        timeout: 10000
+      });
 
-    await delay(350);
-    const read = await ble.read({
-      deviceId: device.deviceId,
-      service: BLE_SERVICE_UUID,
-      characteristic: BLE_CHARACTERISTIC_UUID,
-      timeout: 10000
-    });
+      const started = Date.now();
+      let lastNonEmptyText = '';
+      await delay(initialDelayMs);
 
-    const text = hexToText(read?.value || '');
-    if (!text) {
-      throw new Error('Empty response from device over BLE.');
-    }
+      while (Date.now() - started < maxWaitMs) {
+        let text = '';
+        try {
+          const read = await ble.read({
+            deviceId: device.deviceId,
+            service: BLE_SERVICE_UUID,
+            characteristic: BLE_CHARACTERISTIC_UUID,
+            timeout: readTimeoutMs
+          });
+          text = String(hexToText(read?.value || '') || '').trim();
+        } catch (error) {
+          if (Date.now() - started >= maxWaitMs) {
+            throw new Error(`BLE read timeout: ${error.message}`);
+          }
+          await delay(pollIntervalMs);
+          continue;
+        }
 
-    let parsed;
+        if (!text) {
+          await delay(pollIntervalMs);
+          continue;
+        }
+        lastNonEmptyText = text;
+
+        let parsed = null;
+        try {
+          parsed = JSON.parse(text);
+        } catch (error) {
+          if (Date.now() - started >= maxWaitMs) {
+            throw new Error(`Invalid BLE response: ${text}`);
+          }
+          await delay(pollIntervalMs);
+          continue;
+        }
+
+        const responseCmd = bleCommandName(parsed);
+        if (expectCmd && responseCmd && responseCmd !== expectCmd) {
+          await delay(pollIntervalMs);
+          continue;
+        }
+
+        if (parsed?.ok !== true) {
+          const hasErrorDetail = Boolean(parsed?.error || parsed?.message || parsed?.reason);
+          const looksLikeEcho = !hasErrorDetail
+            && responseCmd
+            && expectCmd
+            && responseCmd === expectCmd
+            && parsed?.ok === undefined;
+          if (looksLikeEcho) {
+            // Some stacks return the just-written characteristic value before firmware overwrites it.
+            // Ignore these echo frames and keep polling for the real response.
+            await delay(pollIntervalMs);
+            continue;
+          }
+
+          // Some firmware error payloads do not include cmd and can be stale characteristic data.
+          // Give the device a short grace window to overwrite with the current command response.
+          const noCmdInError = !responseCmd;
+          if (expectCmd && noCmdInError && (Date.now() - started) < errorGraceMs) {
+            await delay(pollIntervalMs);
+            continue;
+          }
+
+          const err = new Error(bleErrorMessage(parsed));
+          err.rawResponse = parsed;
+          throw err;
+        }
+        return parsed;
+      }
+
+      throw new Error(lastNonEmptyText
+        ? `No matching BLE response yet. Last response: ${lastNonEmptyText.slice(0, 200)}`
+        : 'No response received from device over BLE.');
+    };
+
     try {
-      parsed = JSON.parse(text);
+      return await runCommandOnce(false);
     } catch (error) {
-      throw new Error(`Invalid BLE response: ${text}`);
+      if (shouldRetryBleConnection(error)) {
+        state.ble.connectedDeviceId = '';
+        await delay(300);
+        return runCommandOnce(true);
+      }
+      throw error;
     }
-
-    if (parsed?.ok !== true) {
-      throw new Error(parsed?.error || 'Device returned error');
-    }
-    return parsed;
   }
 
   function updateVpsUrlInput() {
-    if (byId('ble-vps-url') && !String(byId('ble-vps-url').value || '').trim()) {
-      byId('ble-vps-url').value = defaultVpsHealthUrl();
+    const vpsInput = byId('ble-vps-url');
+    if (vpsInput) {
+      const autoUrl = resolveVpsHealthUrl();
+      if (String(vpsInput.value || '').trim() !== autoUrl) {
+        vpsInput.value = autoUrl;
+      }
     }
+    if (byId('ble-local-url') && !String(byId('ble-local-url').value || '').trim()) {
+      const candidate = normalizeLocalDeviceUrl(state.install.localUrl || '', state.install.localIp || '');
+      if (candidate) {
+        byId('ble-local-url').value = candidate;
+      }
+    }
+  }
+
+  function safeInstallNumber(value, fallback) {
+    const parsed = Number(value);
+    return Number.isFinite(parsed) ? parsed : fallback;
+  }
+
+  function applyVoltageSettingsFromPayload(payload) {
+    if (!payload || typeof payload !== 'object') {
+      return;
+    }
+
+    const divider = Number(payload.battery_adc_divider_ratio);
+    if (Number.isFinite(divider) && divider >= 1.0 && divider <= 25.0) {
+      state.install.adcDividerRatio = divider;
+    }
+
+    const calibration = Number(payload.battery_adc_calibration_factor);
+    if (Number.isFinite(calibration) && calibration >= 0.5 && calibration <= 1.8) {
+      state.install.adcCalibrationFactor = calibration;
+    }
+
+    const batteryVoltage = Number(payload.battery_voltage);
+    if (Number.isFinite(batteryVoltage) && batteryVoltage >= 0) {
+      state.install.lastDeviceBatteryVoltage = batteryVoltage;
+    }
+  }
+
+  function syncVoltageInputsFromState() {
+    const dividerInput = byId('ble-adc-divider-ratio');
+    if (dividerInput) {
+      dividerInput.value = safeInstallNumber(state.install.adcDividerRatio, 5.0).toFixed(2);
+    }
+
+    const calibrationInput = byId('ble-adc-calibration-factor');
+    if (calibrationInput) {
+      calibrationInput.value = safeInstallNumber(state.install.adcCalibrationFactor, 1.0).toFixed(3);
+    }
+
+    const note = byId('ble-adc-calibration-note');
+    if (note) {
+      const v = Number(state.install.lastDeviceBatteryVoltage);
+      note.textContent = Number.isFinite(v)
+        ? `Device voltage now: ${v.toFixed(2)}V. Tip: calibration = Multimeter / Device voltage.`
+        : 'Tip: calibration = Multimeter / Device voltage.';
+    }
+  }
+
+  function readVoltageSettingsFromForm() {
+    const divider = Number(byId('ble-adc-divider-ratio')?.value || state.install.adcDividerRatio || 5.0);
+    const calibration = Number(byId('ble-adc-calibration-factor')?.value || state.install.adcCalibrationFactor || 1.0);
+
+    if (!Number.isFinite(divider) || divider < 1.0 || divider > 25.0) {
+      throw new Error('ADC divider ratio must be between 1.0 and 25.0');
+    }
+    if (!Number.isFinite(calibration) || calibration < 0.5 || calibration > 1.8) {
+      throw new Error('ADC calibration factor must be between 0.5 and 1.8');
+    }
+
+    state.install.adcDividerRatio = divider;
+    state.install.adcCalibrationFactor = calibration;
+    saveSession();
+    syncVoltageInputsFromState();
+
+    return {
+      divider,
+      calibration
+    };
+  }
+
+  function autoCalibrateVoltageFactorApp() {
+    const measured = Number(byId('ble-adc-measured-voltage')?.value || '');
+    const device = Number(state.install.lastDeviceBatteryVoltage);
+    if (!Number.isFinite(measured) || measured <= 0) {
+      showToast('Enter measured multimeter voltage first.', true);
+      return;
+    }
+    if (!Number.isFinite(device) || device <= 0) {
+      showToast('Read device health first to get device voltage.', true);
+      return;
+    }
+
+    const nextFactor = measured / device;
+    if (!Number.isFinite(nextFactor) || nextFactor < 0.5 || nextFactor > 1.8) {
+      showToast('Calculated factor is outside allowed range (0.5 to 1.8).', true);
+      return;
+    }
+
+    state.install.adcCalibrationFactor = nextFactor;
+    syncVoltageInputsFromState();
+    saveSession();
+    showToast(`Calibration factor set to ${nextFactor.toFixed(3)}.`);
   }
 
   async function refreshVendorInstallStatus() {
     if (!canVendorInstall()) {
       return;
     }
+    const phoneSsid = readPhoneWifiSsid();
+    state.ble.phoneWifiSsid = phoneSsid;
+    renderPhoneWifiSsid();
+    syncVoltageInputsFromState();
     updateVpsUrlInput();
     await checkAppVpsHealth();
+    renderInstallCloudStatuses();
+    await refreshLocalDeviceStatusApp(true);
     renderBleDeviceList();
     renderBleWifiList();
+    renderBleWifiSelect();
+    updateBleProvisionSectionVisibility();
+    updateBleStatusLabel();
   }
 
   function isSuperAdmin() {
@@ -492,8 +1448,486 @@
     return role === 'VENDOR_SUPER_ADMIN' || role === 'DEPARTMENT_SUPER_ADMIN';
   }
 
+  function userRole() {
+    return String(state.user?.role || '').toUpperCase();
+  }
+
+  function canViewConfig() {
+    const role = userRole();
+    return Boolean(role) && role !== 'VIEWER';
+  }
+
+  function canEditConfig() {
+    return ['VENDOR_SUPER_ADMIN', 'DEPARTMENT_SUPER_ADMIN', 'DEPARTMENT_ADMIN'].includes(userRole());
+  }
+
+  function selectedConfigDeviceId() {
+    return String(state.selectedDeviceId || '').trim();
+  }
+
+  function setConfigInputsDisabled(disabled) {
+    [
+      'cfg-alert-level',
+      'cfg-danger-level',
+      'cfg-clear-level',
+      'cfg-trigger-delay',
+      'cfg-clear-delay',
+      'cfg-sensor-mount-height',
+      'cfg-rs485-enabled',
+      'cfg-switch-enabled',
+      'cfg-switch-level-1-mm',
+      'cfg-switch-level-2-mm',
+      'cfg-local-pin'
+    ].forEach((id) => {
+      const el = byId(id);
+      if (el) {
+        el.disabled = disabled;
+      }
+    });
+  }
+
+  function setConfigButtonDisabled(disabled) {
+    const saveBtn = byId('cfg-save-btn');
+    const pushBtn = byId('cfg-push-btn');
+    const localSaveBtn = byId('cfg-local-save-btn');
+    if (saveBtn) {
+      saveBtn.disabled = disabled;
+    }
+    if (pushBtn) {
+      pushBtn.disabled = disabled;
+    }
+    if (localSaveBtn) {
+      localSaveBtn.disabled = disabled;
+    }
+  }
+
+  function setConfigInputValue(id, value) {
+    const el = byId(id);
+    if (el) {
+      el.value = value == null ? '' : String(value);
+    }
+  }
+
+  function defaultConfigForView() {
+    const latestConfig = state.latestTelemetry?.config || {};
+    return {
+      alert_level_mm: Number(latestConfig.alert_level_mm ?? 200),
+      danger_level_mm: Number(latestConfig.danger_level_mm ?? 500),
+      clear_level_mm: Number(latestConfig.clear_level_mm ?? 450),
+      trigger_delay_seconds: Number(latestConfig.trigger_delay_seconds ?? 60),
+      clear_delay_seconds: Number(latestConfig.clear_delay_seconds ?? 300),
+      sensor_mount_height_mm: Number(latestConfig.sensor_mount_height_mm ?? 1200),
+      rs485_sensor_enabled: latestConfig.rs485_sensor_enabled !== false,
+      switch_sensor_enabled: latestConfig.switch_sensor_enabled !== false,
+      switch_level_1_mm: Number(latestConfig.switch_level_1_mm ?? 300),
+      switch_level_2_mm: Number(latestConfig.switch_level_2_mm ?? 500),
+      config_version: Number(latestConfig.config_version ?? 1),
+      state: 'ACTIVE',
+      last_ack_at: null,
+      last_ack_status: null,
+      last_ack_message: null
+    };
+  }
+
+  function renderDeviceConfigHistory(items = []) {
+    const list = byId('cfg-history-list');
+    if (!list) {
+      return;
+    }
+
+    if (!Array.isArray(items) || items.length === 0) {
+      list.innerHTML = '<div class="empty">No config history loaded.</div>';
+      return;
+    }
+
+    list.innerHTML = items.slice(0, 20).map((entry) => {
+      const requestedBy = entry.requested_by || 'unknown';
+      const stateLabel = String(entry.state || '--').toUpperCase();
+      const ackStatus = entry.ack?.status ? `ACK ${entry.ack.status}` : 'ACK --';
+      const ackAt = entry.ack?.at ? formatDateTime(entry.ack.at) : '--';
+      const cfg = entry.config || {};
+      const summary = [
+        `A:${cfg.alert_level_mm ?? '--'}`,
+        `D:${cfg.danger_level_mm ?? '--'}`,
+        `C:${cfg.clear_level_mm ?? '--'}`,
+        `T:${cfg.trigger_delay_seconds ?? '--'}s/${cfg.clear_delay_seconds ?? '--'}s`
+      ].join(' | ');
+
+      return `
+        <div class="audit-item">
+          <div class="audit-event">V${escapeHtml(String(entry.config_version ?? '--'))} · ${escapeHtml(stateLabel)}</div>
+          <div class="audit-detail">${escapeHtml(summary)}</div>
+          <div class="audit-detail">${escapeHtml(ackStatus)} · ${escapeHtml(entry.command_id || '--')}</div>
+          <div class="audit-time">${escapeHtml(formatDateTime(entry.requested_at))} IST · ${escapeHtml(requestedBy)} · ACK ${escapeHtml(ackAt)}</div>
+          ${entry.ack?.message ? `<div class="audit-time">${escapeHtml(String(entry.ack.message))}</div>` : ''}
+        </div>
+      `;
+    }).join('');
+  }
+
+  function renderDeviceConfig(configLike) {
+    const canView = canViewConfig();
+    const canEdit = canEditConfig();
+    const deviceId = selectedConfigDeviceId();
+    const accessNote = byId('cfg-access-note');
+
+    if (!canView) {
+      if (accessNote) {
+        accessNote.textContent = 'Access: Viewer role cannot access device configuration.';
+      }
+      setConfigInputsDisabled(true);
+      setConfigButtonDisabled(true);
+      return;
+    }
+
+    const config = configLike || defaultConfigForView();
+    setConfigInputValue('cfg-alert-level', config.alert_level_mm);
+    setConfigInputValue('cfg-danger-level', config.danger_level_mm);
+    setConfigInputValue('cfg-clear-level', config.clear_level_mm);
+    setConfigInputValue('cfg-trigger-delay', config.trigger_delay_seconds);
+    setConfigInputValue('cfg-clear-delay', config.clear_delay_seconds);
+    setConfigInputValue('cfg-sensor-mount-height', config.sensor_mount_height_mm);
+    setConfigInputValue('cfg-rs485-enabled', config.rs485_sensor_enabled ? 'true' : 'false');
+    setConfigInputValue('cfg-switch-enabled', config.switch_sensor_enabled ? 'true' : 'false');
+    setConfigInputValue('cfg-switch-level-1-mm', config.switch_level_1_mm);
+    setConfigInputValue('cfg-switch-level-2-mm', config.switch_level_2_mm);
+    setText('cfg-meta-version', `Version: ${config.config_version ?? '--'} · State: ${config.state || '--'}`);
+    const ackStatus = config.last_ack_status || '--';
+    const ackTime = config.last_ack_at ? formatDateTime(config.last_ack_at) : '--';
+    const ackMsg = config.last_ack_message ? ` · ${config.last_ack_message}` : '';
+    setText('cfg-meta-ack', `Last ACK: ${ackStatus} at ${ackTime}${ackMsg}`);
+
+    if (accessNote) {
+      if (!deviceId) {
+        accessNote.textContent = `Access: ${state.user?.role || 'UNKNOWN'} · Select a location/device first.`;
+      } else if (canEdit) {
+        accessNote.textContent = `Access: ${state.user?.role || 'UNKNOWN'} · Editable`;
+      } else {
+        accessNote.textContent = `Access: ${state.user?.role || 'UNKNOWN'} · Read only`;
+      }
+    }
+
+    const shouldDisableInputs = !canEdit || !deviceId;
+    setConfigInputsDisabled(shouldDisableInputs);
+    setConfigButtonDisabled(shouldDisableInputs);
+  }
+
+  function parseConfigInt(id, label) {
+    const raw = String(byId(id)?.value || '').trim();
+    const parsed = Number(raw);
+    if (!Number.isFinite(parsed)) {
+      throw new Error(`${label} is required.`);
+    }
+    return Math.round(parsed);
+  }
+
+  function collectDeviceConfigFromForm() {
+    const cfg = {
+      alert_level_mm: parseConfigInt('cfg-alert-level', 'Alert threshold'),
+      danger_level_mm: parseConfigInt('cfg-danger-level', 'Danger threshold'),
+      clear_level_mm: parseConfigInt('cfg-clear-level', 'Clear threshold'),
+      trigger_delay_seconds: parseConfigInt('cfg-trigger-delay', 'Trigger delay'),
+      clear_delay_seconds: parseConfigInt('cfg-clear-delay', 'Clear delay'),
+      sensor_mount_height_mm: parseConfigInt('cfg-sensor-mount-height', 'Sensor mount height'),
+      rs485_sensor_enabled: String(byId('cfg-rs485-enabled')?.value || 'true') === 'true',
+      switch_sensor_enabled: String(byId('cfg-switch-enabled')?.value || 'true') === 'true',
+      switch_level_1_mm: parseConfigInt('cfg-switch-level-1-mm', 'Level 1 switch height'),
+      switch_level_2_mm: parseConfigInt('cfg-switch-level-2-mm', 'Level 2 switch height')
+    };
+
+    if (cfg.alert_level_mm <= 0) {
+      throw new Error('Alert threshold must be greater than 0.');
+    }
+    if (cfg.danger_level_mm <= cfg.alert_level_mm) {
+      throw new Error('Danger threshold must be greater than alert threshold.');
+    }
+    if (cfg.clear_level_mm >= cfg.danger_level_mm) {
+      throw new Error('Clear threshold must be lower than danger threshold.');
+    }
+    if (cfg.trigger_delay_seconds < 10 || cfg.trigger_delay_seconds > 600) {
+      throw new Error('Trigger delay must be between 10 and 600 seconds.');
+    }
+    if (cfg.clear_delay_seconds < 30 || cfg.clear_delay_seconds > 1800) {
+      throw new Error('Clear delay must be between 30 and 1800 seconds.');
+    }
+    if (!cfg.rs485_sensor_enabled && !cfg.switch_sensor_enabled) {
+      throw new Error('At least one sensor input must stay enabled.');
+    }
+    if (cfg.sensor_mount_height_mm <= cfg.danger_level_mm) {
+      throw new Error('Sensor mount height must be greater than danger threshold.');
+    }
+
+    return cfg;
+  }
+
+  function ensureCloudPushAllowed() {
+    const health = evaluateDeviceCloudHealth();
+    state.install.deviceCloudReachable = health.healthy;
+    setInstallMetric('ble-device-cloud-status', health.healthy ? 'UP' : 'DOWN', health.healthy ? 'good' : 'bad');
+    updateBleStatusLabel();
+    if (!health.healthy) {
+      showToast(`Cloud health warning: ${health.reason}. Trying cloud push anyway.`, true);
+    }
+    return true;
+  }
+
+  async function refreshDeviceConfigHistoryApp() {
+    if (!canViewConfig()) {
+      return;
+    }
+    const deviceId = selectedConfigDeviceId();
+    if (!deviceId) {
+      state.deviceConfigHistory = [];
+      renderDeviceConfigHistory([]);
+      return;
+    }
+
+    try {
+      const history = await apiRequest(`/devices/${encodeURIComponent(deviceId)}/config/history`, { auth: true });
+      if (deviceId !== state.selectedDeviceId) {
+        return;
+      }
+      state.deviceConfigHistory = Array.isArray(history) ? history : [];
+      state.configDeviceId = deviceId;
+      renderDeviceConfigHistory(state.deviceConfigHistory);
+    } catch (error) {
+      handleApiError(error, 'Failed loading config history');
+    }
+  }
+
+  async function refreshDeviceConfigApp() {
+    if (!canViewConfig()) {
+      renderDeviceConfig(null);
+      renderDeviceConfigHistory([]);
+      return;
+    }
+
+    const deviceId = selectedConfigDeviceId();
+    if (!deviceId) {
+      state.deviceConfig = null;
+      state.deviceConfigHistory = [];
+      state.configDeviceId = null;
+      renderDeviceConfig(null);
+      renderDeviceConfigHistory([]);
+      return;
+    }
+
+    try {
+      const [config, history] = await Promise.all([
+        apiRequest(`/devices/${encodeURIComponent(deviceId)}/config`, { auth: true }),
+        apiRequest(`/devices/${encodeURIComponent(deviceId)}/config/history`, { auth: true })
+      ]);
+      if (deviceId !== state.selectedDeviceId) {
+        return;
+      }
+      state.deviceConfig = config || null;
+      state.deviceConfigHistory = Array.isArray(history) ? history : [];
+      state.configDeviceId = deviceId;
+      renderDeviceConfig(state.deviceConfig);
+      renderDeviceConfigHistory(state.deviceConfigHistory);
+    } catch (error) {
+      handleApiError(error, 'Failed loading device config');
+    }
+  }
+
+  async function saveDeviceConfigApp() {
+    if (!canEditConfig()) {
+      showToast('Your role has read-only access for configuration.', true);
+      return;
+    }
+
+    const deviceId = selectedConfigDeviceId();
+    if (!deviceId) {
+      showToast('Select a valid location/device first.', true);
+      return;
+    }
+
+    let payload;
+    try {
+      payload = collectDeviceConfigFromForm();
+    } catch (error) {
+      showToast(error.message, true);
+      return;
+    }
+    if (!ensureCloudPushAllowed()) {
+      return;
+    }
+
+    try {
+      const response = await apiRequest(`/devices/${encodeURIComponent(deviceId)}/config`, {
+        method: 'PUT',
+        body: payload
+      });
+      showToast(`Config queued. Command: ${response.command_id || '--'}`);
+      await refreshDeviceConfigApp();
+      if (!state.loading) {
+        await refreshAppData();
+      }
+    } catch (error) {
+      handleApiError(error, 'Save config failed');
+    }
+  }
+
+  async function pushDeviceConfigApp() {
+    if (!canEditConfig()) {
+      showToast('Your role has read-only access for configuration.', true);
+      return;
+    }
+
+    const deviceId = selectedConfigDeviceId();
+    if (!deviceId) {
+      showToast('Select a valid location/device first.', true);
+      return;
+    }
+    if (!ensureCloudPushAllowed()) {
+      return;
+    }
+
+    try {
+      const response = await apiRequest(`/devices/${encodeURIComponent(deviceId)}/config/push`, {
+        method: 'POST',
+        body: {}
+      });
+      showToast(`Config re-push queued. Command: ${response.command_id || '--'}`);
+      await refreshDeviceConfigApp();
+      if (!state.loading) {
+        await refreshAppData();
+      }
+    } catch (error) {
+      handleApiError(error, 'Config re-push failed');
+    }
+  }
+
+  async function saveDeviceConfigLocalLanApp() {
+    if (!canEditConfig()) {
+      showToast('Your role has read-only access for configuration.', true);
+      return;
+    }
+
+    const deviceId = selectedConfigDeviceId();
+    if (!deviceId) {
+      showToast('Select a valid location/device first.', true);
+      return;
+    }
+
+    let payload;
+    try {
+      payload = collectDeviceConfigFromForm();
+    } catch (error) {
+      showToast(error.message, true);
+      return;
+    }
+
+    const localPin = String(byId('cfg-local-pin')?.value || '').trim();
+    if (localPin.length < 4) {
+      showToast('Local Admin PIN is required for Local LAN save.', true);
+      return;
+    }
+
+    const localUrl = updateLocalUrlFromState();
+    if (!localUrl) {
+      showToast('Set Device Local URL in Install tab first.', true);
+      return;
+    }
+
+    try {
+      const status = await fetchLocalDeviceStatus(localUrl);
+      applyLocalStatus(status, localUrl);
+      if (status?.device_id && String(status.device_id) !== String(deviceId)) {
+        showToast(`Local device mismatch. Selected ${deviceId}, local is ${status.device_id}.`, true);
+        return;
+      }
+
+      const saveUrl = `${localUrl}/save-config?pin=${encodeURIComponent(localPin)}`;
+      let parsed = null;
+      let responseStatus = 0;
+
+      const nativeSave = await requestViaNativeHttp({
+        url: saveUrl,
+        method: 'POST',
+        headers: {
+          'content-type': 'application/json'
+        },
+        data: payload,
+        connectTimeout: 8000,
+        readTimeout: 8000,
+        responseType: 'json'
+      });
+
+      if (nativeSave) {
+        responseStatus = Number(nativeSave.status || 0);
+        if (nativeSave.data && typeof nativeSave.data === 'object') {
+          parsed = nativeSave.data;
+        } else if (typeof nativeSave.data === 'string' && nativeSave.data.trim()) {
+          try {
+            parsed = JSON.parse(nativeSave.data);
+          } catch (error) {
+            parsed = null;
+          }
+        }
+      } else {
+        const t = withTimeoutMs(8000);
+        let response;
+        try {
+          response = await fetch(saveUrl, {
+            method: 'POST',
+            headers: {
+              'content-type': 'application/json'
+            },
+            body: JSON.stringify(payload),
+            signal: t.controller.signal
+          });
+        } finally {
+          t.clear();
+        }
+
+        responseStatus = Number(response.status || 0);
+        const raw = await response.text();
+        try {
+          parsed = raw ? JSON.parse(raw) : null;
+        } catch (error) {
+          parsed = null;
+        }
+      }
+
+      if (!(responseStatus >= 200 && responseStatus < 300) || parsed?.ok !== true) {
+        throw new Error(parsed?.error || parsed?.message || `HTTP ${responseStatus || 'ERR'}`);
+      }
+
+      const cfgJsonRaw = String(parsed?.config_json || '').trim();
+      if (cfgJsonRaw) {
+        try {
+          const cfg = JSON.parse(cfgJsonRaw);
+          state.deviceConfig = {
+            ...(state.deviceConfig || {}),
+            ...cfg,
+            state: 'ACTIVE',
+            last_ack_status: 'LOCAL_SAVED',
+            last_ack_at: new Date().toISOString(),
+            last_ack_message: 'Saved directly on device'
+          };
+        } catch (error) {
+          state.deviceConfig = {
+            ...(state.deviceConfig || {}),
+            ...payload,
+            state: 'ACTIVE',
+            last_ack_status: 'LOCAL_SAVED',
+            last_ack_at: new Date().toISOString(),
+            last_ack_message: 'Saved directly on device'
+          };
+        }
+      }
+
+      renderDeviceConfig(state.deviceConfig);
+      await refreshLocalDeviceStatusApp(true);
+      showToast('Local LAN save successful. Configuration saved to device NVS.');
+    } catch (error) {
+      showToast(`Local LAN save failed: ${error.message}`, true);
+    }
+  }
+
   function canVendorInstall() {
-    const role = String(state.user?.role || '').toUpperCase();
+    const role = userRole();
     return role === 'VENDOR_SUPER_ADMIN' || role === 'VENDOR_MONITORING_USER';
   }
 
@@ -503,7 +1937,63 @@
   }
 
   function defaultVpsHealthUrl() {
-    return `${rootUrlFromApiBase()}/health`;
+    const root = String(rootUrlFromApiBase() || '').trim().replace(/\/+$/, '');
+    if (!/^https?:\/\//i.test(root)) {
+      return DEFAULT_VPS_HEALTH_URL;
+    }
+    return `${root}/health`;
+  }
+
+  function alternateVpsHealthUrl(healthUrl) {
+    const normalized = String(healthUrl || '').trim().replace(/\/+$/, '');
+    if (!normalized) {
+      return '';
+    }
+    if (/\/api\/health$/i.test(normalized)) {
+      return normalized.replace(/\/api\/health$/i, '/health');
+    }
+    if (/\/health$/i.test(normalized)) {
+      return normalized.replace(/\/health$/i, '/api/health');
+    }
+    if (/\/api$/i.test(normalized)) {
+      return `${normalized}/health`;
+    }
+    return `${normalized}/api/health`;
+  }
+
+  function isPrivateOrLocalHost(hostname) {
+    const host = String(hostname || '').trim().toLowerCase();
+    if (!host) {
+      return true;
+    }
+    if (host === 'localhost' || host === '127.0.0.1' || host === '::1') {
+      return true;
+    }
+    if (/^10\./.test(host) || /^192\.168\./.test(host)) {
+      return true;
+    }
+    if (/^172\.(1[6-9]|2\d|3[0-1])\./.test(host)) {
+      return true;
+    }
+    return false;
+  }
+
+  function resolveVpsHealthUrl() {
+    try {
+      const fallback = new URL(DEFAULT_VPS_HEALTH_URL);
+      const auto = new URL(defaultVpsHealthUrl());
+      if (isPrivateOrLocalHost(auto.hostname)) {
+        return fallback.toString();
+      }
+      auto.protocol = 'https:';
+      auto.port = '';
+      auto.pathname = '/health';
+      auto.search = '';
+      auto.hash = '';
+      return auto.toString();
+    } catch (error) {
+      return DEFAULT_VPS_HEALTH_URL;
+    }
   }
 
   function applyAdminPanelVisibility() {
@@ -516,16 +2006,12 @@
 
   function applyVendorInstallVisibility() {
     const tab = byId('vendor-install-tab');
-    const nav = byId('bottom-nav');
     const installView = byId('view-install');
     const roleChip = byId('ble-role-chip');
     const enabled = canVendorInstall();
 
     if (tab) {
       tab.style.display = enabled ? 'inline-block' : 'none';
-    }
-    if (nav) {
-      nav.style.setProperty('--nav-count', enabled ? '5' : '4');
     }
     if (installView) {
       installView.style.display = enabled ? '' : 'none';
@@ -538,12 +2024,57 @@
     if (!enabled) {
       state.ble.scanResults = [];
       state.ble.selectedDeviceId = '';
+      state.ble.connectedDeviceId = '';
       state.ble.wifiNetworks = [];
+      state.ble.phoneWifiSsid = '';
+      state.ble.scanTriggered = false;
+      state.ble.scanInProgress = false;
+      state.ble.provisioningComplete = false;
+      state.install.tokenExpiresAt = '';
+      setBleScanProgress(false);
       renderBleDeviceList();
       renderBleWifiList();
+      renderBleWifiSelect();
       setText('ble-selected-device', 'Selected: --');
-      setText('ble-link-status', 'DISCONNECTED');
+      setInstallMetric('ble-app-cloud-status', '--');
+      setInstallMetric('ble-device-cloud-status', '--');
+      setInstallMetric('ble-device-local-status', '--');
+      setText('ble-device-local-address', 'Address: --');
+      renderPhoneWifiSsid();
+      updateBleStatusLabel();
     }
+
+    updateBleProvisionSectionVisibility();
+    updateNavButtonCount();
+  }
+
+  function applyConfigVisibility() {
+    const canView = canViewConfig();
+    const tab = byId('config-tab');
+    const configView = byId('view-config');
+    if (tab) {
+      tab.style.display = canView ? 'inline-block' : 'none';
+    }
+    if (configView) {
+      configView.style.display = canView ? '' : 'none';
+    }
+
+    if (!canView && byId('view-config')?.classList.contains('active')) {
+      openView('view-locations');
+    }
+
+    updateNavButtonCount();
+  }
+
+  function updateNavButtonCount() {
+    const nav = byId('bottom-nav');
+    if (!nav) {
+      return;
+    }
+    const visibleCount = Array.from(nav.querySelectorAll('.nav-btn'))
+      .filter((btn) => btn.style.display !== 'none')
+      .length;
+    nav.style.setProperty('--nav-count', String(Math.max(1, visibleCount)));
   }
 
   function renderLocations() {
@@ -605,19 +2136,26 @@
 
   function renderDashboard(location, dashboardData, incident) {
     const latest = dashboardData?.latest || null;
+    state.latestTelemetry = latest;
     const meta = statusMeta(latest?.status || location?.status || 'OFFLINE');
     const waterLevel = Number.isFinite(latest?.water_level_mm) ? Math.round(latest.water_level_mm) : 0;
     const distance = Number.isFinite(latest?.distance_mm) ? Math.round(latest.distance_mm) : 0;
-    const mountHeight = Number(dashboardData?.location?.sensor_mount_height_mm || 1200);
+    const liveConfig = latest?.config || state.deviceConfig || {};
+    const alertLevel = Number(liveConfig.alert_level_mm ?? 200);
+    const dangerLevel = Number(liveConfig.danger_level_mm ?? 500);
+    const mountHeight = Number(liveConfig.sensor_mount_height_mm || dashboardData?.location?.sensor_mount_height_mm || 1200);
     const fillPercent = Math.max(0, Math.min(100, (waterLevel / mountHeight) * 100));
 
     setText('dash-location-name', location?.location_name || location?.location_id || '--');
     setText('dash-location-sub', `Device: ${location?.device_id || '--'} · Last update ${formatDateTime(latest?.timestamp || location?.last_update)}`);
 
+    setText('dash-status-note', `Status note: ${latest?.status_note || 'No note available'}`);
+
     const badge = byId('dash-status-badge');
     if (badge) {
       badge.textContent = meta.label;
       badge.classList.toggle('danger', meta.cls === 'danger');
+      badge.classList.toggle('off', meta.cls === 'off');
     }
 
     setText('dash-water-level', String(waterLevel));
@@ -626,9 +2164,18 @@
     setText('dash-solar', Number.isFinite(latest?.solar_voltage) ? `${latest.solar_voltage.toFixed(1)}V` : '--');
     setText('dash-rssi', Number.isFinite(latest?.wifi_rssi) ? `${Math.round(latest.wifi_rssi)} dBm` : '--');
     setText('dash-heartbeat', String(location?.device_status || 'UNKNOWN').toUpperCase());
+    setText('dash-rs485-status', String(latest?.rs485_status || latest?.primary_sensor_status || '--').toUpperCase());
+    setText('dash-switch-l1', latest?.switch_level_1_closed === true || latest?.switch_300mm === true ? 'CLOSED' : 'OPEN');
+    setText('dash-switch-l2', latest?.switch_level_2_closed === true || latest?.switch_500mm === true ? 'CLOSED' : 'OPEN');
+    const rs485Enabled = latest?.rs485_sensor_enabled ?? liveConfig.rs485_sensor_enabled;
+    const switchEnabled = latest?.switch_sensor_enabled ?? liveConfig.switch_sensor_enabled;
+    const logicMode = rs485Enabled && switchEnabled ? 'Dual-sensor mode' : (rs485Enabled ? 'RS485 only' : 'Switch only');
+    setText('dash-logic-mode', logicMode);
     setText('control-user-role', `Logged in as: ${state.user?.name || state.user?.login_id || '--'} (${state.user?.role || 'UNKNOWN'})`);
     applyAdminPanelVisibility();
     applyVendorInstallVisibility();
+    applyConfigVisibility();
+    renderInstallCloudStatuses();
 
     const fill = byId('vessel-fill');
     if (fill) {
@@ -638,6 +2185,19 @@
         : meta.cls === 'warn'
           ? 'linear-gradient(0deg,#b45309,#f59e0b)'
           : 'linear-gradient(0deg,#047857,#34d399)';
+    }
+
+    const alertMarker = byId('dash-marker-alert');
+    const dangerMarker = byId('dash-marker-danger');
+    const alertBottom = Math.max(0, Math.min(100, (alertLevel / mountHeight) * 100));
+    const dangerBottom = Math.max(0, Math.min(100, (dangerLevel / mountHeight) * 100));
+    if (alertMarker) {
+      alertMarker.textContent = `${Math.round(alertLevel)}mm`;
+      alertMarker.style.bottom = `${alertBottom.toFixed(1)}%`;
+    }
+    if (dangerMarker) {
+      dangerMarker.textContent = `${Math.round(dangerLevel)}mm`;
+      dangerMarker.style.bottom = `${dangerBottom.toFixed(1)}%`;
     }
 
     state.activeIncident = incident;
@@ -802,12 +2362,15 @@
     const selected = findSelectedBleDevice();
     setText('ble-selected-device', selected ? `Selected: ${selected.name || selected.deviceId}` : 'Selected: --');
     renderBleDeviceList();
+    updateBleStatusLabel();
+    const section = byId('ble-wifi-provision-section');
+    if (section && section.style.display !== 'none') {
+      section.scrollIntoView({ behavior: 'smooth', block: 'start' });
+    }
   }
 
   function pickBleWifiSsidApp(ssid) {
-    if (byId('ble-wifi-ssid')) {
-      byId('ble-wifi-ssid').value = String(ssid || '');
-    }
+    setBleWifiSsidValue(ssid);
   }
 
   async function bleScanDevicesApp() {
@@ -816,33 +2379,77 @@
       return;
     }
 
+    state.ble.scanTriggered = true;
+    state.ble.provisioningComplete = false;
+    state.ble.wifiNetworks = [];
+    state.ble.phoneWifiSsid = readPhoneWifiSsid();
+    renderPhoneWifiSsid();
+    renderBleWifiList();
+    renderBleWifiSelect();
+    setBleOutputs(null, 'No provisioning response yet.');
+    updateBleProvisionSectionVisibility();
+    setBleScanProgress(true, 'Scanning BLE...');
+
     try {
       const ble = await ensureBleReady();
       const discovered = new Map();
-      const listener = await ble.addListener('onScanResult', (result) => {
-        const deviceId = String(result?.device?.deviceId || '').trim();
-        if (!deviceId) {
-          return;
+      const isLikelyFloodGuard = (result, name) => {
+        const upperName = String(name || '').toUpperCase();
+        if (upperName.startsWith(BLE_NAME_PREFIX) || upperName.includes('JNX-FG') || upperName.includes('FLOODGUARD')) {
+          return true;
         }
-        const name = String(normalizeDeviceName(result) || '').trim();
-        if (!name.toUpperCase().startsWith(BLE_NAME_PREFIX)) {
-          return;
-        }
-        discovered.set(deviceId, {
-          deviceId,
-          name,
-          rssi: Number.isFinite(result?.rssi) ? Math.round(result.rssi) : null
-        });
-      });
+        const serviceIds = []
+          .concat(Array.isArray(result?.uuids) ? result.uuids : [])
+          .concat(Array.isArray(result?.serviceUuids) ? result.serviceUuids : [])
+          .map((item) => String(item || '').toLowerCase());
+        return serviceIds.some((id) => id.includes('ff00'));
+      };
 
-      setText('ble-link-status', 'SCANNING...');
-      await ble.requestLEScan({
-        namePrefix: BLE_NAME_PREFIX,
-        allowDuplicates: false
-      });
-      await delay(7000);
-      await ble.stopLEScan();
-      await listener.remove();
+      const runScanPass = async (scanOptions, strictPrefixOnly) => {
+        const listener = await ble.addListener('onScanResult', (result) => {
+          const deviceId = String(result?.device?.deviceId || '').trim();
+          if (!deviceId) {
+            return;
+          }
+          const rawName = String(normalizeDeviceName(result) || '').trim();
+          const upperName = rawName.toUpperCase();
+          const likely = isLikelyFloodGuard(result, rawName);
+          if (strictPrefixOnly && !upperName.startsWith(BLE_NAME_PREFIX)) {
+            return;
+          }
+          if (!strictPrefixOnly && !likely) {
+            return;
+          }
+          const fallbackName = rawName && rawName !== 'Unknown'
+            ? rawName
+            : (likely ? `JNX-FG-${deviceId.slice(-4).toUpperCase()}` : deviceId);
+          discovered.set(deviceId, {
+            deviceId,
+            name: fallbackName,
+            rssi: Number.isFinite(result?.rssi) ? Math.round(result.rssi) : null
+          });
+        });
+
+        try {
+          await ble.requestLEScan(scanOptions);
+          await delay(7000);
+        } finally {
+          try {
+            await ble.stopLEScan();
+          } catch (error) {
+            // ignore stop errors
+          }
+          await listener.remove();
+        }
+      };
+
+      setInstallMetric('ble-link-status', 'SCANNING...', 'warn');
+      await runScanPass({ namePrefix: BLE_NAME_PREFIX, allowDuplicates: false }, true);
+      if (discovered.size === 0) {
+        setInstallMetric('ble-link-status', 'RETRYING...', 'warn');
+        setBleScanProgress(true, 'Retrying BLE scan...');
+        await runScanPass({ allowDuplicates: false }, false);
+      }
 
       state.ble.scanResults = Array.from(discovered.values()).sort((a, b) => (b.rssi ?? -999) - (a.rssi ?? -999));
       if (!state.ble.scanResults.some((item) => item.deviceId === state.ble.selectedDeviceId)) {
@@ -851,19 +2458,27 @@
 
       const selected = findSelectedBleDevice();
       setText('ble-selected-device', selected ? `Selected: ${selected.name || selected.deviceId}` : 'Selected: --');
-      setText('ble-link-status', state.ble.connectedDeviceId ? 'CONNECTED' : 'DISCONNECTED');
+      updateBleStatusLabel();
       renderBleDeviceList();
-      showToast(state.ble.scanResults.length > 0 ? `Found ${state.ble.scanResults.length} BLE device(s).` : 'No BLE device found.');
+      updateBleProvisionSectionVisibility();
+      showToast(state.ble.scanResults.length > 0 ? `Found ${state.ble.scanResults.length} BLE device(s). Tap a device card to select.` : 'No BLE device found.');
+      if (state.ble.scanResults.length > 0) {
+        await bleScanWifiApp();
+      }
     } catch (error) {
-      setText('ble-link-status', 'SCAN FAILED');
+      setInstallMetric('ble-link-status', 'SCAN FAILED', 'bad');
+      state.ble.scanResults = [];
+      updateBleProvisionSectionVisibility();
       showToast(`BLE scan failed: ${error.message}`, true);
+    } finally {
+      setBleScanProgress(false);
     }
   }
 
   async function bleDisconnectApp() {
     const deviceId = state.ble.connectedDeviceId;
     if (!deviceId) {
-      setText('ble-link-status', 'DISCONNECTED');
+      updateBleStatusLabel();
       return;
     }
 
@@ -874,7 +2489,7 @@
       // best effort
     } finally {
       state.ble.connectedDeviceId = '';
-      setText('ble-link-status', 'DISCONNECTED');
+      updateBleStatusLabel();
       renderBleDeviceList();
     }
   }
@@ -887,14 +2502,27 @@
 
     try {
       updateVpsUrlInput();
-      const vpsUrl = String(byId('ble-vps-url')?.value || '').trim() || defaultVpsHealthUrl();
+      const vpsUrl = resolveVpsHealthUrl();
       const response = await bleSendCommand({
         cmd: 'health',
         vps_url: vpsUrl,
         check_vps: true
       });
       setBleOutputs(prettyJson(response), null);
-      setText('ble-link-status', 'CONNECTED');
+      applyVoltageSettingsFromPayload(response);
+      syncVoltageInputsFromState();
+      updateBleStatusLabel();
+      if (response?.vps && typeof response.vps.reachable === 'boolean') {
+        state.install.deviceCloudReachable = response.vps.reachable;
+        setInstallMetric('ble-device-cloud-status', response.vps.reachable ? 'UP' : 'DOWN', response.vps.reachable ? 'good' : 'bad');
+      } else if (typeof response?.mqtt_connected === 'boolean') {
+        state.install.deviceCloudReachable = response.mqtt_connected;
+        setInstallMetric('ble-device-cloud-status', response.mqtt_connected ? 'UP' : 'DOWN', response.mqtt_connected ? 'good' : 'bad');
+      }
+      const localUrl = updateLocalUrlFromState(response?.ip || '');
+      if (localUrl) {
+        applyLocalStatus(response, localUrl);
+      }
       showToast('Device health received.');
     } catch (error) {
       setBleOutputs(`Error: ${error.message}`, null);
@@ -909,13 +2537,28 @@
     }
 
     try {
+      const phoneSsid = readPhoneWifiSsid();
+      state.ble.phoneWifiSsid = phoneSsid;
+      renderPhoneWifiSsid();
       const response = await bleSendCommand({ cmd: 'scan_wifi' });
       state.ble.wifiNetworks = Array.isArray(response.networks) ? response.networks : [];
-      if (state.ble.wifiNetworks[0]?.ssid && byId('ble-wifi-ssid') && !byId('ble-wifi-ssid').value) {
-        byId('ble-wifi-ssid').value = state.ble.wifiNetworks[0].ssid;
-      }
       renderBleWifiList();
-      showToast(`Wi-Fi scan complete (${state.ble.wifiNetworks.length} network(s)).`);
+      renderBleWifiSelect();
+      const preferred = choosePreferredSsid(
+        state.ble.wifiNetworks.map((item) => String(item?.ssid || '').trim()),
+        String(state.ble.phoneWifiSsid || '').trim()
+      );
+      if (preferred) {
+        setBleWifiSsidValue(preferred);
+      }
+      if (state.ble.wifiNetworks.length > 0 && byId('ble-wifi-ssid-select')) {
+        byId('ble-wifi-ssid-select').focus();
+      }
+      if (state.ble.phoneWifiSsid) {
+        showToast(`Wi-Fi scan complete (${state.ble.wifiNetworks.length} network(s)). Phone Wi-Fi: ${state.ble.phoneWifiSsid}`);
+      } else {
+        showToast(`Wi-Fi scan complete (${state.ble.wifiNetworks.length} network(s)).`);
+      }
     } catch (error) {
       showToast(`Wi-Fi scan failed: ${error.message}`, true);
     }
@@ -927,30 +2570,272 @@
       return;
     }
 
+    const suggestedSsid = choosePreferredSsid(
+      state.ble.wifiNetworks.map((item) => String(item?.ssid || '').trim()),
+      String(state.ble.phoneWifiSsid || '').trim()
+    );
+    if (!String(byId('ble-wifi-ssid')?.value || '').trim() && suggestedSsid) {
+      setBleWifiSsidValue(suggestedSsid);
+    }
+
     const ssid = String(byId('ble-wifi-ssid')?.value || '').trim();
     const password = String(byId('ble-wifi-password')?.value || '');
-    const vpsUrl = String(byId('ble-vps-url')?.value || '').trim() || defaultVpsHealthUrl();
+    const vpsUrl = resolveVpsHealthUrl();
 
     if (!ssid) {
-      showToast('SSID is required for provisioning.', true);
+      showToast('SSID not detected. Scan Wi-Fi once and retry.', true);
+      return;
+    }
+    let voltageSettings;
+    try {
+      voltageSettings = readVoltageSettingsFromForm();
+    } catch (error) {
+      showToast(error.message, true);
       return;
     }
 
+    const provisionBtn = byId('ble-provision-btn');
+    if (provisionBtn) {
+      provisionBtn.disabled = true;
+    }
+    startProvisionModal(ssid);
+
+    let activeStep = 1;
     try {
-      const response = await bleSendCommand({
-        cmd: 'set_wifi',
-        ssid,
-        password,
-        vps_url: vpsUrl,
-        check_vps: true
+      await delay(220);
+      setProvisionStep(1, 'active', 'Claiming device and fetching cloud token...');
+
+      const provisionProfile = await requestDeviceProvisionProfile();
+      const cloud = provisionProfile?.cloud || {};
+      const cloudVpsUrl = String(cloud.vps_base_url || vpsUrl || '').trim() || vpsUrl;
+      const cloudVpsProbeUrl = String(cloud.vps_check_url || cloudVpsUrl || '').trim() || cloudVpsUrl;
+      const mqttHost = String(cloud?.mqtt?.host || '').trim();
+      const mqttPort = Number(cloud?.mqtt?.port || 0);
+      const mqttUser = String(cloud?.mqtt?.username || '').trim();
+      const mqttPassword = String(cloud?.mqtt?.password || provisionProfile?.device_token || '').trim();
+      const mqttAuthMode = String(cloud?.mqtt?.auth_mode || '').trim().toLowerCase();
+      const shouldSendMqttAuth = mqttAuthMode === 'token'
+        || mqttAuthMode === 'credentials'
+        || mqttAuthMode === 'password';
+      state.install.tokenExpiresAt = String(provisionProfile?.token_expires_at || '').trim();
+
+      const expiryLabel = state.install.tokenExpiresAt ? formatDateTime(state.install.tokenExpiresAt) : '--';
+      setProvisionStep(1, 'done', `Token ready (expires ${expiryLabel}).`);
+      activeStep = 2;
+      setProvisionStep(2, 'active', `Checking current Wi-Fi state for "${ssid}"...`);
+
+      let wifiResponse = null;
+      let reusedWifiSession = false;
+      let currentWifiSsid = '';
+      try {
+        const healthResponse = await bleSendCommand(
+          { cmd: 'health', check_vps: false },
+          {
+            expectCmd: 'health',
+            maxWaitMs: 12000,
+            readTimeoutMs: 4500,
+            initialDelayMs: 300,
+            pollIntervalMs: 500
+          }
+        );
+        currentWifiSsid = String(healthResponse?.wifi_ssid || '').trim();
+        const alreadyConnected = healthResponse?.wifi_connected === true;
+        const sameSsid = !currentWifiSsid || currentWifiSsid === ssid;
+        if (alreadyConnected && sameSsid) {
+          reusedWifiSession = true;
+          wifiResponse = healthResponse;
+          setProvisionStep(2, 'active', `Wi-Fi already connected${currentWifiSsid ? ` (${currentWifiSsid})` : ''}. Reusing connection...`);
+        }
+      } catch (error) {
+        // Health pre-check is best effort; continue with explicit Wi-Fi command.
+      }
+
+      if (!wifiResponse) {
+        setProvisionStep(2, 'active', `Connecting to "${ssid}"...`);
+        const commandPayload = {
+          cmd: 'w',
+          s: ssid,
+          p: password
+        };
+        wifiResponse = await bleSendCommand(commandPayload, {
+          expectCmd: 'w',
+          maxWaitMs: 45000,
+          readTimeoutMs: 6000,
+          initialDelayMs: 500,
+          pollIntervalMs: 700
+        });
+      }
+      setBleOutputs(null, prettyJson(wifiResponse));
+      applyVoltageSettingsFromPayload(wifiResponse);
+      syncVoltageInputsFromState();
+      updateBleStatusLabel();
+      const localUrl = updateLocalUrlFromState(wifiResponse?.ip || '');
+      if (localUrl) {
+        applyLocalStatus(wifiResponse, localUrl);
+      }
+
+      const wifiConnected = (wifiResponse?.wifi_connected === true) || (wifiResponse?.wc === true);
+      if (wifiConnected) {
+        const ipText = String(wifiResponse?.ip || '').trim();
+        if (reusedWifiSession) {
+          setProvisionStep(2, 'done', ipText ? `Already connected. IP ${ipText}` : 'Already connected.');
+        } else {
+          setProvisionStep(2, 'done', ipText ? `Connected. IP ${ipText}` : 'Connected.');
+        }
+        setLocalCheckButtonAttention(true);
+      } else {
+        const wifiStatusCode = Number.isFinite(Number(wifiResponse?.wifi_status))
+          ? Number(wifiResponse?.wifi_status)
+          : Number(wifiResponse?.ws);
+        const statusTextRaw = String(wifiResponse?.wifi_status_text || '').trim();
+        const wifiStatusText = statusTextRaw || wifiStatusTextFromCode(wifiStatusCode);
+        const statusLabel = wifiStatusText
+          ? `${wifiStatusText}${Number.isFinite(wifiStatusCode) ? ` (${wifiStatusCode})` : ''}`
+          : (Number.isFinite(wifiStatusCode) ? `STATUS_${wifiStatusCode}` : 'UNKNOWN');
+        setProvisionFinalStepTitle('failed');
+        setProvisionStep(2, 'error', `Device could not join Wi-Fi (${statusLabel}). Check SSID/password and 2.4GHz.`);
+        setProvisionStep(3, 'error', 'Skipped because Wi-Fi is not connected.');
+        setProvisionStep(4, 'error', 'Provision failed.');
+        setProvisionModalNote('Provision failed at Wi-Fi step.');
+        setProvisionCloseEnabled(true);
+        showToast('Provisioning failed: device not connected to Wi-Fi.', true);
+        return;
+      }
+
+      activeStep = 3;
+      setProvisionStep(3, 'active', 'Applying cloud profile...');
+
+      const cloudCommandPayload = {
+        cmd: 'c',
+        u: cloudVpsUrl,
+        vps_url: cloudVpsUrl,
+        vu: cloudVpsProbeUrl,
+        cv: true,
+        t: provisionProfile.device_token,
+        ar: voltageSettings.divider,
+        ac: voltageSettings.calibration
+      };
+      if (mqttHost) {
+        cloudCommandPayload.mh = mqttHost;
+      }
+      if (Number.isFinite(mqttPort) && mqttPort > 0) {
+        cloudCommandPayload.mp = mqttPort;
+      }
+      if (shouldSendMqttAuth && mqttUser) {
+        cloudCommandPayload.mu = mqttUser;
+      }
+      if (shouldSendMqttAuth && mqttPassword) {
+        cloudCommandPayload.mw = mqttPassword;
+      }
+      const cloudDebugPayload = { ...cloudCommandPayload };
+      if (cloudDebugPayload.t) {
+        cloudDebugPayload.t = '***';
+      }
+      if (cloudDebugPayload.mw) {
+        cloudDebugPayload.mw = '***';
+      }
+      console.log(`[FG][PROVISION] cloud command ${prettyJson(cloudDebugPayload)}`);
+
+      const cloudResponse = await bleSendCommand(cloudCommandPayload, {
+        expectCmd: 'c',
+        maxWaitMs: 25000,
+        readTimeoutMs: 6000,
+        initialDelayMs: 450,
+        pollIntervalMs: 650
       });
-      setBleOutputs(null, prettyJson(response));
-      setText('ble-link-status', 'CONNECTED');
-      showToast('Wi-Fi provision command completed.');
+      console.log(`[FG][PROVISION] cloud response ${prettyJson(cloudResponse)}`);
+      setBleOutputs(null, prettyJson(cloudResponse));
+      applyVoltageSettingsFromPayload(cloudResponse);
+      syncVoltageInputsFromState();
+      setProvisionStep(3, 'active', 'Checking device local + cloud over HTTP...');
+
+      let cloudReachable = false;
+      let cloudNote = 'No cloud status from device.';
+      const hasVpsFlag = typeof cloudResponse?.vps_reachable === 'boolean' || typeof cloudResponse?.vr === 'boolean';
+      if (hasVpsFlag) {
+        const vpsReachable = (typeof cloudResponse?.vps_reachable === 'boolean')
+          ? cloudResponse.vps_reachable
+          : cloudResponse.vr;
+        state.install.deviceCloudReachable = vpsReachable;
+        setInstallMetric('ble-device-cloud-status', vpsReachable ? 'UP' : 'DOWN', vpsReachable ? 'good' : 'bad');
+        updateBleStatusLabel();
+        cloudReachable = vpsReachable;
+        const httpCode = Number.isFinite(Number(cloudResponse?.vps_http_code))
+          ? Number(cloudResponse?.vps_http_code)
+          : Number(cloudResponse?.vh);
+        const code = Number.isFinite(httpCode) ? `HTTP ${httpCode}` : 'No HTTP code';
+        const detail = String(cloudResponse?.vps_error || cloudResponse?.ve || '').trim();
+        cloudNote = `${vpsReachable ? 'VPS reachable' : 'VPS not reachable'} (${code})${detail ? ` - ${detail}` : ''}`;
+      } else if (typeof cloudResponse?.mqtt_connected === 'boolean') {
+        state.install.deviceCloudReachable = cloudResponse.mqtt_connected;
+        setInstallMetric('ble-device-cloud-status', cloudResponse.mqtt_connected ? 'UP' : 'DOWN', cloudResponse.mqtt_connected ? 'good' : 'bad');
+        updateBleStatusLabel();
+        cloudReachable = cloudResponse.mqtt_connected;
+        cloudNote = cloudResponse.mqtt_connected ? 'MQTT connected.' : 'MQTT not connected.';
+      } else {
+        state.install.deviceCloudReachable = false;
+        cloudNote = 'Could not read local HTTP status from device.';
+      }
+      const localUrlAfterCloud = updateLocalUrlFromState(wifiResponse?.ip || '');
+      const localOk = localUrlAfterCloud ? await refreshLocalDeviceStatusApp(true) : false;
+      if (localOk) {
+        const localCloudState = Boolean(state.install.deviceCloudReachable);
+        if (hasVpsFlag) {
+          // Local /status reports MQTT link, but Step 3 verdict should follow VPS reachability probe.
+          state.install.deviceCloudReachable = cloudReachable;
+          setInstallMetric('ble-device-cloud-status', cloudReachable ? 'UP' : 'DOWN', cloudReachable ? 'good' : 'bad');
+          updateBleStatusLabel();
+          cloudNote += ` | Local MQTT ${localCloudState ? 'UP' : 'DOWN'}`;
+        } else {
+          cloudReachable = localCloudState;
+          cloudNote = localCloudState ? 'HTTP local status says cloud is connected.' : 'HTTP local status says cloud is not connected.';
+        }
+      }
+
+      if (!cloudReachable) {
+        setProvisionFinalStepTitle('failed');
+        setProvisionStep(3, 'error', cloudNote);
+        setProvisionStep(4, 'error', 'Wi-Fi is set, but cloud is not connected.');
+        setProvisionModalNote('Device saved Wi-Fi but cloud check failed.');
+        setProvisionCloseEnabled(true);
+        showToast('Wi-Fi saved, but cloud is not reachable from device.', true);
+      } else {
+        setProvisionFinalStepTitle('success');
+        setProvisionStep(3, 'done', cloudNote);
+        setProvisionStep(4, 'done', 'Provision success. Device is cloud-ready.');
+        setProvisionModalNote('All steps completed successfully. Press X to close.');
+        setProvisionCloseEnabled(true);
+        state.ble.provisioningComplete = true;
+        updateBleProvisionSectionVisibility();
+        renderBleDeviceList();
+        if (byId('ble-wifi-password')) {
+          byId('ble-wifi-password').value = '';
+        }
+        showToast('Wi-Fi provision command completed.');
+      }
+
       await checkAppVpsHealth();
+      await refreshLocalDeviceStatusApp(true);
     } catch (error) {
-      setBleOutputs(null, `Error: ${error.message}`);
+      if (error?.rawResponse && typeof error.rawResponse === 'object') {
+        setBleOutputs(null, `Error: ${error.message}\n\nRaw:\n${prettyJson(error.rawResponse)}`);
+      } else {
+        setBleOutputs(null, `Error: ${error.message}`);
+      }
+      const safeMessage = String(error?.message || 'Unknown error');
+      setProvisionFinalStepTitle('failed');
+      setProvisionStep(activeStep, 'error', safeMessage);
+      if (activeStep < 3) {
+        setProvisionStep(3, '', 'Waiting...');
+      }
+      setProvisionStep(4, 'error', 'Provision failed.');
+      setProvisionModalNote(`Provision failed: ${safeMessage}`);
+      setProvisionCloseEnabled(true);
       showToast(`Provisioning failed: ${error.message}`, true);
+    } finally {
+      if (provisionBtn) {
+        provisionBtn.disabled = false;
+      }
     }
   }
 
@@ -995,6 +2880,13 @@
 
       const selectedLocation = state.locations.find((item) => item.location_id === state.selectedLocationId) || null;
       state.selectedDeviceId = selectedLocation?.device_id || null;
+      if (state.configDeviceId && state.configDeviceId !== state.selectedDeviceId) {
+        state.deviceConfig = null;
+        state.deviceConfigHistory = [];
+        state.configDeviceId = null;
+        renderDeviceConfig(null);
+        renderDeviceConfigHistory([]);
+      }
 
       const details = await fetchLocationDetails(state.selectedLocationId);
       const activeIncident = details.incidents.find((item) => item.status === 'ACTIVE') || null;
@@ -1006,6 +2898,9 @@
       }
       if (canVendorInstall() && byId('view-install')?.classList.contains('active')) {
         await refreshVendorInstallStatus();
+      }
+      if (canViewConfig() && byId('view-config')?.classList.contains('active')) {
+        await refreshDeviceConfigApp();
       }
     } catch (error) {
       handleApiError(error, 'Refresh failed');
@@ -1075,6 +2970,7 @@
       openView('view-locations');
       applyAdminPanelVisibility();
       applyVendorInstallVisibility();
+      applyConfigVisibility();
       showToast('Login successful');
       await refreshAppData();
       startPolling();
@@ -1091,7 +2987,12 @@
     state.selectedLocationId = null;
     state.selectedDeviceId = null;
     state.activeIncident = null;
+    state.latestTelemetry = null;
+    state.deviceConfig = null;
+    state.deviceConfigHistory = [];
+    state.configDeviceId = null;
     state.adminUsers = [];
+    state.install.tokenExpiresAt = '';
 
     if (state.refreshTimer) {
       clearInterval(state.refreshTimer);
@@ -1107,7 +3008,10 @@
     openView('view-login');
     applyAdminPanelVisibility();
     applyVendorInstallVisibility();
+    applyConfigVisibility();
     renderAdminUsersApp([]);
+    renderDeviceConfig(null);
+    renderDeviceConfigHistory([]);
     showToast(message, isAuto);
   }
 
@@ -1115,6 +3019,13 @@
     state.selectedLocationId = locationId;
     const selected = state.locations.find((item) => item.location_id === locationId) || null;
     state.selectedDeviceId = selected?.device_id || null;
+    if (state.configDeviceId && state.configDeviceId !== state.selectedDeviceId) {
+      state.deviceConfig = null;
+      state.deviceConfigHistory = [];
+      state.configDeviceId = null;
+      renderDeviceConfig(null);
+      renderDeviceConfigHistory([]);
+    }
     renderLocations();
     refreshAppData().catch(() => {
       // handled
@@ -1194,9 +3105,11 @@
   }
 
   async function bootstrap() {
+    installButtonPressFeedback();
     setLoggedInUi(false);
     openView('view-login');
     applyVendorInstallVisibility();
+    applyConfigVisibility();
 
     const saved = loadSession();
     if (saved) {
@@ -1204,11 +3117,16 @@
       state.token = String(saved.token || '');
       state.user = saved.user || null;
       state.session = saved.session || null;
+      state.install.localUrl = normalizeLocalDeviceUrl(saved.install?.localUrl || '');
+      state.install.adcDividerRatio = Number(saved.install?.adcDividerRatio || 5.0);
+      state.install.adcCalibrationFactor = Number(saved.install?.adcCalibrationFactor || 1.0);
+      state.ble.phoneWifiSsid = String(saved.ble?.phoneWifiSsid || '').trim();
     }
 
     if (!state.apiBase) {
       state.apiBase = normalizeApiBase('');
     }
+    updateVpsUrlInput();
     if (byId('login-api-base')) {
       byId('login-api-base').value = state.apiBase;
     }
@@ -1223,6 +3141,7 @@
     if (!ok) {
       applyAdminPanelVisibility();
       applyVendorInstallVisibility();
+      applyConfigVisibility();
       return;
     }
 
@@ -1230,6 +3149,7 @@
     openView('view-locations');
     applyAdminPanelVisibility();
     applyVendorInstallVisibility();
+    applyConfigVisibility();
     await refreshAppData();
     startPolling();
   }
@@ -1246,11 +3166,22 @@
   window.toggleAdminUserAccessApp = toggleAdminUserAccessApp;
   window.selectBleDeviceApp = selectBleDeviceApp;
   window.pickBleWifiSsidApp = pickBleWifiSsidApp;
+  window.selectBleWifiOptionApp = selectBleWifiOptionApp;
+  window.toggleBleWifiPasswordVisibility = toggleBleWifiPasswordVisibility;
+  window.autoCalibrateVoltageFactorApp = autoCalibrateVoltageFactorApp;
+  window.closeProvisionProgressModalApp = closeProvisionProgressModalApp;
+  window.cancelBleProvisionFlowApp = cancelBleProvisionFlowApp;
   window.bleScanDevicesApp = bleScanDevicesApp;
   window.bleDisconnectApp = bleDisconnectApp;
   window.bleReadHealthApp = bleReadHealthApp;
   window.bleScanWifiApp = bleScanWifiApp;
   window.bleProvisionWifiApp = bleProvisionWifiApp;
+  window.refreshLocalDeviceStatusApp = refreshLocalDeviceStatusApp;
+  window.refreshDeviceConfigApp = refreshDeviceConfigApp;
+  window.refreshDeviceConfigHistoryApp = refreshDeviceConfigHistoryApp;
+  window.saveDeviceConfigApp = saveDeviceConfigApp;
+  window.saveDeviceConfigLocalLanApp = saveDeviceConfigLocalLanApp;
+  window.pushDeviceConfigApp = pushDeviceConfigApp;
 
   window.addEventListener('load', () => {
     bootstrap().catch((error) => {

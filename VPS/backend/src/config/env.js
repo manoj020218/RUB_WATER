@@ -8,7 +8,7 @@ function readShiftConfig() {
     if (!fs.existsSync(shiftConfigPath)) {
       return {};
     }
-    const raw = fs.readFileSync(shiftConfigPath, 'utf8');
+    const raw = fs.readFileSync(shiftConfigPath, 'utf8').replace(/^\uFEFF/, '');
     return JSON.parse(raw);
   } catch (error) {
     return {};

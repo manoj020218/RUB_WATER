@@ -1,5 +1,6 @@
 #include "ble_provisioning.h"
 
+#include <cmath>
 #include <ArduinoJson.h>
 #include <BLEAdvertising.h>
 #include <BLECharacteristic.h>
@@ -8,9 +9,13 @@
 #include <ESP.h>
 #include <HTTPClient.h>
 #include <WiFi.h>
+#include <WiFiClientSecure.h>
 #include <esp_err.h>
 #include <esp_mac.h>
 
+#include "http_fallback.h"
+#include "mqtt_client.h"
+#include "voltage_monitor.h"
 #include "wifi_manager.h"
 
 namespace {
@@ -26,10 +31,24 @@ BLECharacteristic* gBleCharacteristic = nullptr;
 String sanitizeSsid(const String& value) {
     String out = value;
     out.trim();
-    if (out.length() > 28) {
-        out = out.substring(0, 28);
+    // IEEE 802.11 SSID max is 32 octets; allow up to 63 chars from UI side
+    // to avoid accidental truncation of valid mixed-character names.
+    if (out.length() > 63) {
+        out = out.substring(0, 63);
     }
     return out;
+}
+
+bool readOptionalFloat(JsonObjectConst obj, const char* key, float& outValue) {
+    if (!obj.containsKey(key)) {
+        return false;
+    }
+    const float parsed = obj[key].as<float>();
+    if (!std::isfinite(parsed)) {
+        return false;
+    }
+    outValue = parsed;
+    return true;
 }
 
 const char* wifiAuthToString(wifi_auth_mode_t mode) {
@@ -67,29 +86,196 @@ String healthUrlFromBase(const String& raw) {
     return url;
 }
 
-bool probeVpsHealth(const String& baseOrHealthUrl, int& statusCode, uint32_t& elapsedMs) {
+String fallbackHealthUrl(const String& raw, const String& primaryHealthUrl) {
+    String url = raw;
+    url.trim();
+    if (url.length() == 0) {
+        return "";
+    }
+
+    while (url.endsWith("/")) {
+        url.remove(url.length() - 1);
+    }
+
+    String candidate;
+    if (url.endsWith("/api")) {
+        candidate = url + "/health";            // try /api/health if primary became /health
+    } else if (url.endsWith("/api/health")) {
+        candidate = url.substring(0, url.length() - 11) + "/health";
+    } else if (url.endsWith("/health")) {
+        candidate = url.substring(0, url.length() - 7) + "/api/health";
+    } else {
+        candidate = url + "/api/health";
+    }
+
+    if (candidate == primaryHealthUrl) {
+        return "";
+    }
+    return candidate;
+}
+
+String swapHttpScheme(const String& raw) {
+    String url = raw;
+    url.trim();
+    if (url.length() == 0) {
+        return "";
+    }
+    if (url.startsWith("https://")) {
+        return String("http://") + url.substring(8);
+    }
+    if (url.startsWith("http://")) {
+        return String("https://") + url.substring(7);
+    }
+    return "";
+}
+
+void appendUniqueUrl(String* urls, size_t& count, size_t maxCount, const String& candidate) {
+    if (candidate.length() == 0 || count >= maxCount || urls == nullptr) {
+        return;
+    }
+    for (size_t i = 0; i < count; ++i) {
+        if (urls[i] == candidate) {
+            return;
+        }
+    }
+    urls[count++] = candidate;
+}
+
+bool httpGetHealth(const String& healthUrl, int& statusCode, uint32_t& elapsedMs, String* errorText = nullptr) {
     statusCode = 0;
     elapsedMs = 0;
-    if (WiFi.status() != WL_CONNECTED) {
-        return false;
+    if (errorText != nullptr) {
+        *errorText = "";
     }
 
-    const String healthUrl = healthUrlFromBase(baseOrHealthUrl);
-    if (healthUrl.length() == 0) {
-        return false;
+    const auto applyErrorDetail = [&](HTTPClient& clientRef) {
+        if (errorText == nullptr) {
+            return;
+        }
+        if (statusCode < 0) {
+            *errorText = HTTPClient::errorToString(statusCode);
+            return;
+        }
+
+        String detail = clientRef.getString();
+        detail.replace('\n', ' ');
+        detail.replace('\r', ' ');
+        detail.trim();
+        if (detail.length() > 140) {
+            detail = detail.substring(0, 140);
+        }
+        if (detail.length() > 0) {
+            *errorText = detail;
+        } else {
+            *errorText = String("http_") + String(statusCode);
+        }
+    };
+
+    // NOTE: HTTPClient::begin(NetworkClient&, ...) keeps a reference to the client.
+    // Keep the WiFiClient/WiFiClientSecure alive for the full request lifetime.
+    if (healthUrl.startsWith("https://")) {
+        WiFiClientSecure secureClient;
+        secureClient.setInsecure();
+
+        HTTPClient client;
+        client.setTimeout(5000);
+        client.setConnectTimeout(5000);
+        client.setFollowRedirects(HTTPC_STRICT_FOLLOW_REDIRECTS);
+        if (!client.begin(secureClient, healthUrl)) {
+            if (errorText != nullptr) {
+                *errorText = "http_begin_failed";
+            }
+            return false;
+        }
+
+        const unsigned long start = millis();
+        statusCode = client.GET();
+        elapsedMs = millis() - start;
+        if (statusCode < 200 || statusCode >= 400) {
+            applyErrorDetail(client);
+        }
+        client.end();
+        return statusCode >= 200 && statusCode < 400;
     }
 
+    WiFiClient plainClient;
     HTTPClient client;
     client.setTimeout(5000);
-    if (!client.begin(healthUrl)) {
+    client.setConnectTimeout(5000);
+    client.setFollowRedirects(HTTPC_STRICT_FOLLOW_REDIRECTS);
+    if (!client.begin(plainClient, healthUrl)) {
+        if (errorText != nullptr) {
+            *errorText = "http_begin_failed";
+        }
         return false;
     }
 
     const unsigned long start = millis();
     statusCode = client.GET();
     elapsedMs = millis() - start;
+    if (statusCode < 200 || statusCode >= 400) {
+        applyErrorDetail(client);
+    }
     client.end();
     return statusCode >= 200 && statusCode < 400;
+}
+
+bool probeVpsHealth(const String& baseOrHealthUrl, int& statusCode, uint32_t& elapsedMs, String* errorText = nullptr) {
+    statusCode = 0;
+    elapsedMs = 0;
+    if (errorText != nullptr) {
+        *errorText = "";
+    }
+    if (WiFi.status() != WL_CONNECTED) {
+        if (errorText != nullptr) {
+            *errorText = "wifi_not_connected";
+        }
+        return false;
+    }
+
+    const String healthUrl = healthUrlFromBase(baseOrHealthUrl);
+    if (healthUrl.length() == 0) {
+        if (errorText != nullptr) {
+            *errorText = "empty_health_url";
+        }
+        return false;
+    }
+
+    // Probe matrix:
+    // 1) primary /health
+    // 2) primary /api/health fallback
+    // 3) swapped scheme (http<->https) /health
+    // 4) swapped scheme /api/health fallback
+    String probeUrls[4];
+    size_t probeCount = 0;
+    appendUniqueUrl(probeUrls, probeCount, 4, healthUrl);
+    appendUniqueUrl(probeUrls, probeCount, 4, fallbackHealthUrl(baseOrHealthUrl, healthUrl));
+
+    const String swappedBase = swapHttpScheme(baseOrHealthUrl);
+    if (swappedBase.length() > 0) {
+        const String swappedHealth = healthUrlFromBase(swappedBase);
+        appendUniqueUrl(probeUrls, probeCount, 4, swappedHealth);
+        appendUniqueUrl(probeUrls, probeCount, 4, fallbackHealthUrl(swappedBase, swappedHealth));
+    }
+
+    String lastErr = "http_probe_failed";
+    for (size_t i = 0; i < probeCount; ++i) {
+        String attemptErr;
+        if (httpGetHealth(probeUrls[i], statusCode, elapsedMs, &attemptErr)) {
+            if (errorText != nullptr) {
+                *errorText = "";
+            }
+            return true;
+        }
+        if (attemptErr.length() > 0) {
+            lastErr = attemptErr;
+        }
+    }
+
+    if (errorText != nullptr) {
+        *errorText = lastErr;
+    }
+    return false;
 }
 }  // namespace
 
@@ -251,14 +437,21 @@ String BleProvisioningService::handleCommand(const String& request, const Device
         }
         WiFi.scanDelete();
         resDoc["count"] = networks.size();
-    } else if (cmd == "set_wifi" || cmd == "provision_wifi") {
+    } else if (cmd == "set_wifi" || cmd == "provision_wifi" || cmd == "w") {
+        const bool compactMode = (cmd == "w");
         String ssid = String(reqDoc["ssid"] | "");
+        if (ssid.length() == 0) {
+            ssid = String(reqDoc["s"] | "");
+        }
         if (ssid.length() == 0) {
             ssid = String(reqDoc["wifi"]["ssid"] | "");
         }
         ssid = sanitizeSsid(ssid);
 
         String password = String(reqDoc["password"] | "");
+        if (password.length() == 0) {
+            password = String(reqDoc["p"] | "");
+        }
         if (password.length() == 0) {
             password = String(reqDoc["wifi"]["password"] | "");
         }
@@ -267,33 +460,335 @@ String BleProvisioningService::handleCommand(const String& request, const Device
             return responseError("ssid_required");
         }
 
+        String vpsBase = String(reqDoc["vps_url"] | "");
+        if (vpsBase.length() == 0) {
+            vpsBase = String(reqDoc["u"] | "");
+        }
+        vpsBase.trim();
+        if (vpsBase.length() == 0) {
+            vpsBase = String(config.httpBaseUrl);
+        }
+
+        String deviceToken = String(reqDoc["provision_token"] | "");
+        if (deviceToken.length() == 0) {
+            deviceToken = String(reqDoc["device_token"] | "");
+        }
+        if (deviceToken.length() == 0) {
+            deviceToken = String(reqDoc["token"] | "");
+        }
+        deviceToken.trim();
+
+        String mqttHost = String(reqDoc["mqtt_host"] | "");
+        mqttHost.trim();
+        const uint16_t mqttPort = static_cast<uint16_t>(reqDoc["mqtt_port"] | config.mqttPort);
+
+        String mqttUser = String(reqDoc["mqtt_user"] | "");
+        mqttUser.trim();
+
+        String mqttPass = String(reqDoc["mqtt_password"] | "");
+        if (mqttPass.length() == 0) {
+            mqttPass = String(reqDoc["mqtt_pass"] | "");
+        }
+        mqttPass.trim();
+
+        float dividerRatio = VoltageMonitor::getInstance().dividerRatio();
+        float calibrationFactor = VoltageMonitor::getInstance().calibrationFactor();
+        bool dividerProvided = readOptionalFloat(reqDoc.as<JsonObjectConst>(), "adc_divider_ratio", dividerRatio);
+        if (!dividerProvided) {
+            dividerProvided = readOptionalFloat(reqDoc.as<JsonObjectConst>(), "divider_ratio", dividerRatio);
+        }
+        bool calibrationProvided = readOptionalFloat(reqDoc.as<JsonObjectConst>(), "adc_calibration_factor", calibrationFactor);
+        if (!calibrationProvided) {
+            calibrationProvided = readOptionalFloat(reqDoc.as<JsonObjectConst>(), "calibration_factor", calibrationFactor);
+        }
+
+        if (dividerProvided || calibrationProvided) {
+            String calibrationReason;
+            const bool applied = VoltageMonitor::getInstance().updateCalibration(
+                dividerRatio,
+                calibrationFactor,
+                true,
+                calibrationReason
+            );
+            if (!applied) {
+                return responseError(calibrationReason.c_str());
+            }
+        }
+
+        HttpFallbackService::getInstance().updateCloudAuth(
+            vpsBase.c_str(),
+            deviceToken.length() > 0 ? deviceToken.c_str() : nullptr,
+            true
+        );
+
+        if (mqttHost.length() > 0 || mqttUser.length() > 0 || mqttPass.length() > 0) {
+            MqttClientService::getInstance().updateConnection(
+                mqttHost.length() > 0 ? mqttHost.c_str() : nullptr,
+                mqttPort,
+                mqttUser.length() > 0 ? mqttUser.c_str() : "",
+                mqttPass.length() > 0 ? mqttPass.c_str() : "",
+                true
+            );
+        }
+
         WifiManager::getInstance().setCredentials(ssid.c_str(), password.c_str(), true);
         const bool connected = WifiManager::getInstance().connectNow(22000UL);
-        resDoc["wifi_connected"] = connected;
-        resDoc["wifi_ssid"] = ssid;
-        resDoc["ip"] = WifiManager::getInstance().getLocalIp();
-        resDoc["rssi"] = WifiManager::getInstance().getRssi();
+        const int wifiStatus = WifiManager::getInstance().currentStatus();
+        // Keep BLE response compact to avoid MTU truncation on phone reads.
+        resDoc.remove("device_name");
+        resDoc.remove("device_id");
+        resDoc.remove("location_id");
+        resDoc.remove("fw");
+        if (compactMode) {
+            resDoc["wc"] = connected;
+            resDoc["ws"] = wifiStatus;
+            resDoc["ip"] = WifiManager::getInstance().getLocalIp();
+            resDoc["r"] = WifiManager::getInstance().getRssi();
+        } else {
+            resDoc["wifi_connected"] = connected;
+            resDoc["wifi_status"] = wifiStatus;
+            resDoc["wifi_status_text"] = WifiManager::getInstance().statusText(wifiStatus);
+            resDoc["wifi_ssid"] = ssid;
+            resDoc["ip"] = WifiManager::getInstance().getLocalIp();
+            resDoc["rssi"] = WifiManager::getInstance().getRssi();
+        }
+        Serial.printf(
+            "[BLE][set_wifi] ssid='%s' connected=%d status=%d(%s) ip=%s rssi=%ld\n",
+            ssid.c_str(),
+            connected ? 1 : 0,
+            wifiStatus,
+            WifiManager::getInstance().statusText(wifiStatus),
+            resDoc["ip"].as<const char*>(),
+            static_cast<long>(compactMode ? resDoc["r"].as<int>() : resDoc["rssi"].as<int>())
+        );
+        if (deviceToken.length() > 0) {
+            if (compactMode) {
+                resDoc["ta"] = true;
+            } else {
+                resDoc["token_applied"] = true;
+            }
+        }
 
-        const bool shouldCheckVps = reqDoc["check_vps"] | true;
+        const bool shouldCheckVps = compactMode
+            ? (reqDoc["cv"] | false)
+            : (reqDoc["check_vps"] | true);
         if (shouldCheckVps) {
-            const String vpsBase = String(reqDoc["vps_url"] | config.httpBaseUrl);
             int vpsCode = 0;
             uint32_t vpsMs = 0;
-            const bool vpsOk = probeVpsHealth(vpsBase, vpsCode, vpsMs);
-            JsonObject vps = resDoc.createNestedObject("vps");
-            vps["url"] = healthUrlFromBase(vpsBase);
-            vps["reachable"] = vpsOk;
-            vps["http_code"] = vpsCode;
-            vps["latency_ms"] = vpsMs;
+            String vpsErr;
+            const bool vpsOk = probeVpsHealth(vpsBase, vpsCode, vpsMs, &vpsErr);
+            if (compactMode) {
+                resDoc["vr"] = vpsOk;
+                resDoc["vh"] = vpsCode;
+            } else {
+                resDoc["vps_reachable"] = vpsOk;
+                resDoc["vps_http_code"] = vpsCode;
+            }
+            if (vpsErr.length() > 0) {
+                if (vpsErr.length() > 48) {
+                    vpsErr = vpsErr.substring(0, 48);
+                }
+                if (compactMode) {
+                    resDoc["ve"] = vpsErr;
+                } else {
+                    resDoc["vps_error"] = vpsErr;
+                }
+            }
+            Serial.printf(
+                "[BLE][set_wifi] vps_ok=%d http=%d latency=%lu err=%s\n",
+                vpsOk ? 1 : 0,
+                vpsCode,
+                static_cast<unsigned long>(vpsMs),
+                vpsErr.length() > 0 ? vpsErr.c_str() : "-"
+            );
+        }
+    } else if (cmd == "set_cloud" || cmd == "provision_cloud" || cmd == "c") {
+        const bool compactMode = (cmd == "c");
+        String vpsBase = String(reqDoc["vps_url"] | "");
+        if (vpsBase.length() == 0) {
+            vpsBase = String(reqDoc["u"] | "");
+        }
+        vpsBase.trim();
+        if (vpsBase.length() == 0) {
+            vpsBase = String(config.httpBaseUrl);
+        }
+        Serial.printf("[BLE][set_cloud] vps_base=%s\n", vpsBase.c_str());
+
+        String deviceToken = String(reqDoc["provision_token"] | "");
+        if (deviceToken.length() == 0) {
+            deviceToken = String(reqDoc["t"] | "");
+        }
+        if (deviceToken.length() == 0) {
+            deviceToken = String(reqDoc["device_token"] | "");
+        }
+        if (deviceToken.length() == 0) {
+            deviceToken = String(reqDoc["token"] | "");
+        }
+        deviceToken.trim();
+
+        String mqttHost = String(reqDoc["mqtt_host"] | "");
+        if (mqttHost.length() == 0) {
+            mqttHost = String(reqDoc["mh"] | "");
+        }
+        mqttHost.trim();
+        const uint16_t mqttPort = static_cast<uint16_t>((reqDoc["mqtt_port"] | reqDoc["mp"]) | config.mqttPort);
+
+        String mqttUser = String(reqDoc["mqtt_user"] | "");
+        if (mqttUser.length() == 0) {
+            mqttUser = String(reqDoc["mu"] | "");
+        }
+        mqttUser.trim();
+
+        String mqttPass = String(reqDoc["mqtt_password"] | "");
+        if (mqttPass.length() == 0) {
+            mqttPass = String(reqDoc["mw"] | "");
+        }
+        if (mqttPass.length() == 0) {
+            mqttPass = String(reqDoc["mqtt_pass"] | "");
+        }
+        mqttPass.trim();
+
+        float dividerRatio = VoltageMonitor::getInstance().dividerRatio();
+        float calibrationFactor = VoltageMonitor::getInstance().calibrationFactor();
+        bool dividerProvided = readOptionalFloat(reqDoc.as<JsonObjectConst>(), "adc_divider_ratio", dividerRatio);
+        if (!dividerProvided) {
+            dividerProvided = readOptionalFloat(reqDoc.as<JsonObjectConst>(), "divider_ratio", dividerRatio);
+        }
+        if (!dividerProvided) {
+            dividerProvided = readOptionalFloat(reqDoc.as<JsonObjectConst>(), "ar", dividerRatio);
+        }
+        bool calibrationProvided = readOptionalFloat(reqDoc.as<JsonObjectConst>(), "adc_calibration_factor", calibrationFactor);
+        if (!calibrationProvided) {
+            calibrationProvided = readOptionalFloat(reqDoc.as<JsonObjectConst>(), "calibration_factor", calibrationFactor);
+        }
+        if (!calibrationProvided) {
+            calibrationProvided = readOptionalFloat(reqDoc.as<JsonObjectConst>(), "ac", calibrationFactor);
+        }
+
+        if (dividerProvided || calibrationProvided) {
+            String calibrationReason;
+            const bool applied = VoltageMonitor::getInstance().updateCalibration(
+                dividerRatio,
+                calibrationFactor,
+                true,
+                calibrationReason
+            );
+            if (!applied) {
+                return responseError(calibrationReason.c_str());
+            }
+        }
+
+        const bool hasAnyCloudInput =
+            vpsBase.length() > 0 ||
+            deviceToken.length() > 0 ||
+            mqttHost.length() > 0 ||
+            mqttUser.length() > 0 ||
+            mqttPass.length() > 0 ||
+            dividerProvided ||
+            calibrationProvided;
+        if (!hasAnyCloudInput) {
+            return responseError("cloud_fields_required");
+        }
+
+        HttpFallbackService::getInstance().updateCloudAuth(
+            vpsBase.c_str(),
+            deviceToken.length() > 0 ? deviceToken.c_str() : nullptr,
+            true
+        );
+
+        if (mqttHost.length() > 0 || mqttUser.length() > 0 || mqttPass.length() > 0) {
+            MqttClientService::getInstance().updateConnection(
+                mqttHost.length() > 0 ? mqttHost.c_str() : nullptr,
+                mqttPort,
+                mqttUser.length() > 0 ? mqttUser.c_str() : "",
+                mqttPass.length() > 0 ? mqttPass.c_str() : "",
+                true
+            );
+        }
+
+        resDoc.remove("device_name");
+        resDoc.remove("device_id");
+        resDoc.remove("location_id");
+        resDoc.remove("fw");
+        if (compactMode) {
+            resDoc["cs"] = true;
+        } else {
+            resDoc["cloud_saved"] = true;
+        }
+        if (deviceToken.length() > 0) {
+            if (compactMode) {
+                resDoc["ta"] = true;
+            } else {
+                resDoc["token_applied"] = true;
+            }
+        }
+        if (mqttHost.length() > 0) {
+            if (compactMode) {
+                resDoc["mh"] = true;
+                resDoc["mp"] = mqttPort;
+            } else {
+                resDoc["mqtt_host_set"] = true;
+                resDoc["mqtt_port"] = mqttPort;
+            }
+        }
+
+        const bool shouldCheckVps = compactMode
+            ? (reqDoc["cv"] | true)
+            : (reqDoc["check_vps"] | true);
+        if (shouldCheckVps) {
+            String vpsProbeBase = String(reqDoc["vps_check_url"] | "");
+            if (vpsProbeBase.length() == 0) {
+                vpsProbeBase = String(reqDoc["vu"] | "");
+            }
+            vpsProbeBase.trim();
+            if (vpsProbeBase.length() == 0) {
+                vpsProbeBase = vpsBase;
+            }
+            int vpsCode = 0;
+            uint32_t vpsMs = 0;
+            String vpsErr;
+            const bool vpsOk = probeVpsHealth(vpsProbeBase, vpsCode, vpsMs, &vpsErr);
+            if (compactMode) {
+                resDoc["vr"] = vpsOk;
+                resDoc["vh"] = vpsCode;
+            } else {
+                resDoc["vps_reachable"] = vpsOk;
+                resDoc["vps_http_code"] = vpsCode;
+            }
+            if (vpsErr.length() > 0) {
+                if (vpsErr.length() > 48) {
+                    vpsErr = vpsErr.substring(0, 48);
+                }
+                if (compactMode) {
+                    resDoc["ve"] = vpsErr;
+                } else {
+                    resDoc["vps_error"] = vpsErr;
+                }
+            }
+            Serial.printf(
+                "[BLE][set_cloud] vps_ok=%d http=%d latency=%lu probe=%s err=%s\n",
+                vpsOk ? 1 : 0,
+                vpsCode,
+                static_cast<unsigned long>(vpsMs),
+                vpsProbeBase.c_str(),
+                vpsErr.length() > 0 ? vpsErr.c_str() : "-"
+            );
         }
     } else if (cmd == "health" || cmd == "diag" || cmd == "diagnostics") {
         resDoc["uptime_ms"] = millis();
         resDoc["free_heap"] = ESP.getFreeHeap();
         resDoc["wifi_connected"] = WifiManager::getInstance().isConnected();
+        const int wifiStatus = WifiManager::getInstance().currentStatus();
+        resDoc["wifi_status"] = wifiStatus;
+        resDoc["wifi_status_text"] = WifiManager::getInstance().statusText(wifiStatus);
         resDoc["wifi_ssid"] = WifiManager::getInstance().getConfiguredSsid();
         resDoc["wifi_rssi"] = WifiManager::getInstance().getRssi();
         resDoc["ip"] = WifiManager::getInstance().getLocalIp();
         resDoc["mqtt_connected"] = _mqttConnected;
+        resDoc["battery_voltage"] = VoltageMonitor::getInstance().readSupplyVoltage();
+        resDoc["battery_adc_divider_ratio"] = VoltageMonitor::getInstance().dividerRatio();
+        resDoc["battery_adc_calibration_factor"] = VoltageMonitor::getInstance().calibrationFactor();
+        resDoc["battery_adc_ready"] = VoltageMonitor::getInstance().isAdcReady();
 
         JsonObject network = resDoc.createNestedObject("network");
         network["internet_available"] = _latestDiagnostics.internetAvailable;
@@ -309,16 +804,65 @@ String BleProvisioningService::handleCommand(const String& request, const Device
 
         const bool shouldCheckVps = reqDoc["check_vps"] | true;
         if (shouldCheckVps) {
-            const String vpsBase = String(reqDoc["vps_url"] | config.httpBaseUrl);
+            String vpsBase = String(reqDoc["vps_url"] | "");
+            if (vpsBase.length() == 0) {
+                vpsBase = String(reqDoc["u"] | "");
+            }
+            vpsBase.trim();
+            if (vpsBase.length() == 0) {
+                vpsBase = String(config.httpBaseUrl);
+            }
             int vpsCode = 0;
             uint32_t vpsMs = 0;
-            const bool vpsOk = probeVpsHealth(vpsBase, vpsCode, vpsMs);
+            String vpsErr;
+            const bool vpsOk = probeVpsHealth(vpsBase, vpsCode, vpsMs, &vpsErr);
             JsonObject vps = resDoc.createNestedObject("vps");
             vps["url"] = healthUrlFromBase(vpsBase);
             vps["reachable"] = vpsOk;
             vps["http_code"] = vpsCode;
             vps["latency_ms"] = vpsMs;
+            if (vpsErr.length() > 0) {
+                vps["error"] = vpsErr;
+            }
         }
+    } else if (cmd == "voltage_config_get" || cmd == "adc_config_get") {
+        resDoc["battery_adc_divider_ratio"] = VoltageMonitor::getInstance().dividerRatio();
+        resDoc["battery_adc_calibration_factor"] = VoltageMonitor::getInstance().calibrationFactor();
+        resDoc["battery_adc_ready"] = VoltageMonitor::getInstance().isAdcReady();
+        resDoc["battery_voltage"] = VoltageMonitor::getInstance().readSupplyVoltage();
+    } else if (cmd == "voltage_config_set" || cmd == "adc_config_set") {
+        float dividerRatio = VoltageMonitor::getInstance().dividerRatio();
+        float calibrationFactor = VoltageMonitor::getInstance().calibrationFactor();
+        const JsonObjectConst reqObj = reqDoc.as<JsonObjectConst>();
+
+        bool dividerProvided = readOptionalFloat(reqObj, "adc_divider_ratio", dividerRatio);
+        if (!dividerProvided) {
+            dividerProvided = readOptionalFloat(reqObj, "divider_ratio", dividerRatio);
+        }
+        bool calibrationProvided = readOptionalFloat(reqObj, "adc_calibration_factor", calibrationFactor);
+        if (!calibrationProvided) {
+            calibrationProvided = readOptionalFloat(reqObj, "calibration_factor", calibrationFactor);
+        }
+
+        if (!dividerProvided && !calibrationProvided) {
+            return responseError("adc_divider_ratio or adc_calibration_factor required");
+        }
+
+        String reason;
+        const bool applied = VoltageMonitor::getInstance().updateCalibration(
+            dividerRatio,
+            calibrationFactor,
+            true,
+            reason
+        );
+        if (!applied) {
+            return responseError(reason.c_str());
+        }
+
+        resDoc["battery_adc_divider_ratio"] = VoltageMonitor::getInstance().dividerRatio();
+        resDoc["battery_adc_calibration_factor"] = VoltageMonitor::getInstance().calibrationFactor();
+        resDoc["battery_adc_ready"] = VoltageMonitor::getInstance().isAdcReady();
+        resDoc["battery_voltage"] = VoltageMonitor::getInstance().readSupplyVoltage();
     } else {
         return responseError("unknown_cmd");
     }

@@ -13,6 +13,7 @@ public:
     static MqttClientService& getInstance();
 
     void begin(const char* host, uint16_t port, const char* user, const char* pass, const char* deviceId);
+    void updateConnection(const char* host, uint16_t port, const char* user, const char* pass, bool persistToNvs = true);
     void loop();
     bool isConnected();
 
@@ -44,6 +45,8 @@ private:
 
     bool connect();
     void subscribe();
+    void loadPersistedConnection();
+    void persistConnection();
     static void onMessageBridge(char* topic, uint8_t* payload, unsigned int length);
     void onMessage(char* topic, uint8_t* payload, unsigned int length);
 };

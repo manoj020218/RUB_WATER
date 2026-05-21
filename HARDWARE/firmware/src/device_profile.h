@@ -41,6 +41,13 @@ static const int SIM800_RX_PIN = 12;
 static const int RF_TRIGGER_ENTRY_PIN = 13;
 static const int RF_TRIGGER_EXIT_PIN = 14;
 
+// ADC module output pin for 12V battery/supply sensing.
+// Update these constants to match field wiring/module ratio.
+static const int BATTERY_ADC_PIN = 10;
+static constexpr float BATTERY_ADC_DIVIDER_RATIO = 5.0f;   // Vin ~= Vadc * ratio
+static constexpr float BATTERY_ADC_CALIBRATION = 1.0f;     // Fine tune after multimeter comparison
+static const uint8_t BATTERY_ADC_SAMPLES = 12;
+
 static const uint8_t RELAY_ON_LEVEL = LOW;
 static const uint8_t RELAY_OFF_LEVEL = HIGH;
 static const uint8_t RF_ACTIVE_LEVEL = LOW;

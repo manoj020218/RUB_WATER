@@ -1,4 +1,4 @@
-const CACHE_NAME = "floodguard-web-v1";
+const CACHE_NAME = "floodguard-web-v2";
 const STATIC_ASSETS = [
   "./",
   "./index.html",
@@ -8,7 +8,13 @@ const STATIC_ASSETS = [
   "./site.css",
   "./site.js",
   "./manifest.webmanifest",
-  "./icon.svg",
+  "./floodguard-logo.svg",
+  "./favicon-16.png",
+  "./favicon-32.png",
+  "./icons/icon-192.png",
+  "./icons/icon-512.png",
+  "./icons/icon-maskable-192.png",
+  "./icons/icon-maskable-512.png",
   "./FloodGuard_Desktop_UI.html",
   "./FloodGuard_Mobile_App_UI.html"
 ];
@@ -62,4 +68,3 @@ self.addEventListener("fetch", (event) => {
     })
   );
 });
-

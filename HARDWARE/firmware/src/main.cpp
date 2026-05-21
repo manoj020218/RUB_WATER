@@ -15,6 +15,7 @@
 #include "ota_manager.h"
 #include "relay_controller.h"
 #include "sensor_rs485.h"
+#include "status_led_s3.h"
 #include "switch_inputs.h"
 #include "telemetry_manager.h"
 #include "time_sync.h"
@@ -271,6 +272,7 @@ void setup() {
     MqttClientService::getInstance().begin(config.mqttHost, config.mqttPort, config.mqttUser, config.mqttPass, config.deviceId);
     MqttClientService::getInstance().setCommandCallback(onIncomingCommand);
     LocalConfigServer::getInstance().begin();
+    StatusLedS3::getInstance().begin();
 
     TelemetryManager::getInstance().begin(config);
     OtaManager::getInstance().begin(config);
@@ -286,6 +288,7 @@ void loop() {
 
     TimeSyncService::getInstance().loop(wifiConnected);
     MqttClientService::getInstance().loop();
+    const bool mqttConnected = MqttClientService::getInstance().isConnected();
     CommandHandler::getInstance().loop();
 
     SensorRs485::getInstance().loop();
@@ -308,9 +311,16 @@ void loop() {
         WifiManager::getInstance().getLocalIp()
     );
     const NetworkDiagnostics& diagnostics = NetworkDiagnosticsService::getInstance().getData();
-    BleProvisioningService::getInstance().loop(config, diagnostics, MqttClientService::getInstance().isConnected());
+    BleProvisioningService::getInstance().loop(config, diagnostics, mqttConnected);
 
-    LocalConfigServer::getInstance().loop(state, sensor, switches, MqttClientService::getInstance().isConnected());
+    StatusLedS3::getInstance().loop(
+        state,
+        wifiConnected,
+        diagnostics.internetAvailable,
+        mqttConnected
+    );
+
+    LocalConfigServer::getInstance().loop(state, sensor, switches, mqttConnected);
 
     publishStateEventIfChanged(state, config, statusNote, statusColor);
     publishHeartbeat(config, diagnostics);
@@ -354,10 +364,10 @@ void loop() {
         switches,
         RelayController::getInstance().getSnapshot(),
         diagnostics,
-        MqttClientService::getInstance().isConnected()
+        mqttConnected
     );
 
-    if (!MqttClientService::getInstance().isConnected()) {
+    if (!mqttConnected) {
         String polledCommand;
         String polledPayload;
         if (HttpFallbackService::getInstance().fetchPendingCommand(polledCommand, polledPayload)) {

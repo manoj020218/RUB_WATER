@@ -33,6 +33,7 @@ function buildCloudInfo(deviceId) {
   const base = sanitizeBaseUrl(env.publicApiBaseUrl || env.vpsFqdn);
   return {
     vps_base_url: base,
+    vps_check_url: base,
     health_url: `${base}/health`,
     api_base_url: `${base}/api`,
     mqtt: {

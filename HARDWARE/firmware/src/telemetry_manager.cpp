@@ -7,6 +7,7 @@
 #include "http_fallback.h"
 #include "local_event_queue.h"
 #include "mqtt_client.h"
+#include "voltage_monitor.h"
 
 TelemetryManager& TelemetryManager::getInstance() {
     static TelemetryManager instance;
@@ -17,6 +18,7 @@ void TelemetryManager::begin(const DeviceConfig& config) {
     _config = config;
     _lastTelemetryMs = 0;
     _lastWaterLevelMm = 0;
+    VoltageMonitor::getInstance().begin();
 }
 
 void TelemetryManager::loop(
@@ -69,8 +71,10 @@ void TelemetryManager::loop(
     doc["sim_inserted"] = diagnostics.simInserted;
     doc["connected_4g"] = diagnostics.connected4g;
     doc["dry_run_active"] = CommandHandler::getInstance().isDryRunActive();
-    doc["battery_voltage"] = 0.0f;  // reserved for future ADC wiring
+    doc["battery_voltage"] = VoltageMonitor::getInstance().readSupplyVoltage();
     doc["solar_voltage"] = 0.0f;    // reserved for future ADC wiring
+    doc["battery_adc_divider_ratio"] = VoltageMonitor::getInstance().dividerRatio();
+    doc["battery_adc_calibration_factor"] = VoltageMonitor::getInstance().calibrationFactor();
     doc["firmware_version"] = _config.firmwareVersion;
 
     JsonObject configObj = doc.createNestedObject("config");

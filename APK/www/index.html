@@ -4,14 +4,18 @@
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
   <title>FloodGuard by Jenix</title>
+  <link rel="icon" href="./app-icon-192.png" type="image/png">
   <link rel="stylesheet" href="./app.css">
 </head>
 <body>
   <div class="app-shell">
     <header class="topbar">
-      <div>
+      <div class="brand-wrap">
+        <img class="app-logo" src="./floodguard-logo.svg" alt="FloodGuard logo">
+        <div>
         <div class="brand">FloodGuard by Jenix</div>
         <div class="subtitle">Real-time RUB flood monitoring</div>
+        </div>
       </div>
       <button class="ghost-btn" id="logout-btn" onclick="logoutApp()">Logout</button>
     </header>
@@ -54,12 +58,13 @@
             </div>
             <span class="chip danger" id="dash-status-badge">OFFLINE</span>
           </div>
+          <div class="meta" id="dash-status-note">Status note: --</div>
 
           <div class="vessel-wrap">
             <div class="vessel">
               <div class="vessel-fill" id="vessel-fill"></div>
-              <div class="marker marker-300">300mm</div>
-              <div class="marker marker-500">500mm</div>
+              <div class="marker marker-alert" id="dash-marker-alert">200mm</div>
+              <div class="marker marker-danger" id="dash-marker-danger">500mm</div>
             </div>
             <div class="vessel-metrics">
               <div class="metric-value" id="dash-water-level">--</div>
@@ -71,7 +76,7 @@
 
           <div class="grid">
             <div class="mini-card">
-              <div class="mini-label">Battery</div>
+              <div class="mini-label">Supply/Battery</div>
               <div class="mini-value" id="dash-battery">--</div>
             </div>
             <div class="mini-card">
@@ -85,6 +90,25 @@
             <div class="mini-card">
               <div class="mini-label">Heartbeat</div>
               <div class="mini-value" id="dash-heartbeat">--</div>
+            </div>
+          </div>
+
+          <div class="grid" style="margin-top:8px">
+            <div class="mini-card">
+              <div class="mini-label">RS485 Sensor</div>
+              <div class="mini-value" id="dash-rs485-status">--</div>
+            </div>
+            <div class="mini-card">
+              <div class="mini-label">Switch L1</div>
+              <div class="mini-value" id="dash-switch-l1">--</div>
+            </div>
+            <div class="mini-card">
+              <div class="mini-label">Switch L2</div>
+              <div class="mini-value" id="dash-switch-l2">--</div>
+            </div>
+            <div class="mini-card">
+              <div class="mini-label">Logic Mode</div>
+              <div class="mini-value" id="dash-logic-mode">--</div>
             </div>
           </div>
         </div>
@@ -141,20 +165,36 @@
 
           <div class="diag-grid">
             <div class="mini-card">
-              <div class="mini-label">App -> VPS</div>
-              <div class="mini-value" id="ble-app-vps-status">--</div>
+              <div class="mini-label">App to Cloud</div>
+              <div class="mini-value" id="ble-app-cloud-status">--</div>
             </div>
             <div class="mini-card">
-              <div class="mini-label">Device Link</div>
+              <div class="mini-label">Device to Cloud</div>
+              <div class="mini-value" id="ble-device-cloud-status">--</div>
+            </div>
+            <div class="mini-card">
+              <div class="mini-label">Device Local</div>
+              <div class="mini-value" id="ble-device-local-status">--</div>
+              <div class="meta" id="ble-device-local-address">Address: --</div>
+            </div>
+            <div class="mini-card" id="ble-device-ble-card">
+              <div class="mini-label">Device to BLE</div>
               <div class="mini-value" id="ble-link-status">DISCONNECTED</div>
             </div>
           </div>
 
-          <label class="lbl">VPS Health URL</label>
-          <input class="inp" id="ble-vps-url" placeholder="https://api.floodguard.iotsoft.in/health">
+          <label class="lbl">Cloud Health URL (Auto from VPS API Base)</label>
+          <input class="inp" id="ble-vps-url" placeholder="Auto-set from API Base URL" readonly>
+          <div class="meta">Auto configured by app. This is VPS cloud URL, not device local IP.</div>
+          <label class="lbl">Device Local URL</label>
+          <input class="inp" id="ble-local-url" placeholder="http://192.168.1.80">
 
           <div class="row install-actions">
-            <button class="control-btn info" style="margin-top:0" onclick="bleScanDevicesApp()">Scan BLE Devices</button>
+            <button class="control-btn info" style="margin-top:0" id="ble-scan-btn" onclick="bleScanDevicesApp()">
+              <span id="ble-scan-label">Scan BLE Devices</span>
+              <span class="scan-spinner" id="ble-scan-spinner" aria-hidden="true"></span>
+            </button>
+            <button class="ghost-btn" id="ble-local-check-btn" onclick="refreshLocalDeviceStatusApp()">Check Local Device</button>
             <button class="ghost-btn" onclick="bleDisconnectApp()">Disconnect</button>
           </div>
 
@@ -167,22 +207,102 @@
           <button class="control-btn warn" onclick="bleReadHealthApp()">Check Device Health + VPS</button>
           <pre class="diag-log" id="ble-health-output">No health response yet.</pre>
 
-          <div class="row between" style="margin-top:12px">
-            <h3 style="margin:0;font-size:14px">Wi-Fi Provisioning</h3>
-            <button class="ghost-btn" style="padding:6px 10px" onclick="bleScanWifiApp()">Scan Wi-Fi</button>
+          <div id="ble-wifi-provision-section" style="display:none">
+            <div class="row between" style="margin-top:12px">
+              <h3 style="margin:0;font-size:14px">Wi-Fi Provisioning</h3>
+              <button class="ghost-btn" style="padding:6px 10px" onclick="bleScanWifiApp()">Scan Wi-Fi</button>
+            </div>
+
+            <div class="timeline" id="ble-wifi-list" style="margin-top:8px">
+              <div class="empty">No Wi-Fi scan yet.</div>
+            </div>
+
+            <label class="lbl">Connected Phone Wi-Fi (Auto)</label>
+            <input class="inp" id="ble-phone-wifi-ssid" placeholder="Detecting phone Wi-Fi..." readonly>
+            <div class="meta">If this matches site Wi-Fi, enter password and tap Apply.</div>
+            <label class="lbl">Available Wi-Fi SSIDs (from device scan)</label>
+            <select class="inp" id="ble-wifi-ssid-select" onchange="selectBleWifiOptionApp()">
+              <option value="">Scan Wi-Fi to load SSIDs</option>
+            </select>
+            <label class="lbl">Selected SSID</label>
+            <input class="inp" id="ble-wifi-ssid" placeholder="Auto-selected from phone Wi-Fi or scan list" readonly>
+            <label class="lbl">Password</label>
+            <div class="inp-inline">
+              <input class="inp" id="ble-wifi-password" type="password" placeholder="Wi-Fi password">
+              <button class="ghost-btn eye-btn" type="button" id="ble-pass-toggle-btn" onclick="toggleBleWifiPasswordVisibility()">Show</button>
+            </div>
+            <label class="lbl">ADC Divider Ratio</label>
+            <input class="inp" id="ble-adc-divider-ratio" type="number" min="1.0" max="25.0" step="0.01" value="5.00">
+            <label class="lbl">ADC Calibration Factor</label>
+            <input class="inp" id="ble-adc-calibration-factor" type="number" min="0.5" max="1.8" step="0.001" value="1.000">
+            <label class="lbl">Measured Voltage (Multimeter)</label>
+            <input class="inp" id="ble-adc-measured-voltage" type="number" min="0.1" step="0.01" placeholder="Example: 12.40">
+            <button class="ghost-btn" style="padding:6px 10px" onclick="autoCalibrateVoltageFactorApp()">Auto-calculate Calibration</button>
+            <div class="meta" id="ble-adc-calibration-note">Tip: calibration = Multimeter / Device voltage.</div>
+
+            <div class="row install-actions">
+              <button class="control-btn info" id="ble-provision-btn" onclick="bleProvisionWifiApp()">Apply</button>
+              <button class="ghost-btn" id="ble-provision-cancel-btn" onclick="cancelBleProvisionFlowApp()">Cancel</button>
+            </div>
+            <pre class="diag-log" id="ble-provision-output">No provisioning response yet.</pre>
           </div>
+        </div>
+      </section>
 
-          <div class="timeline" id="ble-wifi-list" style="margin-top:8px">
-            <div class="empty">No Wi-Fi scan yet.</div>
+      <section class="view" id="view-config">
+        <div class="card">
+          <div class="row between">
+            <h2 class="view-title">Device Configuration</h2>
+            <button class="ghost-btn" style="padding:6px 10px" onclick="refreshDeviceConfigApp()">Refresh</button>
           </div>
+          <p class="view-subtitle" id="cfg-access-note">Access: --</p>
 
-          <label class="lbl">SSID</label>
-          <input class="inp" id="ble-wifi-ssid" placeholder="Select from list or enter manually">
-          <label class="lbl">Password</label>
-          <input class="inp" id="ble-wifi-password" type="password" placeholder="Wi-Fi password">
+          <label class="lbl">Alert Threshold (mm)</label>
+          <input class="inp" id="cfg-alert-level" type="number" min="1" step="1">
+          <label class="lbl">Danger Threshold (mm)</label>
+          <input class="inp" id="cfg-danger-level" type="number" min="1" step="1">
+          <label class="lbl">Clear Threshold (mm)</label>
+          <input class="inp" id="cfg-clear-level" type="number" min="1" step="1">
+          <label class="lbl">Trigger Delay (seconds)</label>
+          <input class="inp" id="cfg-trigger-delay" type="number" min="10" max="600" step="1">
+          <label class="lbl">Clear Delay (seconds)</label>
+          <input class="inp" id="cfg-clear-delay" type="number" min="30" max="1800" step="1">
+          <label class="lbl">US Sensor Mount Height (mm)</label>
+          <input class="inp" id="cfg-sensor-mount-height" type="number" min="1" step="1">
+          <label class="lbl">RS485 Sensor Connected</label>
+          <select class="inp" id="cfg-rs485-enabled">
+            <option value="true">Yes</option>
+            <option value="false">No</option>
+          </select>
+          <label class="lbl">Switch Sensor Connected</label>
+          <select class="inp" id="cfg-switch-enabled">
+            <option value="true">Yes</option>
+            <option value="false">No</option>
+          </select>
+          <label class="lbl">Level 1 Switch Height (mm)</label>
+          <input class="inp" id="cfg-switch-level-1-mm" type="number" min="1" step="1">
+          <label class="lbl">Level 2 Switch Height (mm)</label>
+          <input class="inp" id="cfg-switch-level-2-mm" type="number" min="1" step="1">
 
-          <button class="control-btn info" onclick="bleProvisionWifiApp()">Provision Wi-Fi + Check VPS</button>
-          <pre class="diag-log" id="ble-provision-output">No provisioning response yet.</pre>
+          <div class="row" style="margin-top:10px">
+            <button class="control-btn info" style="margin-top:0" id="cfg-save-btn" onclick="saveDeviceConfigApp()">Save via Cloud</button>
+            <button class="ghost-btn" id="cfg-push-btn" onclick="pushDeviceConfigApp()">Push Again (Cloud)</button>
+          </div>
+          <label class="lbl">Local Admin PIN (for Local LAN)</label>
+          <input class="inp" id="cfg-local-pin" type="password" placeholder="Enter local PIN (default 654321)">
+          <button class="control-btn warn" id="cfg-local-save-btn" onclick="saveDeviceConfigLocalLanApp()">Save Direct in Local LAN</button>
+
+          <div class="meta" id="cfg-meta-version">Version: --</div>
+          <div class="meta" id="cfg-meta-ack">Last ACK: --</div>
+          <div class="meta">Changing thresholds affects alarm behavior. Changes are saved to device memory and audited.</div>
+
+          <div class="row between" style="margin-top:16px">
+            <h3 style="margin:0;font-size:14px">Config History</h3>
+            <button class="ghost-btn" style="padding:6px 10px" onclick="refreshDeviceConfigHistoryApp()">Refresh</button>
+          </div>
+          <div class="timeline" id="cfg-history-list">
+            <div class="empty">No config history loaded.</div>
+          </div>
         </div>
       </section>
 
@@ -201,8 +321,49 @@
       <button class="nav-btn" data-view="view-dashboard" onclick="openView('view-dashboard')">Live</button>
       <button class="nav-btn" data-view="view-controls" onclick="openView('view-controls')">Controls</button>
       <button class="nav-btn" id="vendor-install-tab" data-view="view-install" onclick="openView('view-install')" style="display:none">Install</button>
+      <button class="nav-btn" id="config-tab" data-view="view-config" onclick="openView('view-config')">Config</button>
       <button class="nav-btn" data-view="view-audit" onclick="openView('view-audit')">Audit</button>
     </nav>
+  </div>
+
+  <div class="modal-overlay" id="provision-progress-modal" style="display:none">
+    <div class="modal-card">
+      <div class="row between">
+        <h3 style="margin:0;font-size:16px">Provision Progress</h3>
+        <button class="ghost-btn" style="padding:6px 10px" id="provision-modal-close" onclick="closeProvisionProgressModalApp()">X</button>
+      </div>
+      <div class="meta" id="provision-modal-note" style="margin-top:4px">Starting...</div>
+      <div class="prov-steps" style="margin-top:10px">
+        <div class="prov-step" id="prov-step-1">
+          <div class="prov-dot"></div>
+          <div>
+            <div class="prov-title">1. Start</div>
+            <div class="prov-note" id="prov-step-note-1">Waiting...</div>
+          </div>
+        </div>
+        <div class="prov-step" id="prov-step-2">
+          <div class="prov-dot"></div>
+          <div>
+            <div class="prov-title">2. Wi-Fi</div>
+            <div class="prov-note" id="prov-step-note-2">Waiting...</div>
+          </div>
+        </div>
+        <div class="prov-step" id="prov-step-3">
+          <div class="prov-dot"></div>
+          <div>
+            <div class="prov-title">3. Cloud</div>
+            <div class="prov-note" id="prov-step-note-3">Waiting...</div>
+          </div>
+        </div>
+        <div class="prov-step" id="prov-step-4">
+          <div class="prov-dot"></div>
+          <div>
+            <div class="prov-title" id="prov-step-title-4">4. Pending</div>
+            <div class="prov-note" id="prov-step-note-4">Waiting...</div>
+          </div>
+        </div>
+      </div>
+    </div>
   </div>
 
   <div class="toast" id="toast"></div>

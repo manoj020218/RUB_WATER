@@ -1,0 +1,12 @@
+<svg width="1024" height="1024" viewBox="0 0 1024 1024" xmlns="http://www.w3.org/2000/svg">
+<rect width="1024" height="1024" rx="220" fill="#EDF8FF"/>
+<path d="M512 190 L682 270 L657 540 L512 655 L367 540 L342 270 Z" fill="#082248"/>
+<path d="M512 240 L632 302 L614 503 L512 590 L410 503 L392 302 Z" fill="white"/>
+<path d="M392 500 C440 455 480 545 522 500 C565 454 608 537 632 505 L632 590 L392 590 Z" fill="#1DB0E2"/>
+<path d="M397 498 C440 455 480 545 522 500 C565 454 608 537 627 506" fill="#006BC2" stroke="#006BC2" stroke-width="8" fill="none"/>
+<circle cx="512" cy="385" r="22" fill="#E63946"/>
+<path d="M452 420 A75 60 0 0 1 572 420" fill="none" stroke="#FFAE24" stroke-width="12" stroke-linecap="round"/>
+<path d="M417 438 A118 96 0 0 1 607 438" fill="none" stroke="#FFAE24" stroke-width="12" stroke-linecap="round"/>
+<text x="512" y="785" text-anchor="middle" font-family="Inter, Arial, sans-serif" font-size="88" font-weight="800" fill="#082248">FloodGuard</text>
+<text x="512" y="850" text-anchor="middle" font-family="Inter, Arial, sans-serif" font-size="42" font-weight="600" fill="#006BC2">by JENIX</text>
+</svg>
