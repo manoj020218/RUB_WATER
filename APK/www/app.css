@@ -561,6 +561,7 @@ button {
 }
 
 .ble-device-row {
+  cursor: pointer;
   transition: box-shadow 0.14s ease, border-color 0.14s ease, background 0.14s ease;
 }
 
@@ -605,6 +606,18 @@ button {
 
 #ble-device-local-address {
   word-break: break-word;
+}
+
+.scan-empty {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+}
+
+#cfg-cloud-status,
+#cfg-local-status {
+  font-weight: 700;
 }
 
 .modal-overlay {

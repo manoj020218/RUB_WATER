@@ -202,7 +202,7 @@
             <div class="empty">No scan yet. Tap "Scan BLE Devices".</div>
           </div>
 
-          <div class="meta" id="ble-selected-device" style="margin-top:8px">Selected: --</div>
+          <div class="meta" id="ble-selected-device" style="margin-top:8px">Selected: tap a BLE device to continue</div>
 
           <button class="control-btn warn" onclick="bleReadHealthApp()">Check Device Health + VPS</button>
           <pre class="diag-log" id="ble-health-output">No health response yet.</pre>
@@ -288,9 +288,11 @@
             <button class="control-btn info" style="margin-top:0" id="cfg-save-btn" onclick="saveDeviceConfigApp()">Save via Cloud</button>
             <button class="ghost-btn" id="cfg-push-btn" onclick="pushDeviceConfigApp()">Push Again (Cloud)</button>
           </div>
+          <div class="meta" id="cfg-cloud-status">Cloud push status: --</div>
           <label class="lbl">Local Admin PIN (for Local LAN)</label>
           <input class="inp" id="cfg-local-pin" type="password" placeholder="Enter local PIN (default 654321)">
           <button class="control-btn warn" id="cfg-local-save-btn" onclick="saveDeviceConfigLocalLanApp()">Save Direct in Local LAN</button>
+          <div class="meta" id="cfg-local-status">Local LAN status: --</div>
 
           <div class="meta" id="cfg-meta-version">Version: --</div>
           <div class="meta" id="cfg-meta-ack">Last ACK: --</div>

@@ -326,6 +326,48 @@
     }
   }
 
+  function setConfigActionStatus(target, message, tone = 'neutral') {
+    const normalizedTarget = String(target || '').trim().toLowerCase();
+    const id = normalizedTarget === 'local' ? 'cfg-local-status' : 'cfg-cloud-status';
+    const prefix = normalizedTarget === 'local' ? 'Local LAN status' : 'Cloud push status';
+    const el = byId(id);
+    if (!el) {
+      return;
+    }
+
+    const msg = String(message || '').trim() || '--';
+    el.textContent = `${prefix}: ${msg}`;
+    if (tone === 'good') {
+      el.style.color = '#059669';
+    } else if (tone === 'bad') {
+      el.style.color = '#b91c1c';
+    } else if (tone === 'warn') {
+      el.style.color = '#b45309';
+    } else {
+      el.style.color = '#334155';
+    }
+  }
+
+  function readableActionError(error) {
+    const raw = String(error?.message || error || '').trim();
+    if (!raw) {
+      return 'Unknown error';
+    }
+    if (/failed to fetch|networkerror|network request failed/i.test(raw)) {
+      return 'Network unreachable. Check connectivity and retry.';
+    }
+    if (/timed out|timeout|aborted|aborterror/i.test(raw)) {
+      return 'Request timed out. Retry.';
+    }
+    if (/connection refused|econnrefused/i.test(raw)) {
+      return 'Connection refused by target server.';
+    }
+    if (/unauthorized|forbidden|http 401|http 403/i.test(raw)) {
+      return 'Access denied. Login again or verify permissions.';
+    }
+    return raw;
+  }
+
   function setLocalCheckButtonAttention(active) {
     const btn = byId('ble-local-check-btn');
     if (!btn) {
@@ -732,6 +774,11 @@
       return;
     }
 
+    if (state.ble.scanInProgress === true) {
+      list.innerHTML = '<div class="empty scan-empty"><span class="scan-spinner on" aria-hidden="true"></span>Scanning for nearby FloodGuard BLE devices...</div>';
+      return;
+    }
+
     if (!Array.isArray(state.ble.scanResults) || state.ble.scanResults.length === 0) {
       list.innerHTML = '<div class="empty">No BLE devices found yet.</div>';
       return;
@@ -874,10 +921,12 @@
       return;
     }
 
+    const selectedDeviceReady = Boolean(findSelectedBleDevice());
     const canShow = canVendorInstall()
       && state.ble.scanTriggered === true
       && Array.isArray(state.ble.scanResults)
       && state.ble.scanResults.length > 0
+      && selectedDeviceReady
       && state.ble.provisioningComplete !== true;
 
     section.style.display = canShow ? 'block' : 'none';
@@ -1577,6 +1626,8 @@
       }
       setConfigInputsDisabled(true);
       setConfigButtonDisabled(true);
+      setConfigActionStatus('cloud', 'Locked for current role.', 'bad');
+      setConfigActionStatus('local', 'Locked for current role.', 'bad');
       return;
     }
 
@@ -1610,6 +1661,13 @@
     const shouldDisableInputs = !canEdit || !deviceId;
     setConfigInputsDisabled(shouldDisableInputs);
     setConfigButtonDisabled(shouldDisableInputs);
+    if (!deviceId) {
+      setConfigActionStatus('cloud', 'Select a location/device first.', 'warn');
+      setConfigActionStatus('local', 'Select a location/device first.', 'warn');
+    } else if (!canEdit) {
+      setConfigActionStatus('cloud', 'Read-only access for this role.', 'warn');
+      setConfigActionStatus('local', 'Read-only access for this role.', 'warn');
+    }
   }
 
   function parseConfigInt(id, label) {
@@ -1754,16 +1812,19 @@
     }
 
     try {
+      setConfigActionStatus('cloud', 'Sending save request to VPS...', 'warn');
       const response = await apiRequest(`/devices/${encodeURIComponent(deviceId)}/config`, {
         method: 'PUT',
         body: payload
       });
       showToast(`Config queued. Command: ${response.command_id || '--'}`);
+      setConfigActionStatus('cloud', `Queued successfully (command ${response.command_id || '--'})`, 'good');
       await refreshDeviceConfigApp();
       if (!state.loading) {
         await refreshAppData();
       }
     } catch (error) {
+      setConfigActionStatus('cloud', readableActionError(error), 'bad');
       handleApiError(error, 'Save config failed');
     }
   }
@@ -1784,16 +1845,19 @@
     }
 
     try {
+      setConfigActionStatus('cloud', 'Sending re-push request to VPS...', 'warn');
       const response = await apiRequest(`/devices/${encodeURIComponent(deviceId)}/config/push`, {
         method: 'POST',
         body: {}
       });
       showToast(`Config re-push queued. Command: ${response.command_id || '--'}`);
+      setConfigActionStatus('cloud', `Re-push queued (command ${response.command_id || '--'})`, 'good');
       await refreshDeviceConfigApp();
       if (!state.loading) {
         await refreshAppData();
       }
     } catch (error) {
+      setConfigActionStatus('cloud', readableActionError(error), 'bad');
       handleApiError(error, 'Config re-push failed');
     }
   }
@@ -1826,21 +1890,34 @@
 
     const localUrl = updateLocalUrlFromState();
     if (!localUrl) {
+      setConfigActionStatus('local', 'Set Device Local URL in Install tab first.', 'bad');
       showToast('Set Device Local URL in Install tab first.', true);
       return;
     }
 
     try {
-      const status = await fetchLocalDeviceStatus(localUrl);
-      applyLocalStatus(status, localUrl);
-      if (status?.device_id && String(status.device_id) !== String(deviceId)) {
-        showToast(`Local device mismatch. Selected ${deviceId}, local is ${status.device_id}.`, true);
-        return;
+      setConfigActionStatus('local', 'Checking device in Local LAN...', 'warn');
+      let status = null;
+      try {
+        status = await fetchLocalDeviceStatus(localUrl);
+      } catch (statusError) {
+        setConfigActionStatus('local', `Status pre-check skipped (${readableActionError(statusError)}). Continuing save...`, 'warn');
+      }
+
+      if (status) {
+        applyLocalStatus(status, localUrl);
+        if (status?.device_id && String(status.device_id) !== String(deviceId)) {
+          const mismatchMessage = `Local device mismatch. Selected ${deviceId}, local is ${status.device_id}.`;
+          setConfigActionStatus('local', mismatchMessage, 'bad');
+          showToast(mismatchMessage, true);
+          return;
+        }
       }
 
       const saveUrl = `${localUrl}/save-config?pin=${encodeURIComponent(localPin)}`;
       let parsed = null;
       let responseStatus = 0;
+      setConfigActionStatus('local', 'Saving configuration directly on device...', 'warn');
 
       const nativeSave = await requestViaNativeHttp({
         url: saveUrl,
@@ -1920,8 +1997,10 @@
 
       renderDeviceConfig(state.deviceConfig);
       await refreshLocalDeviceStatusApp(true);
+      setConfigActionStatus('local', 'Saved to device NVS successfully.', 'good');
       showToast('Local LAN save successful. Configuration saved to device NVS.');
     } catch (error) {
+      setConfigActionStatus('local', readableActionError(error), 'bad');
       showToast(`Local LAN save failed: ${error.message}`, true);
     }
   }
@@ -2357,15 +2436,36 @@
     }
   }
 
-  function selectBleDeviceApp(deviceId) {
+  async function selectBleDeviceApp(deviceId) {
     state.ble.selectedDeviceId = String(deviceId || '');
     const selected = findSelectedBleDevice();
-    setText('ble-selected-device', selected ? `Selected: ${selected.name || selected.deviceId}` : 'Selected: --');
+    setText(
+      'ble-selected-device',
+      selected ? `Selected: ${selected.name || selected.deviceId}` : 'Selected: tap a BLE device to continue'
+    );
     renderBleDeviceList();
     updateBleStatusLabel();
+    updateBleProvisionSectionVisibility();
+
     const section = byId('ble-wifi-provision-section');
     if (section && section.style.display !== 'none') {
       section.scrollIntoView({ behavior: 'smooth', block: 'start' });
+    }
+
+    if (!selected) {
+      return;
+    }
+
+    if (!Array.isArray(state.ble.wifiNetworks) || state.ble.wifiNetworks.length === 0) {
+      await bleScanWifiApp();
+    } else {
+      renderBleWifiList();
+      renderBleWifiSelect();
+    }
+
+    const passInput = byId('ble-wifi-password');
+    if (passInput) {
+      passInput.focus();
     }
   }
 
@@ -2381,14 +2481,21 @@
 
     state.ble.scanTriggered = true;
     state.ble.provisioningComplete = false;
+    state.ble.scanResults = [];
+    state.ble.selectedDeviceId = '';
+    state.ble.connectedDeviceId = '';
     state.ble.wifiNetworks = [];
     state.ble.phoneWifiSsid = readPhoneWifiSsid();
     renderPhoneWifiSsid();
+    setText('ble-selected-device', 'Selected: tap a BLE device to continue');
+    renderBleDeviceList();
     renderBleWifiList();
     renderBleWifiSelect();
     setBleOutputs(null, 'No provisioning response yet.');
+    updateBleStatusLabel();
     updateBleProvisionSectionVisibility();
     setBleScanProgress(true, 'Scanning BLE...');
+    renderBleDeviceList();
 
     try {
       const ble = await ensureBleReady();
@@ -2452,22 +2559,21 @@
       }
 
       state.ble.scanResults = Array.from(discovered.values()).sort((a, b) => (b.rssi ?? -999) - (a.rssi ?? -999));
-      if (!state.ble.scanResults.some((item) => item.deviceId === state.ble.selectedDeviceId)) {
-        state.ble.selectedDeviceId = state.ble.scanResults[0]?.deviceId || '';
-      }
-
-      const selected = findSelectedBleDevice();
-      setText('ble-selected-device', selected ? `Selected: ${selected.name || selected.deviceId}` : 'Selected: --');
+      state.ble.selectedDeviceId = '';
+      setText(
+        'ble-selected-device',
+        state.ble.scanResults.length > 0
+          ? 'Selected: tap a BLE device to continue'
+          : 'Selected: --'
+      );
       updateBleStatusLabel();
       renderBleDeviceList();
       updateBleProvisionSectionVisibility();
       showToast(state.ble.scanResults.length > 0 ? `Found ${state.ble.scanResults.length} BLE device(s). Tap a device card to select.` : 'No BLE device found.');
-      if (state.ble.scanResults.length > 0) {
-        await bleScanWifiApp();
-      }
     } catch (error) {
       setInstallMetric('ble-link-status', 'SCAN FAILED', 'bad');
       state.ble.scanResults = [];
+      state.ble.selectedDeviceId = '';
       updateBleProvisionSectionVisibility();
       showToast(`BLE scan failed: ${error.message}`, true);
     } finally {
@@ -3152,6 +3258,75 @@
     applyConfigVisibility();
     await refreshAppData();
     startPolling();
+  }
+
+  // Keep BLE list text ASCII-only and preserve a consistent "tap-to-select" UX across devices.
+  function renderBleDeviceList() {
+    const list = byId('ble-device-list');
+    if (!list) {
+      return;
+    }
+
+    if (state.ble.provisioningComplete) {
+      list.innerHTML = '<div class="empty">Provisioning complete. BLE device picker is hidden.</div>';
+      setText('ble-selected-device', 'Selected: hidden after successful apply');
+      return;
+    }
+
+    if (state.ble.scanInProgress === true) {
+      list.innerHTML = '<div class="empty scan-empty"><span class="scan-spinner on" aria-hidden="true"></span>Scanning for nearby FloodGuard BLE devices...</div>';
+      return;
+    }
+
+    if (!Array.isArray(state.ble.scanResults) || state.ble.scanResults.length === 0) {
+      list.innerHTML = '<div class="empty">No BLE devices found yet.</div>';
+      return;
+    }
+
+    list.innerHTML = state.ble.scanResults.map((device) => {
+      const selected = state.ble.selectedDeviceId === device.deviceId;
+      const connected = state.ble.connectedDeviceId === device.deviceId;
+      const rowClass = [
+        'ble-device-row',
+        selected ? 'selected' : '',
+        connected ? 'connected' : ''
+      ].filter(Boolean).join(' ');
+      return `
+        <div class="${rowClass}" onclick="selectBleDeviceApp('${escapeHtml(device.deviceId)}')">
+          <div class="ble-device-name">${escapeHtml(device.name || 'Unknown')} ${selected ? '- Selected' : ''}</div>
+          <div class="ble-device-meta">${escapeHtml(device.deviceId)} | RSSI ${escapeHtml(String(device.rssi ?? '--'))}</div>
+          <div class="row" style="margin-top:8px;justify-content:flex-end">
+            <button class="ghost-btn" style="padding:6px 10px" onclick="selectBleDeviceApp('${escapeHtml(device.deviceId)}')">
+              ${selected ? 'Selected' : 'Use Device'}
+            </button>
+            ${connected ? '<span class="chip">CONNECTED</span>' : ''}
+            ${selected && !connected ? '<span class="chip">TOUCH CONFIRMED</span>' : ''}
+          </div>
+        </div>
+      `;
+    }).join('');
+  }
+
+  function renderBleWifiList() {
+    const list = byId('ble-wifi-list');
+    if (!list) {
+      return;
+    }
+
+    if (!Array.isArray(state.ble.wifiNetworks) || state.ble.wifiNetworks.length === 0) {
+      list.innerHTML = '<div class="empty">No Wi-Fi network list available.</div>';
+      return;
+    }
+
+    list.innerHTML = state.ble.wifiNetworks.map((network) => `
+      <div class="ble-wifi-row">
+        <div class="ble-wifi-name">${escapeHtml(network.ssid || '--')}</div>
+        <div class="ble-wifi-meta">RSSI ${escapeHtml(String(network.rssi ?? '--'))} | ${escapeHtml(network.auth || 'UNKNOWN')} | CH ${escapeHtml(String(network.channel ?? '--'))}</div>
+        <div class="row" style="margin-top:8px;justify-content:flex-end">
+          <button class="ghost-btn" style="padding:6px 10px" onclick="pickBleWifiSsidApp('${escapeHtml(network.ssid || '')}')">Use SSID</button>
+        </div>
+      </div>
+    `).join('');
   }
 
   window.openView = openView;
