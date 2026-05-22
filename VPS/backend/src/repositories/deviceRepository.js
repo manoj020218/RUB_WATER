@@ -167,6 +167,51 @@ function getClaimInfo(deviceId) {
   };
 }
 
+function createDevice(data) {
+  const deviceId = String(data.device_id || '').trim().toUpperCase();
+  if (!deviceId) throw new Error('Device ID is required');
+  if (dataStore.devices.find((d) => d._id === deviceId)) {
+    throw new Error(`Device ${deviceId} already exists`);
+  }
+  const now = new Date().toISOString();
+  const device = {
+    _id: deviceId,
+    location_id: String(data.location_id || '').trim() || null,
+    device_type: String(data.device_type || 'ESP32_S3').trim(),
+    firmware_version: 'unknown',
+    hardware_version: 'unknown',
+    mqtt_topic_base: `rub/${deviceId}`,
+    operational_status: 'ACTIVE',
+    lifecycle_note: null,
+    lifecycle_updated_at: now,
+    last_seen: null,
+    status: 'OFFLINE',
+    created_at: now,
+    updated_at: now,
+    config: { daily_reboot_enabled: true, daily_reboot_time: '03:30', timezone: 'Asia/Kolkata', reporting_profile: 'dynamic' }
+  };
+  dataStore.devices.push(device);
+  ensureSecurity(device);
+  ensureLifecycle(device);
+  return device;
+}
+
+function bindToLocation(deviceId, locationId) {
+  const device = findById(deviceId);
+  if (!device) return null;
+  device.location_id = String(locationId || '').trim();
+  device.updated_at = new Date().toISOString();
+  return device;
+}
+
+function unbindFromLocation(deviceId) {
+  const device = findById(deviceId);
+  if (!device) return null;
+  device.location_id = null;
+  device.updated_at = new Date().toISOString();
+  return device;
+}
+
 module.exports = {
   listAll,
   findById,
@@ -176,5 +221,8 @@ module.exports = {
   claimDevice,
   setDeviceToken,
   verifyDeviceToken,
-  getClaimInfo
+  getClaimInfo,
+  createDevice,
+  bindToLocation,
+  unbindFromLocation
 };

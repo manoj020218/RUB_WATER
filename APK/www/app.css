@@ -1171,6 +1171,50 @@ button {
   padding-top: 10px;
 }
 
+/* --- Location & Device Administration --- */
+.admin-sub-title {
+  font-size: 12px;
+  font-weight: 700;
+  text-transform: uppercase;
+  color: #334155;
+  margin: 10px 0 6px;
+  letter-spacing: 0.04em;
+}
+.admin-2col {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 8px;
+}
+.admin-device-row {
+  background: #f8fafc;
+  border: 1px solid #e2e8f0;
+  border-radius: 10px;
+  padding: 10px 12px;
+  margin-bottom: 8px;
+}
+.admin-device-head {
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-start;
+  gap: 8px;
+}
+.admin-device-id {
+  font-size: 13px;
+  font-weight: 700;
+  color: #0f172a;
+}
+.admin-device-loc {
+  font-size: 11px;
+  color: #64748b;
+  margin-top: 2px;
+}
+.admin-device-bind-row {
+  display: flex;
+  gap: 6px;
+  align-items: center;
+  margin-top: 8px;
+}
+
 /* --- PWA Install Notice --- */
 .pwa-notice {
   background: linear-gradient(135deg, #1e3a8a 0%, #1d4ed8 100%);

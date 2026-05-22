@@ -246,6 +246,9 @@
     if (viewId === 'view-users') {
       refreshAdminUsersApp().catch(() => {});
     }
+    if (viewId === 'view-locations' && isSuperAdmin()) {
+      populateDeviceLocationSelect();
+    }
   }
 
   function formatTime(iso) {
@@ -2206,11 +2209,11 @@
   }
 
   function applyAdminPanelVisibility() {
-    const panel = byId('mobile-user-admin-panel');
-    if (!panel) {
-      return;
-    }
-    panel.style.display = isSuperAdmin() ? 'block' : 'none';
+    const show = Boolean(state.token && state.user && isSuperAdmin());
+    ['mobile-user-admin-panel', 'loc-admin-panel', 'dash-loc-admin'].forEach((id) => {
+      const el = byId(id);
+      if (el) el.style.display = show ? 'block' : 'none';
+    });
   }
 
   function applyVendorInstallVisibility() {
@@ -2454,6 +2457,18 @@
     setText('dash-logic-mode', logicMode);
     setText('control-user-role', `Logged in as: ${state.user?.name || state.user?.login_id || '--'} (${state.user?.role || 'UNKNOWN'})`);
     applyAdminPanelVisibility();
+    if (isSuperAdmin()) {
+      const loc = state.locations.find((l) => l.location_id === state.selectedLocationId);
+      const nameEl = byId('dash-loc-name');
+      if (nameEl) nameEl.value = loc?.location_name || loc?.name || '';
+      const descEl = byId('dash-loc-desc');
+      if (descEl) descEl.value = loc?.description || '';
+      const mountEl = byId('dash-loc-mount');
+      if (mountEl) mountEl.value = loc?.sensor_mount_height_mm || '';
+      setText('dash-device-bound-info', `Bound Device: ${state.selectedDeviceId || 'None'}`);
+      setText('dash-bind-status', '');
+      setText('dash-loc-save-status', '');
+    }
     applyVendorInstallVisibility();
     applyConfigVisibility();
     applySettingsVisibility();
@@ -3991,6 +4006,208 @@
     updateNavButtonCount();
   }
 
+  // ── Location & Device Admin ──────────────────────────────────────────────────
+
+  function populateDeviceLocationSelect() {
+    const sel = byId('dev-add-location');
+    if (!sel) return;
+    const prev = sel.value;
+    while (sel.options.length > 1) sel.remove(1);
+    state.locations.forEach((loc) => {
+      const opt = document.createElement('option');
+      opt.value = loc.location_id;
+      opt.textContent = `${loc.location_name || loc.location_id} (${loc.location_id})`;
+      sel.appendChild(opt);
+    });
+    if (prev && Array.from(sel.options).some((o) => o.value === prev)) sel.value = prev;
+  }
+
+  async function addLocationApp() {
+    const locationId = String(byId('loc-add-id')?.value || '').trim().toUpperCase();
+    const locationName = String(byId('loc-add-name')?.value || '').trim();
+    const description = String(byId('loc-add-desc')?.value || '').trim();
+    const mountHeight = Number(byId('loc-add-mount')?.value) || undefined;
+    const deptId = String(byId('loc-add-dept')?.value || '').trim();
+
+    setText('loc-add-status', '');
+    if (!locationId) { setText('loc-add-status', 'Location ID is required.'); return; }
+    if (!locationName) { setText('loc-add-status', 'Location Name is required.'); return; }
+
+    try {
+      await apiRequest('/admin/locations', {
+        method: 'POST',
+        body: { location_id: locationId, location_name: locationName, description, sensor_mount_height_mm: mountHeight, department_id: deptId || undefined }
+      });
+      ['loc-add-id', 'loc-add-name', 'loc-add-desc', 'loc-add-mount', 'loc-add-dept'].forEach((id) => {
+        const el = byId(id); if (el) el.value = '';
+      });
+      setText('loc-add-status', `Location ${locationId} created.`);
+      showToast(`Location ${locationId} added.`);
+      await refreshAppData();
+      populateDeviceLocationSelect();
+    } catch (error) {
+      setText('loc-add-status', `Failed: ${error.message}`);
+    }
+  }
+
+  async function saveLocationDetailsApp() {
+    const locationId = state.selectedLocationId;
+    if (!locationId) { showToast('Select a location first.', true); return; }
+    const locationName = String(byId('dash-loc-name')?.value || '').trim();
+    const description = String(byId('dash-loc-desc')?.value || '').trim();
+    const mountHeight = Number(byId('dash-loc-mount')?.value) || undefined;
+
+    setText('dash-loc-save-status', '');
+    if (!locationName) { setText('dash-loc-save-status', 'Name is required.'); return; }
+
+    try {
+      await apiRequest(`/admin/locations/${encodeURIComponent(locationId)}`, {
+        method: 'PATCH',
+        body: { location_name: locationName, description, sensor_mount_height_mm: mountHeight }
+      });
+      setText('dash-loc-save-status', 'Location details saved.');
+      showToast('Location details updated.');
+      await refreshAppData();
+    } catch (error) {
+      setText('dash-loc-save-status', `Failed: ${error.message}`);
+    }
+  }
+
+  async function addDeviceApp() {
+    const deviceId = String(byId('dev-add-id')?.value || '').trim().toUpperCase();
+    const locationId = String(byId('dev-add-location')?.value || '').trim() || undefined;
+
+    setText('dev-add-status', '');
+    if (!deviceId) { setText('dev-add-status', 'Device ID is required.'); return; }
+
+    try {
+      await apiRequest('/admin/devices', {
+        method: 'POST',
+        body: { device_id: deviceId, location_id: locationId }
+      });
+      if (byId('dev-add-id')) byId('dev-add-id').value = '';
+      if (byId('dev-add-location')) byId('dev-add-location').value = '';
+      setText('dev-add-status', locationId
+        ? `Device ${deviceId} registered and bound to ${locationId}.`
+        : `Device ${deviceId} registered (unbound).`);
+      showToast(`Device ${deviceId} registered.`);
+      await refreshAdminDevicesApp();
+      if (locationId) await refreshAppData();
+    } catch (error) {
+      setText('dev-add-status', `Failed: ${error.message}`);
+    }
+  }
+
+  async function refreshAdminDevicesApp() {
+    try {
+      const result = await apiRequest('/admin/devices');
+      const devices = Array.isArray(result?.data) ? result.data : (Array.isArray(result) ? result : []);
+      renderAdminDeviceList(devices);
+    } catch (error) {
+      showToast(`Failed to load devices: ${error.message}`, true);
+    }
+  }
+
+  function renderAdminDeviceList(devices) {
+    const list = byId('admin-device-list');
+    if (!list) return;
+    if (!devices.length) {
+      list.innerHTML = '<div class="empty">No devices registered yet.</div>';
+      return;
+    }
+    list.innerHTML = devices.map((d) => {
+      const deviceId = escapeHtml(d.device_id);
+      const locId = escapeHtml(d.location_id || '');
+      const locName = d.location_id
+        ? escapeHtml(state.locations.find((l) => l.location_id === d.location_id)?.location_name || d.location_id)
+        : '<span style="color:#94a3b8">Unbound</span>';
+      const statusCls = d.status === 'ONLINE' ? 'ok' : 'off';
+      return `
+        <div class="admin-device-row">
+          <div class="admin-device-head">
+            <div>
+              <div class="admin-device-id">${deviceId}</div>
+              <div class="admin-device-loc">Location: ${locName}</div>
+            </div>
+            <span class="chip ${statusCls}" style="font-size:10px">${escapeHtml(d.status || 'OFFLINE')}</span>
+          </div>
+          ${!d.location_id ? `
+          <div class="admin-device-bind-row">
+            <select class="inp" id="quick-bind-loc-${deviceId}" style="font-size:12px;flex:1">
+              <option value="">Select location to bind...</option>
+              ${state.locations.map((l) => `<option value="${escapeHtml(l.location_id)}">${escapeHtml(l.location_name || l.location_id)}</option>`).join('')}
+            </select>
+            <button class="ghost-btn" style="padding:5px 10px;font-size:11px" onclick="quickBindDeviceApp('${deviceId}')">Bind</button>
+          </div>` : `
+          <div style="margin-top:6px;text-align:right">
+            <button class="ghost-btn" style="padding:5px 10px;font-size:11px" onclick="quickUnbindDeviceApp('${deviceId}', '${locId}')">Unbind</button>
+          </div>`}
+        </div>
+      `;
+    }).join('');
+  }
+
+  async function quickBindDeviceApp(deviceId) {
+    const locationId = String(byId(`quick-bind-loc-${deviceId}`)?.value || '').trim();
+    if (!locationId) { showToast('Select a location first.', true); return; }
+    try {
+      await apiRequest(`/admin/locations/${encodeURIComponent(locationId)}/bind-device`, {
+        method: 'POST',
+        body: { device_id: deviceId }
+      });
+      showToast(`${deviceId} bound to ${locationId}.`);
+      await refreshAdminDevicesApp();
+      await refreshAppData();
+    } catch (error) {
+      showToast(`Bind failed: ${error.message}`, true);
+    }
+  }
+
+  async function quickUnbindDeviceApp(deviceId, locationId) {
+    try {
+      await apiRequest(`/admin/locations/${encodeURIComponent(locationId)}/bind-device`, { method: 'DELETE' });
+      showToast(`${deviceId} unbound.`);
+      await refreshAdminDevicesApp();
+      await refreshAppData();
+    } catch (error) {
+      showToast(`Unbind failed: ${error.message}`, true);
+    }
+  }
+
+  async function bindDeviceToLocationApp() {
+    const locationId = state.selectedLocationId;
+    const deviceId = String(byId('dash-bind-device-id')?.value || '').trim().toUpperCase();
+    setText('dash-bind-status', '');
+    if (!locationId) { showToast('No location selected.', true); return; }
+    if (!deviceId) { setText('dash-bind-status', 'Device ID is required.'); return; }
+    try {
+      await apiRequest(`/admin/locations/${encodeURIComponent(locationId)}/bind-device`, {
+        method: 'POST',
+        body: { device_id: deviceId }
+      });
+      if (byId('dash-bind-device-id')) byId('dash-bind-device-id').value = '';
+      setText('dash-bind-status', `Device ${deviceId} bound to this location.`);
+      showToast(`${deviceId} bound.`);
+      await refreshAppData();
+    } catch (error) {
+      setText('dash-bind-status', `Failed: ${error.message}`);
+    }
+  }
+
+  async function unbindDeviceFromLocationApp() {
+    const locationId = state.selectedLocationId;
+    if (!locationId) { showToast('No location selected.', true); return; }
+    if (!state.selectedDeviceId) { setText('dash-bind-status', 'No device is currently bound.'); return; }
+    try {
+      await apiRequest(`/admin/locations/${encodeURIComponent(locationId)}/bind-device`, { method: 'DELETE' });
+      setText('dash-bind-status', 'Device unbound from this location.');
+      showToast('Device unbound.');
+      await refreshAppData();
+    } catch (error) {
+      setText('dash-bind-status', `Failed: ${error.message}`);
+    }
+  }
+
   function filterUserListApp() {
     renderAdminUsersApp(state.adminUsers);
   }
@@ -4410,6 +4627,14 @@
   window.closeComplaintApp = closeComplaintApp;
   window.loadAuditReportApp = loadAuditReportApp;
   window.exportAuditCsvApp = exportAuditCsvApp;
+  window.addLocationApp = addLocationApp;
+  window.saveLocationDetailsApp = saveLocationDetailsApp;
+  window.addDeviceApp = addDeviceApp;
+  window.refreshAdminDevicesApp = refreshAdminDevicesApp;
+  window.quickBindDeviceApp = quickBindDeviceApp;
+  window.quickUnbindDeviceApp = quickUnbindDeviceApp;
+  window.bindDeviceToLocationApp = bindDeviceToLocationApp;
+  window.unbindDeviceFromLocationApp = unbindDeviceFromLocationApp;
   window.filterUserListApp = filterUserListApp;
   window.toggleResetPwFormApp = toggleResetPwFormApp;
   window.submitResetPasswordApp = submitResetPasswordApp;
