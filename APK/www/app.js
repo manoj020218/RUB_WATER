@@ -1273,7 +1273,16 @@
     if (!parsed || typeof parsed !== 'object') {
       return 'Device returned error';
     }
-    const code = String(parsed.error || parsed.code || '').trim().toLowerCase();
+    const rawCode = String(parsed.error || parsed.code || '').trim();
+    const code = rawCode.toLowerCase();
+    if (code.startsWith('device_register_failed')) {
+      const detail = rawCode.includes(':')
+        ? rawCode.split(':').slice(1).join(':').trim()
+        : '';
+      return detail
+        ? `Device register failed: ${detail}`
+        : 'Device register failed. Check provision key and VPS endpoint.';
+    }
     const map = {
       invalid_json: 'Device could not parse request payload.',
       missing_cmd: 'Device did not receive a command field.',

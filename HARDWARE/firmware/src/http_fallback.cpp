@@ -198,6 +198,7 @@ void HttpFallbackService::loadPersistedCloudAuth() {
     if (savedBaseUrl.length() > 0) {
         copyCString(_baseUrl, sizeof(_baseUrl), savedBaseUrl);
     }
+
     if (savedToken.length() > 0) {
         copyCString(_deviceToken, sizeof(_deviceToken), savedToken);
     }

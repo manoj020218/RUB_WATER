@@ -23,7 +23,7 @@ private:
     void startAdvertising();
     void processPendingCommand(const DeviceConfig& config);
     String handleCommand(const String& request, const DeviceConfig& config);
-    String responseError(const char* message);
+    String responseError(const char* message, const char* cmd = nullptr);
     void queueIncoming(const String& request);
 
     char _macSuffix[5] = "0000";

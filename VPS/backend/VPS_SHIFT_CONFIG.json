@@ -9,16 +9,16 @@
                     "vpsFqdn":  "api.floodguard.iotsoft.in"
                 },
     "database":  {
-                     "mongoUri":  "mongodb://api.floodguard.iotsoft.in:27017/floodguard",
+                     "mongoUri":  "mongodb://localhost:27017/floodguard",
                      "mongoDbName":  "floodguard"
                  },
     "messaging":  {
                       "mqttEnabled":  true,
                       "mqttProtocol":  "mqtt",
-                      "mqttHost":  "api.floodguard.iotsoft.in",
+                      "mqttHost":  "localhost",
                       "mqttPort":  1883,
-                      "mqttUser":  "",
-                      "mqttPass":  "",
+                      "mqttUser":  "fg_server",
+                      "mqttPass":  "FGServer@302020",
                       "mqttTopicBase":  "rub"
                   },
     "security":  {

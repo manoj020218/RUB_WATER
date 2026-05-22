@@ -142,6 +142,16 @@ void appendUniqueUrl(String* urls, size_t& count, size_t maxCount, const String&
     urls[count++] = candidate;
 }
 
+String sanitizeErrorDetail(String value, size_t maxLen = 140) {
+    value.replace('\n', ' ');
+    value.replace('\r', ' ');
+    value.trim();
+    if (value.length() > static_cast<int>(maxLen)) {
+        value = value.substring(0, static_cast<int>(maxLen));
+    }
+    return value;
+}
+
 String normalizeBaseUrl(const String& raw) {
     String out = raw;
     out.trim();
@@ -238,7 +248,6 @@ bool registerDeviceAndFetchKey(
         return false;
     }
 
-    const String registerUrl = baseUrl + "/api/device/register";
     DynamicJsonDocument reqDoc(320);
     reqDoc["device_id"] = config.deviceId;
     reqDoc["location_id"] = config.locationId;
@@ -247,82 +256,98 @@ bool registerDeviceAndFetchKey(
     String body;
     serializeJson(reqDoc, body);
 
-    HTTPClient client;
-    WiFiClient plainClient;
-    WiFiClientSecure secureClient;
-    if (!beginHttpRequest(client, plainClient, secureClient, registerUrl)) {
-        if (errorText != nullptr) {
-            *errorText = "register_begin_failed";
+    String registerUrls[2];
+    size_t registerUrlCount = 0;
+    appendUniqueUrl(registerUrls, registerUrlCount, 2, baseUrl + "/api/device/register");
+    const String swappedBase = swapHttpScheme(baseUrl);
+    if (swappedBase.length() > 0) {
+        appendUniqueUrl(registerUrls, registerUrlCount, 2, swappedBase + "/api/device/register");
+    }
+
+    String lastError = "register_failed";
+    for (size_t idx = 0; idx < registerUrlCount; ++idx) {
+        const String registerUrl = registerUrls[idx];
+        HTTPClient client;
+        WiFiClient plainClient;
+        WiFiClientSecure secureClient;
+        if (!beginHttpRequest(client, plainClient, secureClient, registerUrl)) {
+            lastError = "register_begin_failed";
+            continue;
         }
-        return false;
-    }
 
-    client.addHeader("Content-Type", "application/json");
-    if (provisionKey.length() > 0) {
-        client.addHeader("x-provision-key", provisionKey);
-    }
+        client.addHeader("Content-Type", "application/json");
+        if (provisionKey.length() > 0) {
+            client.addHeader("x-provision-key", provisionKey);
+        }
 
-    const int code = client.POST(body);
-    String response = client.getString();
-    client.end();
+        const int code = client.POST(body);
+        String response = client.getString();
+        client.end();
 
-    if (code < 200 || code >= 300) {
-        if (errorText != nullptr) {
-            if (response.length() == 0) {
-                *errorText = String("register_http_") + String(code);
-            } else {
-                response.replace('\n', ' ');
-                response.replace('\r', ' ');
-                response.trim();
-                if (response.length() > 96) {
-                    response = response.substring(0, 96);
+        if (code < 200 || code >= 300) {
+            if (code < 0) {
+                String detail = sanitizeErrorDetail(HTTPClient::errorToString(code), 96);
+                if (detail.length() == 0) {
+                    detail = String("register_http_") + String(code);
                 }
-                *errorText = response;
+                lastError = detail;
+            } else {
+                String detail = sanitizeErrorDetail(response, 96);
+                if (detail.length() == 0) {
+                    detail = String("register_http_") + String(code);
+                }
+                lastError = detail;
+            }
+            continue;
+        }
+
+        DynamicJsonDocument rsp(2048);
+        if (deserializeJson(rsp, response) != DeserializationError::Ok) {
+            lastError = "register_parse_failed";
+            continue;
+        }
+
+        JsonObject root = rsp.as<JsonObject>();
+        JsonObject data = root["data"].is<JsonObject>() ? root["data"].as<JsonObject>() : root;
+        outDeviceKey = String(data["device_key"] | "");
+        if (outDeviceKey.length() == 0) {
+            outDeviceKey = String(data["device_token"] | "");
+        }
+        if (outDeviceKey.length() == 0) {
+            outDeviceKey = String(data["api_key"] | "");
+        }
+        outDeviceKey.trim();
+        if (outDeviceKey.length() == 0) {
+            const String message = String(root["message"] | root["error"] | data["message"] | "");
+            if (message.length() > 0) {
+                lastError = sanitizeErrorDetail(message, 96);
+            } else {
+                lastError = "register_missing_device_key";
+            }
+            continue;
+        }
+
+        JsonObject cloud = data["cloud"].is<JsonObject>() ? data["cloud"].as<JsonObject>() : JsonObject();
+        if (!cloud.isNull()) {
+            JsonObject mqtt = cloud["mqtt"].is<JsonObject>() ? cloud["mqtt"].as<JsonObject>() : JsonObject();
+            if (!mqtt.isNull()) {
+                const String host = String(mqtt["host"] | "");
+                if (host.length() > 0) {
+                    outMqttHost = extractHostFromUrl(host);
+                }
+                const uint16_t port = static_cast<uint16_t>(mqtt["port"] | outMqttPort);
+                if (port > 0) {
+                    outMqttPort = port;
+                }
             }
         }
-        return false;
+        return true;
     }
 
-    DynamicJsonDocument rsp(2048);
-    if (deserializeJson(rsp, response) != DeserializationError::Ok) {
-        if (errorText != nullptr) {
-            *errorText = "register_parse_failed";
-        }
-        return false;
+    if (errorText != nullptr) {
+        *errorText = lastError;
     }
-
-    JsonObject root = rsp.as<JsonObject>();
-    JsonObject data = root["data"].is<JsonObject>() ? root["data"].as<JsonObject>() : root;
-    outDeviceKey = String(data["device_key"] | "");
-    if (outDeviceKey.length() == 0) {
-        outDeviceKey = String(data["device_token"] | "");
-    }
-    if (outDeviceKey.length() == 0) {
-        outDeviceKey = String(data["api_key"] | "");
-    }
-    outDeviceKey.trim();
-    if (outDeviceKey.length() == 0) {
-        if (errorText != nullptr) {
-            *errorText = "register_missing_device_key";
-        }
-        return false;
-    }
-
-    JsonObject cloud = data["cloud"].is<JsonObject>() ? data["cloud"].as<JsonObject>() : JsonObject();
-    if (!cloud.isNull()) {
-        JsonObject mqtt = cloud["mqtt"].is<JsonObject>() ? cloud["mqtt"].as<JsonObject>() : JsonObject();
-        if (!mqtt.isNull()) {
-            const String host = String(mqtt["host"] | "");
-            if (host.length() > 0) {
-                outMqttHost = extractHostFromUrl(host);
-            }
-            const uint16_t port = static_cast<uint16_t>(mqtt["port"] | outMqttPort);
-            if (port > 0) {
-                outMqttPort = port;
-            }
-        }
-    }
-    return true;
+    return false;
 }
 
 bool httpGetHealth(const String& healthUrl, int& statusCode, uint32_t& elapsedMs, String* errorText = nullptr) {
@@ -603,7 +628,7 @@ String BleProvisioningService::handleCommand(const String& request, const Device
     } else if (cmd == "scan_wifi") {
         const int found = WiFi.scanNetworks(false, true);
         if (found < 0) {
-            return responseError("wifi_scan_failed");
+            return responseError("wifi_scan_failed", cmd.c_str());
         }
 
         JsonArray networks = resDoc.createNestedArray("networks");
@@ -641,7 +666,7 @@ String BleProvisioningService::handleCommand(const String& request, const Device
         }
 
         if (ssid.length() == 0) {
-            return responseError("ssid_required");
+            return responseError("ssid_required", cmd.c_str());
         }
 
         String vpsBase = String(reqDoc["vps_url"] | "");
@@ -701,7 +726,7 @@ String BleProvisioningService::handleCommand(const String& request, const Device
                 calibrationReason
             );
             if (!applied) {
-                return responseError(calibrationReason.c_str());
+                return responseError(calibrationReason.c_str(), cmd.c_str());
             }
         }
 
@@ -855,7 +880,7 @@ String BleProvisioningService::handleCommand(const String& request, const Device
                     err += ":";
                     err += registerError;
                 }
-                return responseError(err.c_str());
+                return responseError(err.c_str(), cmd.c_str());
             }
             deviceToken = fetchedKey;
             keyFetchedFromProvision = true;
@@ -908,7 +933,7 @@ String BleProvisioningService::handleCommand(const String& request, const Device
                 calibrationReason
             );
             if (!applied) {
-                return responseError(calibrationReason.c_str());
+                return responseError(calibrationReason.c_str(), cmd.c_str());
             }
         }
 
@@ -922,7 +947,7 @@ String BleProvisioningService::handleCommand(const String& request, const Device
             dividerProvided ||
             calibrationProvided;
         if (!hasAnyCloudInput) {
-            return responseError("cloud_fields_required");
+            return responseError("cloud_fields_required", cmd.c_str());
         }
 
         HttpFallbackService::getInstance().updateCloudAuth(
@@ -1087,7 +1112,7 @@ String BleProvisioningService::handleCommand(const String& request, const Device
         }
 
         if (!dividerProvided && !calibrationProvided) {
-            return responseError("adc_divider_ratio or adc_calibration_factor required");
+            return responseError("adc_divider_ratio or adc_calibration_factor required", cmd.c_str());
         }
 
         String reason;
@@ -1098,7 +1123,7 @@ String BleProvisioningService::handleCommand(const String& request, const Device
             reason
         );
         if (!applied) {
-            return responseError(reason.c_str());
+            return responseError(reason.c_str(), cmd.c_str());
         }
 
         resDoc["battery_adc_divider_ratio"] = VoltageMonitor::getInstance().dividerRatio();
@@ -1106,7 +1131,7 @@ String BleProvisioningService::handleCommand(const String& request, const Device
         resDoc["battery_adc_ready"] = VoltageMonitor::getInstance().isAdcReady();
         resDoc["battery_voltage"] = VoltageMonitor::getInstance().readSupplyVoltage();
     } else {
-        return responseError("unknown_cmd");
+        return responseError("unknown_cmd", cmd.c_str());
     }
 
     String out;
@@ -1114,9 +1139,12 @@ String BleProvisioningService::handleCommand(const String& request, const Device
     return out;
 }
 
-String BleProvisioningService::responseError(const char* message) {
+String BleProvisioningService::responseError(const char* message, const char* cmd) {
     StaticJsonDocument<256> doc;
     doc["ok"] = false;
+    if (cmd != nullptr && cmd[0] != '\0') {
+        doc["cmd"] = cmd;
+    }
     doc["error"] = message ? message : "error";
     doc["device_name"] = _bleName;
     doc["mac_suffix"] = _macSuffix;

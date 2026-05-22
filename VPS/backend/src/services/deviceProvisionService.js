@@ -22,7 +22,7 @@ function assertUserLocationAccess(user, locationId) {
 function sanitizeBaseUrl(url) {
   let out = String(url || '').trim();
   if (!out) {
-    out = 'https://api.floodguard.iotsoft.in';
+    out = `http://${env.vpsFqdn}`;
   }
   out = out.replace(/\/+$/, '');
   out = out.replace(/\/api$/i, '');
@@ -31,13 +31,16 @@ function sanitizeBaseUrl(url) {
 
 function buildCloudInfo(deviceId) {
   const base = sanitizeBaseUrl(env.publicApiBaseUrl || env.vpsFqdn);
+  // Use the public VPS FQDN for device MQTT host, not the internal mqttHost
+  // (which may be 'localhost' for VPS-internal broker communication).
+  const publicMqttHost = env.vpsFqdn || env.mqttHost;
   return {
     vps_base_url: base,
     vps_check_url: base,
     health_url: `${base}/health`,
     api_base_url: `${base}/api`,
     mqtt: {
-      host: env.mqttHost,
+      host: publicMqttHost,
       port: env.mqttPort,
       username: deviceId,
       auth_mode: 'token'

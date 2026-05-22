@@ -45,6 +45,31 @@ String normalizeBaseUrl(const String& raw) {
     return out;
 }
 
+String swapHttpScheme(const String& raw) {
+    String url = raw;
+    url.trim();
+    if (url.length() == 0) {
+        return "";
+    }
+    if (url.startsWith("https://")) {
+        return String("http://") + url.substring(8);
+    }
+    if (url.startsWith("http://")) {
+        return String("https://") + url.substring(7);
+    }
+    return "";
+}
+
+String sanitizeErrorDetail(String value, size_t maxLen = 140) {
+    value.replace('\n', ' ');
+    value.replace('\r', ' ');
+    value.trim();
+    if (value.length() > static_cast<int>(maxLen)) {
+        value = value.substring(0, static_cast<int>(maxLen));
+    }
+    return value;
+}
+
 String extractHostFromUrl(const String& url) {
     String work = url;
     work.trim();
@@ -177,8 +202,6 @@ bool registerDeviceAndFetchKey(
         }
         return false;
     }
-    const String registerUrl = baseUrl + "/api/device/register";
-
     DynamicJsonDocument reqDoc(320);
     reqDoc["device_id"] = cfg.deviceId;
     reqDoc["location_id"] = cfg.locationId;
@@ -187,80 +210,98 @@ bool registerDeviceAndFetchKey(
     String body;
     serializeJson(reqDoc, body);
 
-    HTTPClient client;
-    WiFiClient plainClient;
-    WiFiClientSecure secureClient;
-    if (!beginHttpRequest(client, plainClient, secureClient, registerUrl)) {
-        if (errorText != nullptr) {
-            *errorText = "register_begin_failed";
+    String registerUrls[2];
+    size_t registerUrlCount = 0;
+    registerUrls[registerUrlCount++] = baseUrl + "/api/device/register";
+    const String swappedBase = swapHttpScheme(baseUrl);
+    if (swappedBase.length() > 0 && registerUrlCount < 2) {
+        const String swapped = swappedBase + "/api/device/register";
+        if (swapped != registerUrls[0]) {
+            registerUrls[registerUrlCount++] = swapped;
         }
-        return false;
-    }
-    client.addHeader("Content-Type", "application/json");
-    if (provisionKey.length() > 0) {
-        client.addHeader("x-provision-key", provisionKey);
     }
 
-    const int code = client.POST(body);
-    String response = client.getString();
-    client.end();
-    if (code < 200 || code >= 300) {
-        if (errorText != nullptr) {
-            if (response.length() == 0) {
-                *errorText = String("register_http_") + String(code);
-            } else {
-                response.replace('\n', ' ');
-                response.replace('\r', ' ');
-                response.trim();
-                if (response.length() > 96) {
-                    response = response.substring(0, 96);
+    String lastError = "register_failed";
+    for (size_t idx = 0; idx < registerUrlCount; ++idx) {
+        HTTPClient client;
+        WiFiClient plainClient;
+        WiFiClientSecure secureClient;
+        if (!beginHttpRequest(client, plainClient, secureClient, registerUrls[idx])) {
+            lastError = "register_begin_failed";
+            continue;
+        }
+        client.addHeader("Content-Type", "application/json");
+        if (provisionKey.length() > 0) {
+            client.addHeader("x-provision-key", provisionKey);
+        }
+
+        const int code = client.POST(body);
+        String response = client.getString();
+        client.end();
+        if (code < 200 || code >= 300) {
+            if (code < 0) {
+                String detail = sanitizeErrorDetail(HTTPClient::errorToString(code), 96);
+                if (detail.length() == 0) {
+                    detail = String("register_http_") + String(code);
                 }
-                *errorText = response;
+                lastError = detail;
+            } else {
+                String detail = sanitizeErrorDetail(response, 96);
+                if (detail.length() == 0) {
+                    detail = String("register_http_") + String(code);
+                }
+                lastError = detail;
+            }
+            continue;
+        }
+
+        DynamicJsonDocument rsp(2048);
+        if (deserializeJson(rsp, response) != DeserializationError::Ok) {
+            lastError = "register_parse_failed";
+            continue;
+        }
+
+        JsonObject root = rsp.as<JsonObject>();
+        JsonObject data = root["data"].is<JsonObject>() ? root["data"].as<JsonObject>() : root;
+        outDeviceKey = String(data["device_key"] | "");
+        if (outDeviceKey.length() == 0) {
+            outDeviceKey = String(data["device_token"] | "");
+        }
+        if (outDeviceKey.length() == 0) {
+            outDeviceKey = String(data["api_key"] | "");
+        }
+        outDeviceKey.trim();
+        if (outDeviceKey.length() == 0) {
+            const String message = String(root["message"] | root["error"] | data["message"] | "");
+            if (message.length() > 0) {
+                lastError = sanitizeErrorDetail(message, 96);
+            } else {
+                lastError = "register_missing_device_key";
+            }
+            continue;
+        }
+
+        JsonObject cloud = data["cloud"].is<JsonObject>() ? data["cloud"].as<JsonObject>() : JsonObject();
+        if (!cloud.isNull()) {
+            JsonObject mqtt = cloud["mqtt"].is<JsonObject>() ? cloud["mqtt"].as<JsonObject>() : JsonObject();
+            if (!mqtt.isNull()) {
+                const String host = String(mqtt["host"] | "");
+                if (host.length() > 0) {
+                    outMqttHost = stripPort(extractHostFromUrl(host));
+                }
+                const uint16_t port = static_cast<uint16_t>(mqtt["port"] | outMqttPort);
+                if (port > 0) {
+                    outMqttPort = port;
+                }
             }
         }
-        return false;
+        return true;
     }
 
-    DynamicJsonDocument rsp(2048);
-    if (deserializeJson(rsp, response) != DeserializationError::Ok) {
-        if (errorText != nullptr) {
-            *errorText = "register_parse_failed";
-        }
-        return false;
+    if (errorText != nullptr) {
+        *errorText = lastError;
     }
-
-    JsonObject root = rsp.as<JsonObject>();
-    JsonObject data = root["data"].is<JsonObject>() ? root["data"].as<JsonObject>() : root;
-    outDeviceKey = String(data["device_key"] | "");
-    if (outDeviceKey.length() == 0) {
-        outDeviceKey = String(data["device_token"] | "");
-    }
-    if (outDeviceKey.length() == 0) {
-        outDeviceKey = String(data["api_key"] | "");
-    }
-    outDeviceKey.trim();
-    if (outDeviceKey.length() == 0) {
-        if (errorText != nullptr) {
-            *errorText = "register_missing_device_key";
-        }
-        return false;
-    }
-
-    JsonObject cloud = data["cloud"].is<JsonObject>() ? data["cloud"].as<JsonObject>() : JsonObject();
-    if (!cloud.isNull()) {
-        JsonObject mqtt = cloud["mqtt"].is<JsonObject>() ? cloud["mqtt"].as<JsonObject>() : JsonObject();
-        if (!mqtt.isNull()) {
-            const String host = String(mqtt["host"] | "");
-            if (host.length() > 0) {
-                outMqttHost = stripPort(extractHostFromUrl(host));
-            }
-            const uint16_t port = static_cast<uint16_t>(mqtt["port"] | outMqttPort);
-            if (port > 0) {
-                outMqttPort = port;
-            }
-        }
-    }
-    return true;
+    return false;
 }
 }
 

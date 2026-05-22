@@ -134,11 +134,26 @@ String MqttClientService::otaTopic() const {
 
 bool MqttClientService::connect() {
     if (_deviceId[0] == '\0' || _host[0] == '\0') {
+        Serial.println("[MQTT] connect() skipped: empty deviceId or host");
         return false;
     }
 
     char clientId[64]{};
     std::snprintf(clientId, sizeof(clientId), "fg_%s_%lu", _deviceId, millis());
+
+#ifdef FLOODGUARD_DEV_SHOW_CREDS
+    // Dev-only: show full pass so you can add the device to Mosquitto passwd file
+    Serial.printf("[MQTT] Connecting to %s:%u user=%s pass=%s client=%s\n", _host, _port, _user, _pass, clientId);
+#else
+    char passHint[12]{};
+    const size_t passLen = std::strlen(_pass);
+    if (passLen >= 6) {
+        std::snprintf(passHint, sizeof(passHint), "...%s", _pass + passLen - 6);
+    } else {
+        std::strncpy(passHint, passLen > 0 ? "(set)" : "(empty)", sizeof(passHint) - 1);
+    }
+    Serial.printf("[MQTT] Connecting to %s:%u user=%s pass_hint=%s client=%s\n", _host, _port, _user, passHint, clientId);
+#endif
 
     const String willMessage = "{\"type\":\"heartbeat\",\"online\":false}";
     const bool useAuth = (_user[0] != '\0') || (_pass[0] != '\0');
@@ -147,7 +162,13 @@ bool MqttClientService::connect() {
         : _client.connect(clientId, heartbeatTopic().c_str(), 1, true, willMessage.c_str());
 
     if (ok) {
+        Serial.printf("[MQTT] Connected! device=%s topic_base=rub/%s\n", _deviceId, _deviceId);
         subscribe();
+    } else {
+        // PubSubClient state codes: -4=timeout -3=conn_lost -2=conn_failed -1=disconnected
+        // 1=bad_protocol 2=bad_clientid 3=unavailable 4=bad_credentials 5=unauthorized
+        Serial.printf("[MQTT] Connect FAILED state=%d host=%s port=%u user=%s\n",
+            _client.state(), _host, _port, _user);
     }
     return ok;
 }
