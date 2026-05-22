@@ -32,7 +32,10 @@
                                                 "http://localhost:3000",
                                                 "http://127.0.0.1",
                                                 "http://127.0.0.1:3000",
-                                                "https://api.floodguard.iotsoft.in"
+                                                "capacitor://localhost",
+                                                "ionic://localhost",
+                                                "https://api.floodguard.iotsoft.in",
+                                                "https://floodguard.jenix.in"
                                             ]
                  }
 }
