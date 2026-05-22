@@ -7,6 +7,14 @@ const apiRoutes = require('./routes');
 const { notFoundHandler, errorHandler } = require('./middleware/errorHandler');
 const { seedIfEmpty } = require('./db/seed');
 const { resetStore } = require('./db/datastore');
+const { forbidden } = require('./utils/errors');
+
+function normalizeOrigin(origin) {
+  if (!origin) {
+    return '';
+  }
+  return String(origin).trim().replace(/\/+$/, '');
+}
 
 function createApp(options = {}) {
   if (options.resetStore === true) {
@@ -19,7 +27,37 @@ function createApp(options = {}) {
 
   const app = express();
   app.use(helmet());
-  app.use(cors());
+  const allowedOriginSet = new Set(
+    env.corsAllowedOrigins.map((origin) => normalizeOrigin(origin.toLowerCase()))
+  );
+  app.use(
+    cors({
+      origin(origin, callback) {
+        if (!origin || env.corsAllowAll) {
+          return callback(null, true);
+        }
+
+        const normalizedOrigin = normalizeOrigin(origin.toLowerCase());
+        if (allowedOriginSet.has(normalizedOrigin)) {
+          return callback(null, true);
+        }
+
+        return callback(
+          forbidden(
+            `CORS blocked for origin: ${origin}. Allowed origins: ${env.corsAllowedOrigins.join(', ')}`
+          )
+        );
+      },
+      methods: ['GET', 'HEAD', 'PUT', 'PATCH', 'POST', 'DELETE', 'OPTIONS'],
+      allowedHeaders: [
+        'Content-Type',
+        'Authorization',
+        'X-API-Key',
+        'X-Device-Key',
+        'X-Provision-Key'
+      ]
+    })
+  );
   app.use(express.json({ limit: '1mb' }));
 
   const dashboardDir = path.resolve(__dirname, '..', '..', 'dashboard');

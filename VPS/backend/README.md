@@ -14,8 +14,22 @@ This file centralizes:
 - MQTT host/port
 - deployment port/timezone
 - API key and JWT secret
+- explicit CORS allowlist (`security.corsAllowedOrigins`)
 
 After updating this file, move the same folder to the new VPS and start the backend.
+
+## CORS Allowlist
+
+Backend now uses explicit CORS allowlist (instead of open `*`) for browser clients.
+
+- Config key: `security.corsAllowedOrigins` in `VPS_SHIFT_CONFIG.json`
+- Env override: `CORS_ALLOWED_ORIGINS` (comma-separated)
+- Example:
+  - `http://localhost:3000,https://your-pwa-domain.com`
+
+Notes:
+- Requests without `Origin` header (device calls, curl, server-to-server) are still allowed.
+- To temporarily allow all origins (not recommended in production), include `*` in allowlist.
 
 ## Architecture
 

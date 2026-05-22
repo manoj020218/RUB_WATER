@@ -39,6 +39,21 @@ function readBool(name, fallback) {
   return fallback;
 }
 
+function parseList(rawValue) {
+  if (!rawValue) {
+    return [];
+  }
+  if (Array.isArray(rawValue)) {
+    return rawValue
+      .map((item) => String(item).trim())
+      .filter(Boolean);
+  }
+  return String(rawValue)
+    .split(',')
+    .map((item) => item.trim())
+    .filter(Boolean);
+}
+
 const shift = readShiftConfig();
 const deployment = shift.deployment || {};
 const domains = shift.domains || {};
@@ -49,6 +64,17 @@ const security = shift.security || {};
 const mqttProtocol = process.env.MQTT_PROTOCOL || messaging.mqttProtocol || 'mqtt';
 const mqttHost = process.env.MQTT_HOST || messaging.mqttHost || 'api.floodguard.iotsoft.in';
 const mqttPort = readNumber('MQTT_PORT', Number(messaging.mqttPort || 1883));
+const configuredCorsOrigins = parseList(process.env.CORS_ALLOWED_ORIGINS || security.corsAllowedOrigins);
+const defaultCorsOrigins = [
+  'http://localhost',
+  'http://localhost:3000',
+  'http://127.0.0.1',
+  'http://127.0.0.1:3000',
+  'capacitor://localhost',
+  'ionic://localhost'
+];
+const corsAllowedOrigins = configuredCorsOrigins.length ? configuredCorsOrigins : defaultCorsOrigins;
+const corsAllowAll = corsAllowedOrigins.includes('*');
 
 module.exports = {
   nodeEnv: process.env.NODE_ENV || deployment.nodeEnv || 'development',
@@ -73,6 +99,8 @@ module.exports = {
   deviceProvisionKey: process.env.DEVICE_PROVISION_KEY || security.deviceProvisionKey || '',
   requireDeviceProvisionKey: readBool('REQUIRE_DEVICE_PROVISION_KEY', security.requireDeviceProvisionKey !== false),
   allowDeviceIdAuth: readBool('ALLOW_DEVICE_ID_AUTH', security.allowDeviceIdAuth !== false),
+  corsAllowedOrigins,
+  corsAllowAll,
   timezone: process.env.TZ_NAME || deployment.timezone || 'Asia/Kolkata',
   retentionNoWaterHours: readNumber('RETENTION_NO_WATER_HOURS', 24),
   appName: 'FloodGuard by Jenix',
