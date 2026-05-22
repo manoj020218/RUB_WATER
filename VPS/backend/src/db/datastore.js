@@ -15,7 +15,9 @@ const dataStore = {
   appVersions: [],
   commands: [],
   deviceConfigs: [],
-  deviceConfigHistory: []
+  deviceConfigHistory: [],
+  vendors: [],
+  projects: []
 };
 
 function resetStore() {

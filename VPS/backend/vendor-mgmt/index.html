@@ -1,0 +1,544 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Vendor Management — Jenix</title>
+  <style>
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+    :root {
+      --brand: #1d4ed8;
+      --brand-dark: #1e3a8a;
+      --bg: #f1f5f9;
+      --card: #ffffff;
+      --text: #0f172a;
+      --sub: #64748b;
+      --border: #e2e8f0;
+      --danger: #dc2626;
+      --ok: #16a34a;
+      --warn: #d97706;
+    }
+    body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif; background: var(--bg); color: var(--text); min-height: 100vh; }
+
+    /* ── Topbar ── */
+    .topbar {
+      background: var(--brand-dark);
+      color: #fff;
+      padding: 0 20px;
+      height: 54px;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 12px;
+    }
+    .topbar-brand { font-size: 16px; font-weight: 700; letter-spacing: 0.02em; }
+    .topbar-sub { font-size: 11px; opacity: 0.7; margin-top: 2px; }
+    .topbar-user { font-size: 12px; background: rgba(255,255,255,0.12); border-radius: 6px; padding: 4px 10px; }
+    .ghost-btn { background: rgba(255,255,255,0.15); border: 1px solid rgba(255,255,255,0.3); color: #fff; border-radius: 6px; padding: 5px 12px; font-size: 12px; cursor: pointer; }
+    .ghost-btn:hover { background: rgba(255,255,255,0.25); }
+
+    /* ── Layout ── */
+    .page { max-width: 960px; margin: 0 auto; padding: 20px 16px 40px; }
+
+    /* ── Cards ── */
+    .card { background: var(--card); border-radius: 12px; border: 1px solid var(--border); padding: 20px; margin-bottom: 18px; }
+
+    /* ── Login ── */
+    #login-screen { max-width: 380px; margin: 60px auto 0; }
+    .login-logo { text-align: center; margin-bottom: 20px; }
+    .login-logo h1 { font-size: 22px; color: var(--brand-dark); }
+    .login-logo p { font-size: 13px; color: var(--sub); margin-top: 4px; }
+
+    /* ── Forms ── */
+    label.lbl { display: block; font-size: 11px; font-weight: 600; color: var(--sub); text-transform: uppercase; letter-spacing: 0.06em; margin: 10px 0 3px; }
+    input.inp, select.inp, textarea.inp {
+      width: 100%;
+      border: 1px solid var(--border);
+      border-radius: 7px;
+      padding: 9px 12px;
+      font-size: 14px;
+      color: var(--text);
+      background: #f8fafc;
+      outline: none;
+      transition: border-color 0.15s;
+    }
+    input.inp:focus, select.inp:focus { border-color: var(--brand); background: #fff; }
+
+    /* ── Buttons ── */
+    .primary-btn {
+      display: block;
+      width: 100%;
+      background: var(--brand);
+      color: #fff;
+      border: none;
+      border-radius: 8px;
+      padding: 11px;
+      font-size: 15px;
+      font-weight: 600;
+      cursor: pointer;
+      margin-top: 14px;
+    }
+    .primary-btn:hover { background: var(--brand-dark); }
+    .action-btn {
+      border: none;
+      border-radius: 6px;
+      padding: 5px 11px;
+      font-size: 12px;
+      font-weight: 600;
+      cursor: pointer;
+    }
+    .btn-danger { background: #fee2e2; color: var(--danger); }
+    .btn-danger:hover { background: #fca5a5; }
+    .btn-ok { background: #dcfce7; color: var(--ok); }
+    .btn-ok:hover { background: #86efac; }
+    .btn-warn { background: #fef3c7; color: var(--warn); }
+    .btn-warn:hover { background: #fde68a; }
+    .btn-blue { background: #dbeafe; color: var(--brand); }
+    .btn-blue:hover { background: #bfdbfe; }
+
+    /* ── Section header ── */
+    .section-head { display: flex; align-items: center; justify-content: space-between; margin-bottom: 14px; }
+    .section-title { font-size: 16px; font-weight: 700; color: var(--brand-dark); }
+    .section-sub { font-size: 12px; color: var(--sub); margin-top: 2px; }
+
+    /* ── Search bar ── */
+    .search-row { display: grid; grid-template-columns: 1fr auto auto; gap: 8px; margin-bottom: 14px; align-items: end; }
+
+    /* ── Vendor cards ── */
+    .vendor-card {
+      border: 1px solid var(--border);
+      border-radius: 10px;
+      padding: 14px 16px;
+      margin-bottom: 12px;
+      background: #f8fafc;
+    }
+    .vendor-card.inactive { opacity: 0.6; background: #f1f5f9; }
+    .vendor-top { display: flex; align-items: flex-start; justify-content: space-between; gap: 8px; margin-bottom: 8px; }
+    .vendor-name { font-size: 15px; font-weight: 700; color: var(--brand-dark); }
+    .vendor-badges { display: flex; gap: 5px; flex-wrap: wrap; margin-top: 3px; }
+    .badge { display: inline-block; font-size: 10px; font-weight: 700; border-radius: 4px; padding: 2px 6px; text-transform: uppercase; letter-spacing: 0.04em; }
+    .badge-master { background: var(--brand); color: #fff; }
+    .badge-active { background: #dcfce7; color: var(--ok); }
+    .badge-inactive { background: #fee2e2; color: var(--danger); }
+    .badge-project { background: #dbeafe; color: var(--brand); }
+    .badge-pw { background: #fef3c7; color: var(--warn); }
+
+    .vendor-meta { display: flex; flex-wrap: wrap; gap: 12px; font-size: 12px; color: var(--sub); margin-bottom: 8px; }
+    .vendor-meta span b { color: var(--text); }
+    .vendor-login { font-family: 'Courier New', monospace; font-size: 12px; font-weight: 600; color: var(--brand); background: #eff6ff; border-radius: 4px; padding: 2px 6px; }
+    .vendor-actions { display: flex; gap: 8px; flex-wrap: wrap; }
+
+    /* ── Add form ── */
+    .form-grid-2 { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; }
+    .form-grid-3 { display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 8px; }
+    .project-checks { display: flex; flex-wrap: wrap; gap: 10px; margin-top: 6px; }
+    .project-check-label { display: flex; align-items: center; gap: 6px; font-size: 13px; cursor: pointer; }
+    .project-check-label input { width: 15px; height: 15px; }
+
+    /* ── Status messages ── */
+    .msg { font-size: 12px; margin-top: 8px; padding: 6px 10px; border-radius: 6px; }
+    .msg-ok { background: #dcfce7; color: var(--ok); }
+    .msg-err { background: #fee2e2; color: var(--danger); }
+    .msg-info { background: #dbeafe; color: var(--brand); }
+    .msg-hidden { display: none; }
+
+    /* ── Misc ── */
+    .empty { text-align: center; color: var(--sub); padding: 24px; font-size: 13px; font-style: italic; }
+    .divider { border: none; border-top: 1px solid var(--border); margin: 18px 0; }
+    .row { display: flex; align-items: center; gap: 8px; }
+    #login-screen .topbar { border-radius: 12px 12px 0 0; }
+
+    @media (max-width: 600px) {
+      .form-grid-2, .form-grid-3 { grid-template-columns: 1fr; }
+      .search-row { grid-template-columns: 1fr; }
+    }
+  </style>
+</head>
+<body>
+
+<!-- ═══════════════════════════════ LOGIN SCREEN ═══════════════════════════════ -->
+<div id="login-screen">
+  <div class="login-logo">
+    <h1>Vendor Management</h1>
+    <p>Jenix Technology — Admin Portal</p>
+  </div>
+  <div class="card">
+    <label class="lbl">Username</label>
+    <input class="inp" id="l-userid" placeholder="e.g. ebonx" autocomplete="username" value="">
+    <label class="lbl">Password</label>
+    <input class="inp" id="l-password" type="password" placeholder="Password" autocomplete="current-password">
+    <button class="primary-btn" onclick="doLogin()">Login</button>
+    <div id="l-error" class="msg msg-err msg-hidden" style="margin-top:8px"></div>
+  </div>
+</div>
+
+<!-- ═══════════════════════════════ MAIN SCREEN ════════════════════════════════ -->
+<div id="main-screen" style="display:none">
+  <div class="topbar">
+    <div>
+      <div class="topbar-brand">Vendor Management</div>
+      <div class="topbar-sub">Jenix Technology Admin Portal</div>
+    </div>
+    <div class="row">
+      <span class="topbar-user" id="topbar-user">—</span>
+      <button class="ghost-btn" onclick="doLogout()">Logout</button>
+    </div>
+  </div>
+
+  <div class="page">
+    <!-- Search & Filter -->
+    <div class="card">
+      <div class="search-row">
+        <div>
+          <label class="lbl">Search</label>
+          <input class="inp" id="v-search" placeholder="Company name, mobile, login ID..." oninput="renderList()">
+        </div>
+        <div>
+          <label class="lbl">Project</label>
+          <select class="inp" id="v-project" onchange="renderList()">
+            <option value="">All Projects</option>
+          </select>
+        </div>
+        <div>
+          <label class="lbl">Status</label>
+          <select class="inp" id="v-status" onchange="renderList()">
+            <option value="">All</option>
+            <option value="active">Active</option>
+            <option value="inactive">Inactive</option>
+          </select>
+        </div>
+      </div>
+      <div id="vendor-list"><div class="empty">Loading...</div></div>
+    </div>
+
+    <!-- Add Vendor -->
+    <div class="card">
+      <div class="section-head">
+        <div>
+          <div class="section-title">Add New Vendor</div>
+          <div class="section-sub">Creates a vendor record and an admin login for that vendor</div>
+        </div>
+      </div>
+
+      <div class="form-grid-2">
+        <div>
+          <label class="lbl">Company Name *</label>
+          <input class="inp" id="vc-company" placeholder="e.g. ABC Water Authority">
+        </div>
+        <div>
+          <label class="lbl">Contact Person</label>
+          <input class="inp" id="vc-contact" placeholder="e.g. Rajesh Kumar">
+        </div>
+      </div>
+      <div class="form-grid-2" style="margin-top:8px">
+        <div>
+          <label class="lbl">Mobile Number *</label>
+          <input class="inp" id="vc-mobile" placeholder="e.g. 9876543210" type="tel">
+        </div>
+        <div>
+          <label class="lbl">Email</label>
+          <input class="inp" id="vc-email" placeholder="vendor@example.com" type="email">
+        </div>
+      </div>
+
+      <hr class="divider">
+      <div class="form-grid-2">
+        <div>
+          <label class="lbl">Admin Username (leave blank = auto)</label>
+          <input class="inp" id="vc-username" placeholder="e.g. abc_admin (auto-generated if empty)">
+        </div>
+        <div>
+          <label class="lbl">Admin Password (blank = default 123456)</label>
+          <input class="inp" id="vc-password" type="password" placeholder="min 6 chars, blank = 123456" autocomplete="new-password">
+        </div>
+      </div>
+
+      <hr class="divider">
+      <label class="lbl">Assign Projects</label>
+      <div class="project-checks" id="vc-projects">
+        <span style="font-size:12px;color:var(--sub)">Loading projects...</span>
+      </div>
+
+      <button class="primary-btn" style="margin-top:16px" onclick="addVendor()">Create Vendor</button>
+      <div id="vc-status" class="msg msg-hidden" style="margin-top:8px"></div>
+    </div>
+  </div>
+</div>
+
+<script>
+(function () {
+  'use strict';
+
+  // ── Config ──────────────────────────────────────────────────────────────────
+  // Derive API base from current origin (same server)
+  const API = window.location.origin + '/api';
+
+  let state = {
+    token: '',
+    user: null,
+    vendors: [],
+    projects: []
+  };
+
+  // ── Helpers ─────────────────────────────────────────────────────────────────
+  function $id(id) { return document.getElementById(id); }
+  function esc(str) {
+    return String(str || '')
+      .replace(/&/g, '&amp;')
+      .replace(/</g, '&lt;')
+      .replace(/>/g, '&gt;')
+      .replace(/"/g, '&quot;');
+  }
+
+  function setMsg(id, text, type) {
+    const el = $id(id);
+    if (!el) return;
+    el.textContent = text;
+    el.className = `msg msg-${type}${text ? '' : ' msg-hidden'}`;
+  }
+
+  async function api(path, opts = {}) {
+    const headers = { 'Content-Type': 'application/json' };
+    if (state.token) headers['Authorization'] = `Bearer ${state.token}`;
+    const res = await fetch(API + path, {
+      method: opts.method || 'GET',
+      headers,
+      body: opts.body ? JSON.stringify(opts.body) : undefined
+    });
+    const json = await res.json().catch(() => ({}));
+    if (!res.ok || !json.ok) {
+      throw new Error(json.error?.message || json.message || `HTTP ${res.status}`);
+    }
+    return json.data;
+  }
+
+  // ── Auth ────────────────────────────────────────────────────────────────────
+  async function doLogin() {
+    const loginId = ($id('l-userid')?.value || '').trim();
+    const password = ($id('l-password')?.value || '').trim();
+    setMsg('l-error', '', 'err');
+
+    if (!loginId || !password) {
+      setMsg('l-error', 'Username and password are required.', 'err');
+      return;
+    }
+
+    try {
+      const result = await api('/auth/login', {
+        method: 'POST',
+        body: { login_id: loginId, password, app_type: 'VENDOR_MGMT' }
+      });
+
+      if (result.user.role !== 'VENDOR_SUPER_ADMIN') {
+        throw new Error('Access denied. Vendor Super Admin role required.');
+      }
+
+      state.token = result.token;
+      state.user = result.user;
+
+      $id('login-screen').style.display = 'none';
+      $id('main-screen').style.display = 'block';
+      $id('topbar-user').textContent = `${result.user.name} (${result.user.login_id})`;
+
+      await loadAll();
+    } catch (error) {
+      setMsg('l-error', `Login failed: ${error.message}`, 'err');
+    }
+  }
+
+  function doLogout() {
+    state.token = '';
+    state.user = null;
+    state.vendors = [];
+    state.projects = [];
+    $id('main-screen').style.display = 'none';
+    $id('login-screen').style.display = 'block';
+    $id('l-password').value = '';
+  }
+
+  // ── Data Loading ─────────────────────────────────────────────────────────────
+  async function loadAll() {
+    await Promise.all([loadProjects(), loadVendors()]);
+  }
+
+  async function loadProjects() {
+    try {
+      state.projects = await api('/vendor-mgmt/projects');
+      populateProjectSelects();
+      renderProjectCheckboxes();
+    } catch (_) {}
+  }
+
+  function populateProjectSelects() {
+    const sel = $id('v-project');
+    if (!sel) return;
+    while (sel.options.length > 1) sel.remove(1);
+    state.projects.forEach((p) => {
+      const opt = document.createElement('option');
+      opt.value = p._id;
+      opt.textContent = p.name;
+      sel.appendChild(opt);
+    });
+  }
+
+  function renderProjectCheckboxes() {
+    const wrap = $id('vc-projects');
+    if (!wrap) return;
+    if (!state.projects.length) {
+      wrap.innerHTML = '<span style="font-size:12px;color:var(--sub)">No projects available.</span>';
+      return;
+    }
+    wrap.innerHTML = state.projects.map((p) =>
+      `<label class="project-check-label">
+        <input type="checkbox" name="vc-proj" value="${esc(p._id)}"> ${esc(p.name)}
+      </label>`
+    ).join('');
+  }
+
+  async function loadVendors() {
+    try {
+      state.vendors = await api('/vendor-mgmt/vendors');
+      renderList();
+    } catch (error) {
+      $id('vendor-list').innerHTML = `<div class="empty" style="color:var(--danger)">Failed to load: ${esc(error.message)}</div>`;
+    }
+  }
+
+  // ── Render ──────────────────────────────────────────────────────────────────
+  function renderList() {
+    const q = ($id('v-search')?.value || '').trim().toLowerCase();
+    const proj = ($id('v-project')?.value || '').trim();
+    const statusFilter = ($id('v-status')?.value || '').trim();
+
+    let list = state.vendors;
+    if (proj) list = list.filter((v) => v.projects?.some((p) => p.project_id === proj));
+    if (statusFilter === 'active') list = list.filter((v) => v.is_active);
+    if (statusFilter === 'inactive') list = list.filter((v) => !v.is_active);
+    if (q) {
+      list = list.filter((v) =>
+        [v.company_name, v.mobile, v.admin_login_id, v.contact_name, v.email].join(' ').toLowerCase().includes(q)
+      );
+    }
+
+    const el = $id('vendor-list');
+    if (!el) return;
+    if (!list.length) {
+      el.innerHTML = '<div class="empty">No vendors found.</div>';
+      return;
+    }
+
+    el.innerHTML = list.map((v) => {
+      const projBadges = (v.projects || []).map((p) => {
+        const proj = state.projects.find((pr) => pr._id === p.project_id);
+        return `<span class="badge badge-project">${esc(proj?.name || p.project_id)}</span>`;
+      }).join('');
+
+      const adminUser = v.admin_user;
+      const pwFlag = adminUser?.force_password_change
+        ? `<span class="badge badge-pw">PW Change Pending</span>` : '';
+
+      return `
+        <div class="vendor-card${v.is_active ? '' : ' inactive'}" id="vc-${esc(v._id)}">
+          <div class="vendor-top">
+            <div>
+              <div class="vendor-name">${esc(v.company_name)}</div>
+              <div class="vendor-badges">
+                ${v.is_master_vendor ? '<span class="badge badge-master">Master Vendor</span>' : ''}
+                <span class="badge ${v.is_active ? 'badge-active' : 'badge-inactive'}">${v.is_active ? 'Active' : 'Inactive'}</span>
+                ${projBadges}
+                ${pwFlag}
+              </div>
+            </div>
+          </div>
+          <div class="vendor-meta">
+            <span>Contact: <b>${esc(v.contact_name || '—')}</b></span>
+            <span>Mobile: <b>${esc(v.mobile || '—')}</b></span>
+            ${v.email ? `<span>Email: <b>${esc(v.email)}</b></span>` : ''}
+            <span>Admin Login: <span class="vendor-login">${esc(v.admin_login_id)}</span></span>
+          </div>
+          <div class="vendor-actions">
+            <button class="action-btn btn-danger" onclick="resetVendorPw('${esc(v._id)}','${esc(v.company_name)}')">Reset Password</button>
+            ${!v.is_master_vendor
+              ? `<button class="action-btn ${v.is_active ? 'btn-warn' : 'btn-ok'}" onclick="toggleActive('${esc(v._id)}','${esc(v.company_name)}')">${v.is_active ? 'Deactivate' : 'Activate'}</button>`
+              : ''}
+          </div>
+          <div id="vc-msg-${esc(v._id)}" class="msg msg-hidden" style="margin-top:6px"></div>
+        </div>`;
+    }).join('');
+  }
+
+  // ── Vendor Actions ──────────────────────────────────────────────────────────
+  async function addVendor() {
+    const company = ($id('vc-company')?.value || '').trim();
+    const contact = ($id('vc-contact')?.value || '').trim();
+    const mobile = ($id('vc-mobile')?.value || '').trim();
+    const email = ($id('vc-email')?.value || '').trim();
+    const username = ($id('vc-username')?.value || '').trim();
+    const password = ($id('vc-password')?.value || '').trim();
+
+    setMsg('vc-status', '', 'ok');
+    if (!company) { setMsg('vc-status', 'Company name is required.', 'err'); return; }
+    if (!mobile) { setMsg('vc-status', 'Mobile number is required.', 'err'); return; }
+
+    const checked = Array.from(document.querySelectorAll('#vc-projects input[name="vc-proj"]:checked'));
+    const projects = checked.map((cb) => ({ project_id: cb.value, role: 'CLIENT' }));
+
+    const body = { company_name: company, contact_name: contact, mobile, email, projects };
+    if (username) body.admin_login_id = username;
+    if (password) body.admin_password = password;
+
+    try {
+      const result = await api('/vendor-mgmt/vendors', { method: 'POST', body });
+      const pwNote = result.force_password_change ? ' (must change password on first login)' : '';
+      setMsg('vc-status', `Vendor created! Login: ${result.admin_login_id} / Password: ${result.default_password}${pwNote}`, 'ok');
+      ['vc-company','vc-contact','vc-mobile','vc-email','vc-username','vc-password'].forEach((id) => {
+        const el = $id(id); if (el) el.value = '';
+      });
+      document.querySelectorAll('#vc-projects input[type=checkbox]').forEach((cb) => { cb.checked = false; });
+      await loadVendors();
+    } catch (error) {
+      setMsg('vc-status', `Failed: ${error.message}`, 'err');
+    }
+  }
+
+  async function resetVendorPw(vendorId, companyName) {
+    if (!confirm(`Reset password for "${companyName}" admin to default (123456)?\n\nVendor admin will need to change password on next login.`)) return;
+    try {
+      const result = await api(`/vendor-mgmt/vendors/${vendorId}/reset-password`, { method: 'POST', body: {} });
+      setMsg(`vc-msg-${vendorId}`, `Password reset. Login: ${result.admin_login_id} / 123456`, 'ok');
+      await loadVendors();
+    } catch (error) {
+      setMsg(`vc-msg-${vendorId}`, `Reset failed: ${error.message}`, 'err');
+    }
+  }
+
+  async function toggleActive(vendorId, companyName) {
+    const vendor = state.vendors.find((v) => v._id === vendorId);
+    const action = vendor?.is_active ? 'deactivate' : 'activate';
+    if (!confirm(`${action.charAt(0).toUpperCase() + action.slice(1)} vendor "${companyName}"?`)) return;
+    try {
+      await api(`/vendor-mgmt/vendors/${vendorId}/toggle-active`, { method: 'PATCH', body: {} });
+      await loadVendors();
+    } catch (error) {
+      setMsg(`vc-msg-${vendorId}`, `Failed: ${error.message}`, 'err');
+    }
+  }
+
+  // ── Keyboard shortcut ───────────────────────────────────────────────────────
+  document.addEventListener('keydown', (e) => {
+    if (e.key === 'Enter' && $id('login-screen')?.style.display !== 'none') {
+      doLogin();
+    }
+  });
+
+  // ── Expose to window ─────────────────────────────────────────────────────────
+  window.doLogin = doLogin;
+  window.doLogout = doLogout;
+  window.addVendor = addVendor;
+  window.resetVendorPw = resetVendorPw;
+  window.toggleActive = toggleActive;
+  window.renderList = renderList;
+})();
+</script>
+</body>
+</html>

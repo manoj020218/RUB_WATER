@@ -65,7 +65,8 @@ async function login({ loginId, password, deviceName, appType, fcmToken, ipAddre
     token_type: 'Bearer',
     expires_in: env.jwtTtl,
     user: sanitizeUser(user),
-    session
+    session,
+    force_password_change: user.force_password_change === true
   };
 }
 
@@ -132,6 +133,7 @@ async function changeOwnPassword({ authContext, currentPassword, newPassword }) 
   const newHash = await bcrypt.hash(String(newPassword), 10);
   userRepository.update(user._id, {
     password_hash: newHash,
+    force_password_change: false,
     updated_at: new Date().toISOString()
   });
   const deactivatedSessions = sessionRepository.deactivateOtherSessions(user._id, authContext.session._id);

@@ -8,6 +8,7 @@ const deviceConfigRoutes = require('./deviceConfigRoutes');
 const complaintRoutes = require('./complaintRoutes');
 const reportRoutes = require('./reportRoutes');
 const integrationRoutes = require('./integrationRoutes');
+const vendorRoutes = require('./vendorRoutes');
 
 const router = express.Router();
 
@@ -20,5 +21,6 @@ router.use('/reports', reportRoutes);
 router.use('/integration', integrationRoutes);
 router.use('/', monitoringRoutes);
 router.use('/admin', adminRoutes);
+router.use('/vendor-mgmt', vendorRoutes);
 
 module.exports = router;

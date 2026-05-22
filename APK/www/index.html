@@ -634,6 +634,43 @@
         </div>
       </section>
 
+      <section class="view" id="view-vendors">
+        <div class="card">
+          <div class="row between">
+            <div>
+              <h2 class="view-title">Vendor Management</h2>
+              <p class="view-subtitle">Manage client vendors and project access</p>
+            </div>
+            <button class="ghost-btn" style="padding:6px 10px" onclick="loadVendorsApp()">Refresh</button>
+          </div>
+
+          <div class="vendor-filter-row">
+            <input class="inp" id="vendor-search" placeholder="Search by company, mobile, login ID..." oninput="filterVendorListApp()">
+            <select class="inp" id="vendor-filter-project" onchange="filterVendorListApp()">
+              <option value="">All Projects</option>
+            </select>
+          </div>
+
+          <div class="timeline" id="vendor-list">
+            <div class="empty">No vendors loaded yet.</div>
+          </div>
+
+          <p class="section-sep">Add New Vendor</p>
+          <div class="vendor-create-grid">
+            <input class="inp" id="vc-company" placeholder="Company Name *">
+            <input class="inp" id="vc-contact" placeholder="Contact Person Name">
+            <input class="inp" id="vc-mobile" placeholder="Mobile Number *">
+            <input class="inp" id="vc-email" placeholder="Email Address">
+          </div>
+          <div id="vc-projects-wrap" style="margin-top:8px">
+            <label class="lbl">Assign Project(s)</label>
+            <div id="vc-project-checkboxes" class="vendor-project-checks"></div>
+          </div>
+          <button class="control-btn info" style="margin-top:8px" onclick="createVendorApp()">Create Vendor</button>
+          <div class="meta" id="vc-create-status"></div>
+        </div>
+      </section>
+
       <section class="view" id="view-settings">
         <div class="card">
           <h2 class="view-title">Settings</h2>
@@ -662,8 +699,23 @@
       <button class="nav-btn" id="config-tab" data-view="view-config" onclick="openView('view-config')">Config</button>
       <button class="nav-btn" data-view="view-audit" onclick="openView('view-audit')">Audit</button>
       <button class="nav-btn" id="reports-tab" data-view="view-reports" onclick="openView('view-reports')" style="display:none">Reports</button>
+      <button class="nav-btn" id="vendors-tab" data-view="view-vendors" onclick="openView('view-vendors')" style="display:none">Vendors</button>
       <button class="nav-btn" id="settings-tab" data-view="view-settings" onclick="openView('view-settings')" style="display:none">Settings</button>
     </nav>
+  </div>
+
+  <!-- Force password change modal (shown after first login with default password) -->
+  <div class="modal-overlay" id="force-pw-modal" style="display:none">
+    <div class="modal-card">
+      <h3 style="margin:0 0 6px;font-size:16px">Password Change Required</h3>
+      <p class="hint" style="margin:0 0 12px">Your account uses a default password. Please set a new password before continuing.</p>
+      <label class="lbl">New Password</label>
+      <input class="inp" id="force-pw-new" type="password" placeholder="New password (min 6 chars)" autocomplete="new-password">
+      <label class="lbl" style="margin-top:8px">Confirm Password</label>
+      <input class="inp" id="force-pw-confirm" type="password" placeholder="Confirm new password" autocomplete="new-password">
+      <button class="primary-btn" style="margin-top:12px" onclick="submitForcePwChangeApp()">Set Password &amp; Continue</button>
+      <div class="err" id="force-pw-error" style="margin-top:8px"></div>
+    </div>
   </div>
 
   <div class="modal-overlay" id="provision-progress-modal" style="display:none">

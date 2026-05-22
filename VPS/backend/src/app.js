@@ -62,6 +62,13 @@ function createApp(options = {}) {
 
   const dashboardDir = path.resolve(__dirname, '..', '..', 'dashboard');
   app.use('/dashboard', express.static(dashboardDir));
+
+  const vendorMgmtDir = path.resolve(__dirname, '..', '..', 'vendor-mgmt');
+  app.use('/vendors', express.static(vendorMgmtDir));
+  app.get('/vendors', (req, res) => {
+    res.sendFile(path.join(vendorMgmtDir, 'index.html'));
+  });
+
   app.get('/', (req, res) => {
     res.redirect('/dashboard/FloodGuard_Desktop_UI.html');
   });

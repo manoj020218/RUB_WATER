@@ -25,6 +25,19 @@ function seedIfEmpty() {
       updated_at: new Date().toISOString()
     },
     {
+      _id: 'user_jenix_ebonx',
+      login_id: 'ebonx',
+      password_hash: bcrypt.hashSync('ebnox_123', 10),
+      name: 'Jenix Admin (ebonx)',
+      role: ROLE.VENDOR_SUPER_ADMIN,
+      vendor_id: 'vendor_001',
+      department_id: null,
+      assigned_location_ids: [],
+      is_active: true,
+      created_at: new Date().toISOString(),
+      updated_at: new Date().toISOString()
+    },
+    {
       _id: 'user_vendor_demo',
       login_id: 'demo',
       password_hash: demoPasswordHash,
@@ -172,6 +185,36 @@ function seedIfEmpty() {
       mandatory: false,
       release_notes: 'Baseline OTA-enabled build',
       created_at: new Date('2026-05-18T00:00:00Z').toISOString()
+    }
+  ];
+
+  dataStore.projects = [
+    {
+      _id: 'proj_floodguard',
+      name: 'FloodGuard',
+      description: 'RUB Water Level Monitoring & Flood Alarm System',
+      is_active: true,
+      created_at: new Date().toISOString(),
+      updated_at: new Date().toISOString()
+    }
+  ];
+
+  dataStore.vendors = [
+    {
+      _id: 'vendor_001',
+      company_name: 'Jenix Technology',
+      contact_name: 'Jenix Admin',
+      mobile: '9999999999',
+      email: 'admin@jenix.in',
+      is_master_vendor: true,
+      projects: [
+        { project_id: 'proj_floodguard', role: 'OWNER' }
+      ],
+      admin_login_id: 'vendor_admin',
+      admin_user_id: 'user_vendor_001',
+      is_active: true,
+      created_at: new Date().toISOString(),
+      updated_at: new Date().toISOString()
     }
   ];
 }
