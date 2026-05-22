@@ -2289,18 +2289,66 @@
     list.innerHTML = state.locations.map((loc) => {
       const meta = statusMeta(loc.status);
       const selected = loc.location_id === state.selectedLocationId;
-      const level = Number.isFinite(loc.water_level_mm) ? Math.round(loc.water_level_mm) : '--';
+      const levelRaw = Number.isFinite(loc.water_level_mm) ? Math.round(loc.water_level_mm) : null;
+      const levelStr = levelRaw !== null ? String(levelRaw) : '--';
+
+      // Online dot
+      const devStatus = String(loc.device_status || 'UNKNOWN').toUpperCase();
+      const isOnline = devStatus === 'ONLINE';
+      const isWarn = !isOnline && devStatus !== 'OFFLINE' && devStatus !== 'UNKNOWN';
+      const dotCls = isOnline ? 'online' : (isWarn ? 'warn' : 'offline');
+
+      // Mini vessel fill
+      const mountRef = Number(loc.sensor_mount_height_mm || 1000);
+      const fillPct = levelRaw !== null ? Math.max(0, Math.min(100, (levelRaw / mountRef) * 100)).toFixed(1) : '0';
+      const fillColor = meta.cls === 'danger'
+        ? 'linear-gradient(0deg,#b91c1c,#ef4444)'
+        : meta.cls === 'warn'
+          ? 'linear-gradient(0deg,#b45309,#f59e0b)'
+          : meta.cls === 'ok'
+            ? 'linear-gradient(0deg,#047857,#34d399)'
+            : 'linear-gradient(0deg,#64748b,#94a3b8)';
+
+      // Status chip class
+      const chipCls = meta.cls === 'danger' ? ' danger' : meta.cls === 'warn' ? ' warn' : meta.cls === 'off' ? ' off' : '';
+
+      // Device pill class
+      const devPillCls = isOnline ? 'loc-dev-pill--online' : 'loc-dev-pill--offline';
+
+      // Complaint badge (populated once backend provides open_complaint_count)
+      const complaintCount = Number(loc.open_complaint_count || 0);
+      const complaintBadge = complaintCount > 0
+        ? `<span class="loc-complaint-pill">${complaintCount} open</span>`
+        : '';
+
       return `
-        <button class="loc-card ${selected ? 'sel' : ''}" onclick="selectLocation('${escapeHtml(loc.location_id)}')">
-          <div class="loc-top">
-            <div>
-              <div class="loc-name">${escapeHtml(loc.location_name || loc.location_id)}</div>
-              <div class="loc-id">${escapeHtml(loc.location_id)}</div>
+        <button class="loc-card${selected ? ' sel' : ''}" onclick="selectLocation('${escapeHtml(loc.location_id)}')">
+          <div class="loc-card-top">
+            <div class="loc-name-row">
+              <span class="loc-dot loc-dot--${dotCls}"></span>
+              <div>
+                <div class="loc-name">${escapeHtml(loc.location_name || loc.location_id)}</div>
+                <div class="loc-id">${escapeHtml(loc.location_id)}</div>
+              </div>
             </div>
-            <span class="chip ${meta.cls === 'danger' ? 'danger' : ''}">${escapeHtml(meta.label)}</span>
+            <span class="chip${chipCls}">${escapeHtml(meta.label)}</span>
           </div>
-          <div class="loc-level">${escapeHtml(String(level))} mm</div>
-          <div class="loc-meta">${escapeHtml(String(loc.device_status || 'UNKNOWN'))} · Updated ${escapeHtml(formatTime(loc.last_update))}</div>
+          <div class="loc-card-body">
+            <div class="loc-vessel-mini">
+              <div class="loc-vessel-fill-mini" style="height:${fillPct}%;background:${fillColor}"></div>
+            </div>
+            <div class="loc-stats">
+              <div class="loc-level-row">
+                <span class="loc-level-num">${escapeHtml(levelStr)}</span>
+                <span class="loc-level-unit">mm</span>
+              </div>
+              <div class="loc-pill-row">
+                <span class="loc-dev-pill ${devPillCls}">${escapeHtml(devStatus)}</span>
+                ${complaintBadge}
+              </div>
+              <div class="loc-meta">Updated ${escapeHtml(formatTime(loc.last_update))}</div>
+            </div>
+          </div>
         </button>
       `;
     }).join('');

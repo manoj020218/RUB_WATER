@@ -220,6 +220,12 @@ button {
   color: #475569;
 }
 
+.chip.warn {
+  border-color: #fcd34d;
+  background: #fffbeb;
+  color: #92400e;
+}
+
 .list {
   margin-top: 10px;
   display: grid;
@@ -227,6 +233,8 @@ button {
 }
 
 .loc-card {
+  width: 100%;
+  text-align: left;
   border: 1px solid var(--border);
   border-radius: 10px;
   padding: 12px;
@@ -238,31 +246,154 @@ button {
   box-shadow: 0 0 0 2px rgba(37, 99, 235, 0.12);
 }
 
-.loc-top {
+/* ── Location card top row ── */
+.loc-card-top {
   display: flex;
   align-items: flex-start;
   justify-content: space-between;
-  gap: 10px;
+  gap: 8px;
+  margin-bottom: 8px;
+}
+
+.loc-name-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-width: 0;
+}
+
+/* Online presence dot */
+.loc-dot {
+  width: 9px;
+  height: 9px;
+  border-radius: 50%;
+  flex-shrink: 0;
+}
+
+.loc-dot--online {
+  background: var(--ok);
+  animation: dot-pulse 2s ease-in-out infinite;
+}
+
+.loc-dot--warn {
+  background: var(--warn);
+}
+
+.loc-dot--offline {
+  background: #94a3b8;
+}
+
+@keyframes dot-pulse {
+  0%   { box-shadow: 0 0 0 0 rgba(5,150,105,0.45); }
+  70%  { box-shadow: 0 0 0 5px rgba(5,150,105,0); }
+  100% { box-shadow: 0 0 0 0 rgba(5,150,105,0); }
 }
 
 .loc-name {
-  font-size: 14px;
+  font-size: 13px;
   font-weight: 800;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
 }
 
 .loc-id {
   font-size: 10px;
   color: var(--sub);
+  margin-top: 1px;
 }
 
-.loc-level {
-  margin-top: 8px;
+/* ── Location card body: vessel + stats ── */
+.loc-card-body {
+  display: flex;
+  align-items: flex-end;
+  gap: 10px;
+}
+
+.loc-vessel-mini {
+  position: relative;
+  width: 20px;
+  height: 52px;
+  flex-shrink: 0;
+  border: 2px solid #94a3b8;
+  border-radius: 5px;
+  overflow: hidden;
+  background: #f1f5f9;
+}
+
+.loc-vessel-fill-mini {
+  position: absolute;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  height: 0%;
+  transition: height 1.2s ease;
+}
+
+.loc-stats {
+  min-width: 0;
+  flex: 1;
+}
+
+.loc-level-row {
+  display: flex;
+  align-items: baseline;
+  gap: 3px;
+  margin-bottom: 4px;
+}
+
+.loc-level-num {
   font-size: 22px;
   font-weight: 900;
+  line-height: 1;
+}
+
+.loc-level-unit {
+  font-size: 11px;
+  font-weight: 700;
+  color: var(--sub);
+}
+
+.loc-pill-row {
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  flex-wrap: wrap;
+  margin-bottom: 3px;
+}
+
+.loc-dev-pill {
+  font-size: 9px;
+  font-weight: 800;
+  text-transform: uppercase;
+  padding: 2px 7px;
+  border-radius: 999px;
+  border: 1px solid;
+}
+
+.loc-dev-pill--online {
+  border-color: #86efac;
+  background: #ecfdf5;
+  color: #047857;
+}
+
+.loc-dev-pill--offline {
+  border-color: #cbd5e1;
+  background: #f1f5f9;
+  color: #64748b;
+}
+
+.loc-complaint-pill {
+  font-size: 9px;
+  font-weight: 800;
+  padding: 2px 7px;
+  border-radius: 999px;
+  border: 1px solid #fcd34d;
+  background: #fffbeb;
+  color: #92400e;
 }
 
 .loc-meta {
-  margin-top: 4px;
   font-size: 11px;
   color: var(--sub);
 }
