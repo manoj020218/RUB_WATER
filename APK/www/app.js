@@ -214,6 +214,10 @@
       showToast('Configuration screen is not available for this role.', true);
       return;
     }
+    if (viewId === 'view-users' && !isSuperAdmin()) {
+      showToast('User management is only available for super admins.', true);
+      return;
+    }
 
     document.querySelectorAll('.view').forEach((view) => {
       view.classList.toggle('active', view.id === viewId);
@@ -238,6 +242,9 @@
     }
     if (viewId === 'view-reports') {
       populateReportLocationSelect();
+    }
+    if (viewId === 'view-users') {
+      refreshAdminUsersApp().catch(() => {});
     }
   }
 
@@ -2440,6 +2447,7 @@
     applySettingsVisibility();
     applyComplaintsVisibility();
     applyReportsVisibility();
+    applyUsersTabVisibility();
     renderInstallCloudStatuses();
 
     const fill = byId('vessel-fill');
@@ -2542,32 +2550,60 @@
   }
 
   function renderAdminUsersApp(users) {
-    const list = byId('mobile-admin-user-list');
-    if (!list) {
+    const list = byId('user-list');
+    if (!list) return;
+
+    const roleFilter = String(byId('user-filter-role')?.value || '');
+    const statusFilter = String(byId('user-filter-status')?.value || '');
+
+    let filtered = Array.isArray(users) ? users : [];
+    if (roleFilter) filtered = filtered.filter((u) => u.role === roleFilter);
+    if (statusFilter === 'active') filtered = filtered.filter((u) => u.is_active);
+    if (statusFilter === 'inactive') filtered = filtered.filter((u) => !u.is_active);
+
+    if (filtered.length === 0) {
+      list.innerHTML = '<div class="empty">No users match the current filter.</div>';
       return;
     }
 
-    if (!Array.isArray(users) || users.length === 0) {
-      list.innerHTML = '<div class="empty">No managed users found.</div>';
-      return;
-    }
-
-    list.innerHTML = users.map((user) => {
+    list.innerHTML = filtered.map((user) => {
+      const userId = escapeHtml(String(user.user_id || ''));
+      const loginId = escapeHtml(user.login_id || '--');
+      const name = escapeHtml(user.name || '--');
+      const role = escapeHtml(String(user.role || 'UNKNOWN').toUpperCase());
+      const roleClass = String(user.role || '').toLowerCase().replace(/_/g, '-');
       const isActive = Boolean(user.is_active);
-      const statusLabel = isActive ? 'ACTIVE' : 'DEACTIVE';
+      const sessions = Number(user.active_session_count ?? 0);
+      const locs = Array.isArray(user.assigned_locations) && user.assigned_locations.length
+        ? user.assigned_locations.map((l) => `<span class="user-loc-pill">${escapeHtml(l)}</span>`).join('')
+        : '<span class="user-loc-none">No locations assigned</span>';
+
       return `
-        <div class="admin-user-row">
-          <div class="admin-user-head">
+        <div class="user-card">
+          <div class="user-card-head">
             <div>
-              <div class="admin-user-name">${escapeHtml(user.login_id)} (${escapeHtml(user.role || '--')})</div>
-              <div class="admin-user-meta">${escapeHtml(user.name || '--')} · Sessions: ${escapeHtml(String(user.active_session_count ?? 0))}</div>
+              <div class="user-login-id">${loginId}</div>
+              <div class="user-full-name">${name}</div>
             </div>
-            <span class="chip ${isActive ? '' : 'danger'}">${statusLabel}</span>
+            <div style="display:flex;flex-direction:column;align-items:flex-end;gap:4px">
+              <span class="user-role-badge user-role-badge--${escapeHtml(roleClass)}">${role}</span>
+              <span class="chip ${isActive ? '' : 'danger'}" style="font-size:10px">${isActive ? 'ACTIVE' : 'INACTIVE'}</span>
+            </div>
           </div>
-          <div class="row" style="margin-top:8px;justify-content:flex-end">
-            <button class="ghost-btn" style="padding:6px 10px" onclick="toggleAdminUserAccessApp('${escapeHtml(user.user_id)}', ${isActive ? 'false' : 'true'})">
-              ${isActive ? 'Set Deactive' : 'Set Active'}
+          <div class="user-meta-row">Sessions: ${sessions} · ${locs}</div>
+          <div class="row" style="margin-top:8px;justify-content:flex-end;gap:6px">
+            <button class="ghost-btn" style="padding:5px 10px;font-size:11px"
+              onclick="toggleAdminUserAccessApp('${userId}', ${isActive ? 'false' : 'true'})">
+              ${isActive ? 'Set Inactive' : 'Set Active'}
             </button>
+            <button class="ghost-btn" style="padding:5px 10px;font-size:11px"
+              onclick="toggleResetPwFormApp('${userId}')">Reset PW</button>
+          </div>
+          <div id="reset-pw-wrap-${userId}" class="user-reset-pw-wrap" style="display:none">
+            <input class="inp" id="reset-pw-input-${userId}" type="password"
+              placeholder="New password (min 6 chars)" style="margin-top:6px;font-size:13px">
+            <button class="ghost-btn" style="margin-top:4px;width:100%;font-size:12px"
+              onclick="submitResetPasswordApp('${userId}')">Confirm Reset Password</button>
           </div>
         </div>
       `;
@@ -3445,6 +3481,7 @@
       applySettingsVisibility();
     applyComplaintsVisibility();
     applyReportsVisibility();
+    applyUsersTabVisibility();
       showToast('Login successful');
       await refreshAppData();
       startPolling();
@@ -3489,6 +3526,7 @@
     applySettingsVisibility();
     applyComplaintsVisibility();
     applyReportsVisibility();
+    applyUsersTabVisibility();
     renderAdminUsersApp([]);
     renderDeviceConfig(null);
     renderDeviceConfigHistory([]);
@@ -3935,6 +3973,80 @@
     updateNavButtonCount();
   }
 
+  function applyUsersTabVisibility() {
+    const tab = byId('users-tab');
+    if (tab) tab.style.display = (state.token && state.user && isSuperAdmin()) ? 'inline-block' : 'none';
+    updateNavButtonCount();
+  }
+
+  function filterUserListApp() {
+    renderAdminUsersApp(state.adminUsers);
+  }
+
+  function toggleResetPwFormApp(userId) {
+    const wrap = byId(`reset-pw-wrap-${userId}`);
+    if (wrap) wrap.style.display = wrap.style.display === 'none' ? 'block' : 'none';
+  }
+
+  async function submitResetPasswordApp(userId) {
+    const input = byId(`reset-pw-input-${userId}`);
+    const newPassword = String(input?.value || '').trim();
+    if (newPassword.length < 6) {
+      showToast('Password must be at least 6 characters.', true);
+      return;
+    }
+    try {
+      await apiRequest(`/admin/users/${encodeURIComponent(userId)}/reset-password`, {
+        method: 'POST',
+        body: { new_password: newPassword }
+      });
+      if (input) input.value = '';
+      const wrap = byId(`reset-pw-wrap-${userId}`);
+      if (wrap) wrap.style.display = 'none';
+      showToast('Password reset successfully.');
+    } catch (error) {
+      showToast(`Reset failed: ${error.message}`, true);
+    }
+  }
+
+  async function createUserApp() {
+    if (!isSuperAdmin()) {
+      showToast('Only super admin can create users.', true);
+      return;
+    }
+    const loginId = String(byId('ua-login-id')?.value || '').trim();
+    const name = String(byId('ua-name')?.value || '').trim();
+    const password = String(byId('ua-password')?.value || '').trim();
+    const role = String(byId('ua-role')?.value || 'OPERATOR').trim().toUpperCase();
+    const assignedRaw = String(byId('ua-assigned-locations')?.value || '').trim();
+    const assigned = assignedRaw.split(',').map((s) => s.trim()).filter(Boolean);
+
+    setText('ua-create-status', '');
+    if (!loginId || !password) {
+      setText('ua-create-status', 'Login ID and password are required.');
+      return;
+    }
+    if (password.length < 6) {
+      setText('ua-create-status', 'Password must be at least 6 characters.');
+      return;
+    }
+
+    try {
+      await apiRequest('/admin/users', {
+        method: 'POST',
+        body: { login_id: loginId, name, password, role, is_active: true, assigned_locations: assigned }
+      });
+      ['ua-login-id', 'ua-name', 'ua-password', 'ua-assigned-locations'].forEach((id) => {
+        const el = byId(id); if (el) el.value = '';
+      });
+      setText('ua-create-status', `User ${loginId} created successfully.`);
+      showToast(`User ${loginId} created.`);
+      await refreshAdminUsersApp();
+    } catch (error) {
+      setText('ua-create-status', `Failed: ${error.message}`);
+    }
+  }
+
   function canViewReports() {
     return ['VENDOR_SUPER_ADMIN', 'DEPARTMENT_SUPER_ADMIN', 'DEPARTMENT_ADMIN'].includes(userRole());
   }
@@ -4160,6 +4272,7 @@
       applySettingsVisibility();
     applyComplaintsVisibility();
     applyReportsVisibility();
+    applyUsersTabVisibility();
       return;
     }
 
@@ -4171,6 +4284,7 @@
     applySettingsVisibility();
     applyComplaintsVisibility();
     applyReportsVisibility();
+    applyUsersTabVisibility();
     await refreshAppData();
     startPolling();
   }
@@ -4283,6 +4397,10 @@
   window.closeComplaintApp = closeComplaintApp;
   window.loadAuditReportApp = loadAuditReportApp;
   window.exportAuditCsvApp = exportAuditCsvApp;
+  window.filterUserListApp = filterUserListApp;
+  window.toggleResetPwFormApp = toggleResetPwFormApp;
+  window.submitResetPasswordApp = submitResetPasswordApp;
+  window.createUserApp = createUserApp;
 
   window.addEventListener('load', () => {
     bootstrap().catch((error) => {

@@ -1171,6 +1171,87 @@ button {
   padding-top: 10px;
 }
 
+/* --- Phase 7: User Management --- */
+.user-filter-row {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 8px;
+  margin-bottom: 8px;
+}
+.user-create-grid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 8px;
+}
+.user-card {
+  background: #f8fafc;
+  border: 1px solid #e2e8f0;
+  border-radius: 10px;
+  padding: 12px;
+  margin-bottom: 8px;
+}
+.user-card-head {
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-start;
+  gap: 8px;
+}
+.user-login-id {
+  font-size: 14px;
+  font-weight: 700;
+  color: #0f172a;
+}
+.user-full-name {
+  font-size: 12px;
+  color: #64748b;
+  margin-top: 2px;
+}
+.user-meta-row {
+  font-size: 11px;
+  color: #64748b;
+  margin-top: 6px;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px;
+  align-items: center;
+}
+.user-loc-pill {
+  display: inline-block;
+  font-size: 10px;
+  font-weight: 600;
+  padding: 1px 6px;
+  border-radius: 4px;
+  background: #dbeafe;
+  color: #1d4ed8;
+}
+.user-loc-none {
+  font-size: 11px;
+  color: #94a3b8;
+  font-style: italic;
+}
+.user-role-badge {
+  display: inline-block;
+  font-size: 10px;
+  font-weight: 700;
+  padding: 2px 7px;
+  border-radius: 5px;
+  letter-spacing: 0.03em;
+  background: #e2e8f0;
+  color: #334155;
+  white-space: nowrap;
+}
+.user-role-badge--vendor-super-admin      { background: #ede9fe; color: #6d28d9; }
+.user-role-badge--vendor-monitoring-user  { background: #f3e8ff; color: #7c3aed; }
+.user-role-badge--department-super-admin  { background: #dbeafe; color: #1d4ed8; }
+.user-role-badge--department-admin        { background: #e0f2fe; color: #0369a1; }
+.user-role-badge--operator                { background: #ccfbf1; color: #0f766e; }
+.user-role-badge--viewer                  { background: #f1f5f9; color: #64748b; }
+.user-reset-pw-wrap {
+  border-top: 1px dashed #e2e8f0;
+  margin-top: 8px;
+  padding-top: 4px;
+}
+
 /* --- Phase 6: Reports --- */
 .report-filter-grid {
   display: grid;
