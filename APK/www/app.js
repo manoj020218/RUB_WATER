@@ -2320,10 +2320,16 @@
       // Device pill class
       const devPillCls = isOnline ? 'loc-dev-pill--online' : 'loc-dev-pill--offline';
 
-      // Complaint badge (populated once backend provides open_complaint_count)
+      // Complaint badge
       const complaintCount = Number(loc.open_complaint_count || 0);
       const complaintBadge = complaintCount > 0
         ? `<span class="loc-complaint-pill">${complaintCount} open</span>`
+        : '';
+
+      // Lifecycle badge (FAULTY / UNDER_REPLACEMENT etc.)
+      const opStatus = String(loc.operational_status || 'ACTIVE').toUpperCase();
+      const lifecycleBadge = opStatus !== 'ACTIVE'
+        ? `<span class="loc-lifecycle-pill loc-lifecycle-pill--${escapeHtml(opStatus.toLowerCase())}">${opStatus === 'UNDER_REPLACEMENT' ? 'UNDER REPAIR' : escapeHtml(opStatus)}</span>`
         : '';
 
       return `
@@ -2350,6 +2356,7 @@
               <div class="loc-pill-row">
                 <span class="loc-dev-pill ${devPillCls}">${escapeHtml(devStatus)}</span>
                 ${complaintBadge}
+                ${lifecycleBadge}
               </div>
               <div class="loc-meta">Updated ${escapeHtml(formatTime(loc.last_update))}</div>
             </div>
@@ -2452,6 +2459,9 @@
       dangerMarker.textContent = `${Math.round(dangerLevel)}mm`;
       dangerMarker.style.bottom = `${dangerBottom.toFixed(1)}%`;
     }
+
+    // Device lifecycle banner + actions
+    renderLifecycleBanner(location);
 
     // Live status dot
     const liveDot = byId('dash-live-dot');
@@ -3581,6 +3591,144 @@
     }
   }
 
+  function canManageLifecycle() {
+    return ['VENDOR_SUPER_ADMIN', 'DEPARTMENT_SUPER_ADMIN', 'DEPARTMENT_ADMIN'].includes(userRole());
+  }
+
+  function renderLifecycleBanner(location) {
+    const opStatus = String(location?.operational_status || 'ACTIVE').toUpperCase();
+    const banner = byId('lifecycle-banner');
+    const actionsSection = byId('lifecycle-actions');
+
+    const nonActive = ['FAULTY', 'UNDER_REPLACEMENT', 'PENDING_VERIFICATION', 'REPLACED', 'DECOMMISSIONED'].includes(opStatus);
+
+    if (banner) {
+      if (nonActive) {
+        banner.style.display = 'block';
+        banner.className = 'lifecycle-band ' + (
+          opStatus === 'FAULTY' ? 'faulty' :
+          opStatus === 'UNDER_REPLACEMENT' ? 'replacement' :
+          opStatus === 'PENDING_VERIFICATION' ? 'pending' : 'off'
+        );
+        const bannerLabels = {
+          FAULTY: 'DEVICE FAULTY — Site monitoring may be unavailable',
+          UNDER_REPLACEMENT: 'DEVICE UNDER REPLACEMENT',
+          PENDING_VERIFICATION: 'DEVICE PENDING VERIFICATION',
+          REPLACED: 'DEVICE REPLACED',
+          DECOMMISSIONED: 'DEVICE DECOMMISSIONED'
+        };
+        setText('lifecycle-band-title', bannerLabels[opStatus] || opStatus);
+        setText('lifecycle-band-note', location?.lifecycle_note || 'No details available');
+        setText('lifecycle-band-time', location?.lifecycle_updated_at
+          ? `Updated: ${formatTime(location.lifecycle_updated_at)}` : '');
+      } else {
+        banner.style.display = 'none';
+      }
+    }
+
+    if (actionsSection) {
+      const show = canManageLifecycle();
+      actionsSection.style.display = show ? 'block' : 'none';
+      if (show) {
+        setText('lifecycle-status-text', `Operational Status: ${opStatus}`);
+        setText('lifecycle-action-status', '');
+        const faultyBtn = byId('lifecycle-btn-faulty');
+        const replacementBtn = byId('lifecycle-btn-replacement');
+        const recommissionBtn = byId('lifecycle-btn-recommission');
+        if (faultyBtn) faultyBtn.style.display = opStatus === 'ACTIVE' ? 'inline-block' : 'none';
+        if (replacementBtn) replacementBtn.style.display = ['ACTIVE', 'FAULTY'].includes(opStatus) ? 'inline-block' : 'none';
+        if (recommissionBtn) recommissionBtn.style.display = ['FAULTY', 'UNDER_REPLACEMENT', 'PENDING_VERIFICATION'].includes(opStatus) ? 'inline-block' : 'none';
+      }
+    }
+  }
+
+  async function markDeviceFaultyApp() {
+    const reason = String(byId('lifecycle-reason')?.value || '').trim();
+    if (!reason) { setText('lifecycle-action-status', 'Reason is required.'); return; }
+    if (!state.selectedDeviceId) { showToast('No device selected.', true); return; }
+    try {
+      await apiRequest(`/devices/${encodeURIComponent(state.selectedDeviceId)}/lifecycle/mark-faulty`, {
+        method: 'POST',
+        body: { reason, location_id: state.selectedLocationId }
+      });
+      if (byId('lifecycle-reason')) byId('lifecycle-reason').value = '';
+      setText('lifecycle-action-status', 'Device marked as faulty.');
+      showToast('Device marked faulty.');
+      await refreshAppData();
+    } catch (error) {
+      setText('lifecycle-action-status', `Failed: ${error.message}`);
+    }
+  }
+
+  async function markDeviceReplacementApp() {
+    const reason = String(byId('lifecycle-reason')?.value || '').trim();
+    if (!reason) { setText('lifecycle-action-status', 'Reason is required.'); return; }
+    if (!state.selectedDeviceId) { showToast('No device selected.', true); return; }
+    try {
+      await apiRequest(`/devices/${encodeURIComponent(state.selectedDeviceId)}/lifecycle/mark-replacement`, {
+        method: 'POST',
+        body: { reason, location_id: state.selectedLocationId }
+      });
+      if (byId('lifecycle-reason')) byId('lifecycle-reason').value = '';
+      setText('lifecycle-action-status', 'Device marked as under replacement.');
+      showToast('Device marked under replacement.');
+      await refreshAppData();
+    } catch (error) {
+      setText('lifecycle-action-status', `Failed: ${error.message}`);
+    }
+  }
+
+  async function recommissionDeviceApp() {
+    const note = String(byId('lifecycle-reason')?.value || '').trim();
+    if (!note) { setText('lifecycle-action-status', 'Note is required for recommission.'); return; }
+    if (!state.selectedDeviceId) { showToast('No device selected.', true); return; }
+    try {
+      await apiRequest(`/devices/${encodeURIComponent(state.selectedDeviceId)}/lifecycle/recommission`, {
+        method: 'POST',
+        body: { note, location_id: state.selectedLocationId }
+      });
+      if (byId('lifecycle-reason')) byId('lifecycle-reason').value = '';
+      setText('lifecycle-action-status', 'Device recommissioned successfully.');
+      showToast('Device recommissioned.');
+      await refreshAppData();
+    } catch (error) {
+      setText('lifecycle-action-status', `Failed: ${error.message}`);
+    }
+  }
+
+  async function refreshLifecycleHistoryApp() {
+    if (!state.selectedDeviceId) { showToast('No device selected.', true); return; }
+    try {
+      const result = await apiRequest(`/devices/${encodeURIComponent(state.selectedDeviceId)}/lifecycle/history`);
+      const history = Array.isArray(result?.data) ? result.data : (Array.isArray(result) ? result : []);
+      renderLifecycleHistory(history);
+    } catch (error) {
+      showToast(`History fetch failed: ${error.message}`, true);
+    }
+  }
+
+  function renderLifecycleHistory(history) {
+    const list = byId('lifecycle-history-list');
+    if (!list) return;
+    if (!Array.isArray(history) || history.length === 0) {
+      list.innerHTML = '<div class="empty">No lifecycle history.</div>';
+      return;
+    }
+    list.innerHTML = history.map((item) => {
+      const action = escapeHtml(String(item.action || item.event_type || '--').toUpperCase());
+      const note = escapeHtml(String(item.note || item.reason || 'No details'));
+      const by = escapeHtml(item.performed_by_login_id || item.performedByLoginId || 'System');
+      const at = escapeHtml(formatDateTime(item.timestamp || item.created_at || item.createdAt));
+      return `
+        <div class="lifecycle-history-item">
+          <div class="lifecycle-history-action">${action}</div>
+          <div class="lifecycle-history-note">${note}</div>
+          <div class="lifecycle-history-meta">${by} · ${at}</div>
+        </div>
+      `;
+    }).join('');
+  }
+
   const COMPLAINT_TYPE_LABELS = {
     device_offline: 'Device offline',
     water_sensor_faulty: 'Water level sensor faulty',
@@ -3973,6 +4121,10 @@
   window.saveDeviceConfigLocalLanApp = saveDeviceConfigLocalLanApp;
   window.pushDeviceConfigApp = pushDeviceConfigApp;
   window.changePasswordApp = changePasswordApp;
+  window.markDeviceFaultyApp = markDeviceFaultyApp;
+  window.markDeviceReplacementApp = markDeviceReplacementApp;
+  window.recommissionDeviceApp = recommissionDeviceApp;
+  window.refreshLifecycleHistoryApp = refreshLifecycleHistoryApp;
   window.raiseComplaintApp = raiseComplaintApp;
   window.acknowledgeComplaintApp = acknowledgeComplaintApp;
   window.resolveComplaintApp = resolveComplaintApp;

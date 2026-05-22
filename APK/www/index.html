@@ -64,6 +64,13 @@
           </div>
           <div class="meta" id="dash-status-note">Status note: --</div>
 
+          <!-- Lifecycle warning banner (FAULTY / UNDER_REPLACEMENT etc.) -->
+          <div id="lifecycle-banner" class="lifecycle-band" style="display:none">
+            <div class="lifecycle-band-title" id="lifecycle-band-title">DEVICE FAULTY</div>
+            <div class="lifecycle-band-note" id="lifecycle-band-note">--</div>
+            <div class="lifecycle-band-time" id="lifecycle-band-time">--</div>
+          </div>
+
           <!-- Animated water vessel with threshold markers -->
           <div class="vessel-wrap">
             <div class="vessel">
@@ -141,6 +148,26 @@
             <div class="mini-card">
               <div class="mini-label">Logic Mode</div>
               <div class="mini-value" id="dash-logic-mode">--</div>
+            </div>
+          </div>
+
+          <!-- Device lifecycle management (DEPT_ADMIN+ only, shown by JS) -->
+          <div id="lifecycle-actions" style="display:none">
+            <p class="section-sep">Device Lifecycle</p>
+            <div class="meta" id="lifecycle-status-text">Operational Status: --</div>
+            <input class="inp" id="lifecycle-reason" placeholder="Reason / note (required)" style="margin-top:8px">
+            <div class="lifecycle-btn-row">
+              <button class="ghost-btn" id="lifecycle-btn-faulty" onclick="markDeviceFaultyApp()">Mark Faulty</button>
+              <button class="ghost-btn" id="lifecycle-btn-replacement" onclick="markDeviceReplacementApp()">Under Replacement</button>
+              <button class="ghost-btn" id="lifecycle-btn-recommission" onclick="recommissionDeviceApp()">Recommission</button>
+            </div>
+            <div class="meta" id="lifecycle-action-status"></div>
+            <div class="row between" style="margin-top:12px">
+              <span style="font-size:11px;font-weight:700;text-transform:uppercase;color:#334155">Lifecycle History</span>
+              <button class="ghost-btn" style="padding:5px 10px;font-size:11px" onclick="refreshLifecycleHistoryApp()">Refresh</button>
+            </div>
+            <div class="timeline" id="lifecycle-history-list" style="margin-top:8px">
+              <div class="empty">No lifecycle history loaded.</div>
             </div>
           </div>
 

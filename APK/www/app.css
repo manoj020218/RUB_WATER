@@ -970,6 +970,118 @@ button {
   50%       { opacity: .72; }
 }
 
+/* ── Device lifecycle ── */
+.lifecycle-band {
+  margin: 6px 0;
+  padding: 10px 12px;
+  border-radius: 10px;
+  border: 1px solid var(--border);
+  background: #f8fafc;
+}
+
+.lifecycle-band.faulty {
+  border-color: #fca5a5;
+  background: #fee2e2;
+}
+
+.lifecycle-band.replacement {
+  border-color: #fcd34d;
+  background: #fffbeb;
+}
+
+.lifecycle-band.pending {
+  border-color: #93c5fd;
+  background: #eff6ff;
+}
+
+.lifecycle-band.off {
+  border-color: #cbd5e1;
+  background: #f1f5f9;
+}
+
+.lifecycle-band-title {
+  font-size: 13px;
+  font-weight: 800;
+}
+
+.lifecycle-band-note {
+  margin-top: 3px;
+  font-size: 12px;
+  color: #334155;
+}
+
+.lifecycle-band-time {
+  margin-top: 4px;
+  font-size: 10px;
+  color: var(--sub);
+}
+
+.lifecycle-btn-row {
+  display: flex;
+  gap: 6px;
+  flex-wrap: wrap;
+  margin-top: 8px;
+}
+
+.lifecycle-btn-row .ghost-btn {
+  flex: 1;
+  min-width: 90px;
+  text-align: center;
+}
+
+.lifecycle-history-item {
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  padding: 10px;
+  background: #f8fafc;
+}
+
+.lifecycle-history-action {
+  font-size: 11px;
+  font-weight: 800;
+  color: #1e3a8a;
+}
+
+.lifecycle-history-note {
+  margin-top: 3px;
+  font-size: 12px;
+  color: #334155;
+}
+
+.lifecycle-history-meta {
+  margin-top: 4px;
+  font-size: 10px;
+  color: var(--sub);
+}
+
+/* Location card lifecycle pill */
+.loc-lifecycle-pill {
+  font-size: 9px;
+  font-weight: 800;
+  text-transform: uppercase;
+  padding: 2px 7px;
+  border-radius: 999px;
+  border: 1px solid;
+}
+
+.loc-lifecycle-pill--faulty {
+  border-color: #fca5a5;
+  background: #fee2e2;
+  color: #b91c1c;
+}
+
+.loc-lifecycle-pill--under_replacement {
+  border-color: #fcd34d;
+  background: #fffbeb;
+  color: #92400e;
+}
+
+.loc-lifecycle-pill--pending_verification {
+  border-color: #93c5fd;
+  background: #eff6ff;
+  color: #1d4ed8;
+}
+
 /* ── Complaint cards ── */
 .complaint-card {
   border: 1px solid var(--border);
