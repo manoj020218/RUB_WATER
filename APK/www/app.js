@@ -1574,6 +1574,18 @@
     return role === 'VENDOR_SUPER_ADMIN' || role === 'DEPARTMENT_SUPER_ADMIN';
   }
 
+  function isNativeApp() {
+    return Boolean(window?.Capacitor?.isNativePlatform?.() || window?.Capacitor?.isNative);
+  }
+
+  function applyBrowserModeUi() {
+    if (isNativeApp()) return;
+    const notice = byId('install-pwa-notice');
+    if (notice) notice.style.display = 'block';
+    const bleContent = byId('ble-content');
+    if (bleContent) bleContent.style.display = 'none';
+  }
+
   function userRole() {
     return String(state.user?.role || '').toUpperCase();
   }
@@ -4229,6 +4241,7 @@
 
   async function bootstrap() {
     installButtonPressFeedback();
+    applyBrowserModeUi();
     setLoggedInUi(false);
     openView('view-login');
     applyVendorInstallVisibility();

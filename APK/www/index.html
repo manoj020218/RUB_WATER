@@ -6,6 +6,12 @@
   <title>FloodGuard by Jenix</title>
   <link rel="icon" href="./app-icon-192.png" type="image/png">
   <link rel="stylesheet" href="./app.css">
+  <link rel="manifest" href="./manifest.json">
+  <meta name="theme-color" content="#1d4ed8">
+  <meta name="apple-mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+  <meta name="apple-mobile-web-app-title" content="FloodGuard">
+  <link rel="apple-touch-icon" href="./app-icon-192.png">
 </head>
 <body>
   <div class="app-shell">
@@ -211,6 +217,27 @@
           </div>
           <p class="view-subtitle">BLE provisioning for ESP32-S3 (JNX-FGXXXX) and site diagnostics.</p>
 
+          <!-- PWA / browser notice — shown only when not running in native Capacitor app -->
+          <div id="install-pwa-notice" class="pwa-notice" style="display:none">
+            <div class="pwa-notice-icon">📱</div>
+            <div class="pwa-notice-title">Android App Required for Device Setup</div>
+            <p class="pwa-notice-body">
+              BLE-based device provisioning is only available in the <strong>FloodGuard Android app</strong>.
+              Use the app to scan, provision, and register a new device to a location on the cloud.
+            </p>
+            <p class="pwa-notice-body">
+              Once the device is registered and linked to a location, <strong>all monitoring, controls, complaints, lifecycle management, and reports</strong> work fully right here in this web app.
+            </p>
+            <div class="pwa-notice-steps">
+              <div class="pwa-notice-step"><span class="pwa-step-num">1</span>Install FloodGuard APK on an Android phone</div>
+              <div class="pwa-notice-step"><span class="pwa-step-num">2</span>Login as Vendor → open Install tab</div>
+              <div class="pwa-notice-step"><span class="pwa-step-num">3</span>Scan BLE → provision Wi-Fi → register device to location</div>
+              <div class="pwa-notice-step"><span class="pwa-step-num">4</span>Return here — the device will appear on the Locations screen</div>
+            </div>
+          </div>
+
+          <!-- BLE content — hidden in browser/PWA mode -->
+          <div id="ble-content">
           <div class="diag-grid">
             <div class="mini-card">
               <div class="mini-label">App to Cloud</div>
@@ -297,6 +324,7 @@
             </div>
             <pre class="diag-log" id="ble-provision-output">No provisioning response yet.</pre>
           </div>
+          </div><!-- /ble-content -->
         </div>
       </section>
 
@@ -613,5 +641,12 @@
 
   <div class="toast" id="toast"></div>
   <script src="./app.js"></script>
+  <script>
+    if ('serviceWorker' in navigator) {
+      window.addEventListener('load', () => {
+        navigator.serviceWorker.register('./sw.js').catch(() => {});
+      });
+    }
+  </script>
 </body>
 </html>
