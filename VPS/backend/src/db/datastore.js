@@ -1,4 +1,4 @@
-﻿const dataStore = {
+const dataStore = {
   users: [],
   userSessions: [],
   locations: [],
@@ -6,6 +6,11 @@
   telemetry: [],
   incidents: [],
   auditLogs: [],
+  complaints: [],
+  notifications: [],
+  deviceLifecycleHistory: [],
+  integrationSettings: [],
+  integrationDeliveryLogs: [],
   firmwareVersions: [],
   appVersions: [],
   commands: [],

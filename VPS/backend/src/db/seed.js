@@ -75,6 +75,7 @@ function seedIfEmpty() {
       alert_level_mm: 300,
       danger_level_mm: 500,
       danger_clear_level_mm: 450,
+      maintenance_status: 'OK',
       is_active: true,
       created_at: new Date().toISOString(),
       updated_at: new Date().toISOString()
@@ -89,6 +90,9 @@ function seedIfEmpty() {
       firmware_version: '0.2.0-dev',
       hardware_version: 'BA-S3-DA4',
       mqtt_topic_base: 'rub/RUB043-CTRL01',
+      operational_status: 'ACTIVE',
+      lifecycle_note: 'Seed active device',
+      lifecycle_updated_at: new Date().toISOString(),
       last_seen: null,
       status: 'OFFLINE',
       config: {

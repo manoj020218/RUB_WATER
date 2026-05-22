@@ -319,6 +319,23 @@
           </div>
         </div>
       </section>
+
+      <section class="view" id="view-settings">
+        <div class="card">
+          <h2 class="view-title">Settings</h2>
+          <p class="view-subtitle" id="settings-user-info">Account settings</p>
+
+          <h3 style="font-size:14px;margin:16px 0 8px">Change Password</h3>
+          <label class="lbl">Current Password</label>
+          <input class="inp" id="settings-current-password" type="password" placeholder="Current password">
+          <label class="lbl">New Password</label>
+          <input class="inp" id="settings-new-password" type="password" placeholder="New password (min 6 chars)">
+          <label class="lbl">Confirm New Password</label>
+          <input class="inp" id="settings-confirm-password" type="password" placeholder="Confirm new password">
+          <button class="primary-btn" onclick="changePasswordApp()">Change Password</button>
+          <div class="meta" id="settings-status"></div>
+        </div>
+      </section>
     </main>
 
     <nav class="bottom-nav" id="bottom-nav">
@@ -328,6 +345,7 @@
       <button class="nav-btn" id="vendor-install-tab" data-view="view-install" onclick="openView('view-install')" style="display:none">Install</button>
       <button class="nav-btn" id="config-tab" data-view="view-config" onclick="openView('view-config')">Config</button>
       <button class="nav-btn" data-view="view-audit" onclick="openView('view-audit')">Audit</button>
+      <button class="nav-btn" id="settings-tab" data-view="view-settings" onclick="openView('view-settings')" style="display:none">Settings</button>
     </nav>
   </div>
 

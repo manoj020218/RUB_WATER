@@ -2071,6 +2071,10 @@
     return role === 'VENDOR_SUPER_ADMIN' || role === 'VENDOR_MONITORING_USER';
   }
 
+  function canOperate() {
+    return ['VENDOR_SUPER_ADMIN', 'DEPARTMENT_SUPER_ADMIN', 'DEPARTMENT_ADMIN', 'OPERATOR'].includes(userRole());
+  }
+
   function rootUrlFromApiBase() {
     const base = state.apiBase || normalizeApiBase('');
     return base.replace(/\/api$/i, '');
@@ -2245,6 +2249,19 @@
     updateNavButtonCount();
   }
 
+  function applySettingsVisibility() {
+    const tab = byId('settings-tab');
+    const isLoggedIn = Boolean(state.token && state.user);
+    if (tab) {
+      tab.style.display = isLoggedIn ? 'inline-block' : 'none';
+    }
+    const userInfo = byId('settings-user-info');
+    if (userInfo && state.user) {
+      userInfo.textContent = `Logged in as: ${state.user.name || state.user.login_id || '--'} (${state.user.role || 'UNKNOWN'})`;
+    }
+    updateNavButtonCount();
+  }
+
   function updateNavButtonCount() {
     const nav = byId('bottom-nav');
     if (!nav) {
@@ -2354,6 +2371,7 @@
     applyAdminPanelVisibility();
     applyVendorInstallVisibility();
     applyConfigVisibility();
+    applySettingsVisibility();
     renderInstallCloudStatuses();
 
     const fill = byId('vessel-fill');
@@ -3308,6 +3326,7 @@
       applyAdminPanelVisibility();
       applyVendorInstallVisibility();
       applyConfigVisibility();
+      applySettingsVisibility();
       showToast('Login successful');
       await refreshAppData();
       startPolling();
@@ -3346,6 +3365,7 @@
     applyAdminPanelVisibility();
     applyVendorInstallVisibility();
     applyConfigVisibility();
+    applySettingsVisibility();
     renderAdminUsersApp([]);
     renderDeviceConfig(null);
     renderDeviceConfigHistory([]);
@@ -3370,6 +3390,10 @@
   }
 
   async function muteAlarmApp() {
+    if (!canOperate()) {
+      showToast('Mute alarm is not available for your role.', true);
+      return;
+    }
     if (!state.selectedLocationId || !state.selectedDeviceId) {
       showToast('Select a valid location first.', true);
       return;
@@ -3390,6 +3414,10 @@
   }
 
   async function dryRunApp() {
+    if (!canOperate()) {
+      showToast('Dry run is not available for your role.', true);
+      return;
+    }
     if (!state.selectedLocationId || !state.selectedDeviceId) {
       showToast('Select a valid location first.', true);
       return;
@@ -3411,6 +3439,10 @@
   }
 
   async function forceClearApp() {
+    if (!canOperate()) {
+      showToast('Force clear is not available for your role.', true);
+      return;
+    }
     const reason = String(byId('force-clear-reason')?.value || '').trim();
     if (reason.length < 5) {
       showToast('Force clear reason is required (min 5 chars).', true);
@@ -3438,6 +3470,44 @@
       await refreshAppData();
     } catch (error) {
       handleApiError(error, 'Force clear failed');
+    }
+  }
+
+  async function changePasswordApp() {
+    const currentPassword = String(byId('settings-current-password')?.value || '').trim();
+    const newPassword = String(byId('settings-new-password')?.value || '').trim();
+    const confirmPassword = String(byId('settings-confirm-password')?.value || '').trim();
+
+    setText('settings-status', '');
+
+    if (!currentPassword || !newPassword || !confirmPassword) {
+      setText('settings-status', 'All fields are required.');
+      return;
+    }
+    if (newPassword.length < 6) {
+      setText('settings-status', 'New password must be at least 6 characters.');
+      return;
+    }
+    if (newPassword !== confirmPassword) {
+      setText('settings-status', 'New passwords do not match.');
+      return;
+    }
+
+    try {
+      await apiRequest('/auth/change-password', {
+        method: 'POST',
+        body: { current_password: currentPassword, new_password: newPassword }
+      });
+      ['settings-current-password', 'settings-new-password', 'settings-confirm-password'].forEach((id) => {
+        const el = byId(id);
+        if (el) {
+          el.value = '';
+        }
+      });
+      setText('settings-status', 'Password changed successfully.');
+      showToast('Password changed successfully.');
+    } catch (error) {
+      setText('settings-status', `Failed: ${error.message}`);
     }
   }
 
@@ -3483,6 +3553,7 @@
       applyAdminPanelVisibility();
       applyVendorInstallVisibility();
       applyConfigVisibility();
+      applySettingsVisibility();
       return;
     }
 
@@ -3491,6 +3562,7 @@
     applyAdminPanelVisibility();
     applyVendorInstallVisibility();
     applyConfigVisibility();
+    applySettingsVisibility();
     await refreshAppData();
     startPolling();
   }
@@ -3592,6 +3664,7 @@
   window.saveDeviceConfigApp = saveDeviceConfigApp;
   window.saveDeviceConfigLocalLanApp = saveDeviceConfigLocalLanApp;
   window.pushDeviceConfigApp = pushDeviceConfigApp;
+  window.changePasswordApp = changePasswordApp;
 
   window.addEventListener('load', () => {
     bootstrap().catch((error) => {
