@@ -1,0 +1,978 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>FloodGuard — Real-Time RUB &amp; Underpass Flood Monitoring System | Jenix Technology</title>
+
+  <!-- Primary SEO -->
+  <meta name="description" content="FloodGuard by Jenix is an IoT-based real-time flood monitoring and early warning system for railway underbridges (RUBs), underpasses, and low-lying roads. Instant SMS/app alerts for drivers, municipal bodies, and railway authorities. Prevent accidents. Save lives.">
+  <meta name="keywords" content="RUB flood monitoring, railway underbridge flood alert, underpass water level sensor, flood warning system India, municipal flood monitoring, smart city flood detection, IoT flood alarm, underpass accident prevention, water level alert system, NHAI underpass safety, ESP32 flood sensor, FloodGuard Jenix">
+  <meta name="author" content="Jenix Technology">
+  <meta name="robots" content="index, follow">
+  <link rel="canonical" href="https://floodguard.jenix.in/">
+
+  <!-- Open Graph / Facebook -->
+  <meta property="og:type" content="website">
+  <meta property="og:url" content="https://floodguard.jenix.in/">
+  <meta property="og:title" content="FloodGuard — Stop Underpass Flood Tragedies Before They Happen">
+  <meta property="og:description" content="IoT-powered real-time water level monitoring &amp; alarm system for railway underbridges, municipal underpasses, and highways. Live dashboard, mobile alerts, audit trail. Request a free demo.">
+  <meta property="og:image" content="https://floodguard.jenix.in/og-image.png">
+  <meta property="og:site_name" content="FloodGuard by Jenix">
+  <meta property="og:locale" content="en_IN">
+
+  <!-- Twitter Card -->
+  <meta name="twitter:card" content="summary_large_image">
+  <meta name="twitter:title" content="FloodGuard — Real-Time RUB Flood Monitoring System">
+  <meta name="twitter:description" content="Prevent underpass flooding accidents with live water level monitoring, instant alerts &amp; remote alarms. For Railways, Municipalities &amp; Smart Cities.">
+  <meta name="twitter:image" content="https://floodguard.jenix.in/og-image.png">
+
+  <!-- Geo targeting (India) -->
+  <meta name="geo.region" content="IN">
+  <meta name="geo.placename" content="India">
+
+  <!-- Theme -->
+  <meta name="theme-color" content="#1d4ed8">
+  <link rel="icon" href="./app-icon-192.png" type="image/png">
+  <link rel="apple-touch-icon" href="./app-icon-192.png">
+
+  <!-- Schema.org JSON-LD — Product + Organization + FAQ -->
+  <script type="application/ld+json">
+  {
+    "@context": "https://schema.org",
+    "@graph": [
+      {
+        "@type": "Organization",
+        "@id": "https://floodguard.jenix.in/#org",
+        "name": "Jenix Technology",
+        "url": "https://floodguard.jenix.in",
+        "logo": "https://floodguard.jenix.in/app-icon-192.png",
+        "contactPoint": {
+          "@type": "ContactPoint",
+          "contactType": "Sales",
+          "email": "sales@jenix.in",
+          "availableLanguage": ["English", "Hindi"]
+        }
+      },
+      {
+        "@type": "Product",
+        "@id": "https://floodguard.jenix.in/#product",
+        "name": "FloodGuard",
+        "description": "IoT-based real-time flood monitoring and early warning system for railway underbridges, municipal underpasses, and highways. Ultrasonic and RS485 water level sensors connected via ESP32-S3 to a live cloud dashboard with SMS and app alerts.",
+        "brand": { "@id": "https://floodguard.jenix.in/#org" },
+        "category": "Industrial IoT / Safety & Monitoring",
+        "offers": {
+          "@type": "Offer",
+          "url": "https://floodguard.jenix.in/#contact",
+          "priceCurrency": "INR",
+          "availability": "https://schema.org/InStock",
+          "description": "Contact for project-based pricing"
+        },
+        "featureList": [
+          "Real-time water level monitoring",
+          "Multi-level alert system (Alert, Danger, Clear)",
+          "Instant mobile app and SMS notifications",
+          "Remote alarm mute and force-clear controls",
+          "Complete audit trail and compliance reports",
+          "Multi-location dashboard",
+          "Offline-resilient firmware with local alarms",
+          "OTA firmware updates",
+          "PWA mobile dashboard"
+        ]
+      },
+      {
+        "@type": "FAQPage",
+        "mainEntity": [
+          {
+            "@type": "Question",
+            "name": "What is FloodGuard?",
+            "acceptedAnswer": {
+              "@type": "Answer",
+              "text": "FloodGuard is an IoT-based real-time flood monitoring and early warning system designed for railway underbridges (RUBs), urban underpasses, and low-lying roads. It uses ultrasonic and RS485 water level sensors connected to an ESP32-S3 controller, which reports water levels to a live cloud dashboard and triggers alarms when dangerous levels are detected."
+            }
+          },
+          {
+            "@type": "Question",
+            "name": "Who needs a flood monitoring system for underpasses?",
+            "acceptedAnswer": {
+              "@type": "Answer",
+              "text": "Indian Railways and railway divisions managing RUBs, Municipal Corporations (BMC, GHMC, BDA, etc.), National Highways Authority of India (NHAI), Smart City missions, Development authorities, and any government or private body managing underpasses or low-lying water-prone roads."
+            }
+          },
+          {
+            "@type": "Question",
+            "name": "How does FloodGuard prevent accidents?",
+            "acceptedAnswer": {
+              "@type": "Answer",
+              "text": "FloodGuard continuously monitors water levels. When water rises above a configurable alert threshold, the system triggers a loud alarm at the site, sends instant notifications to operators via a mobile app, and logs every event with a timestamp for audit. This gives drivers and pedestrians advance warning before reaching a flooded underpass."
+            }
+          },
+          {
+            "@type": "Question",
+            "name": "What sensors does FloodGuard use?",
+            "acceptedAnswer": {
+              "@type": "Answer",
+              "text": "FloodGuard uses both an ultrasonic distance sensor (non-contact, mounted at the top) and an optional RS485 water level sensor for redundancy. The dual-sensor approach ensures accurate readings even if one sensor malfunctions."
+            }
+          },
+          {
+            "@type": "Question",
+            "name": "Can FloodGuard monitor multiple locations?",
+            "acceptedAnswer": {
+              "@type": "Answer",
+              "text": "Yes. A single FloodGuard dashboard can monitor unlimited locations simultaneously. Each location has its own alert thresholds, device bindings, and operator assignments."
+            }
+          },
+          {
+            "@type": "Question",
+            "name": "Does FloodGuard work without internet?",
+            "acceptedAnswer": {
+              "@type": "Answer",
+              "text": "Yes. The firmware includes local alarm triggers that work independently of cloud connectivity. When internet is unavailable, the on-site alarm still activates at the configured water level. Cloud reporting and remote dashboard resume automatically when connectivity is restored."
+            }
+          },
+          {
+            "@type": "Question",
+            "name": "How do I get a demo of FloodGuard?",
+            "acceptedAnswer": {
+              "@type": "Answer",
+              "text": "You can access a live demo at https://floodguard.jenix.in/app using credentials demo / 123456. The demo shows real-time dashboard, location monitoring, alarm controls, audit reports, and user management. For a project-specific demonstration, contact Jenix Technology."
+            }
+          }
+        ]
+      }
+    ]
+  }
+  </script>
+
+  <style>
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+    :root {
+      --blue-900: #1e3a8a;
+      --blue-800: #1e40af;
+      --blue-700: #1d4ed8;
+      --blue-600: #2563eb;
+      --blue-100: #dbeafe;
+      --blue-50:  #eff6ff;
+      --cyan-500: #06b6d4;
+      --cyan-400: #22d3ee;
+      --red-600:  #dc2626;
+      --amber-500:#f59e0b;
+      --green-600:#16a34a;
+      --text:     #0f172a;
+      --sub:      #475569;
+      --light:    #f8fafc;
+      --border:   #e2e8f0;
+    }
+
+    html { scroll-behavior: smooth; }
+    body {
+      font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+      color: var(--text);
+      background: #fff;
+      line-height: 1.6;
+    }
+
+    /* ── Topbar ── */
+    .topbar {
+      position: sticky; top: 0; z-index: 100;
+      background: rgba(30,58,138,0.97);
+      backdrop-filter: blur(8px);
+      padding: 0 5%;
+      height: 60px;
+      display: flex; align-items: center; justify-content: space-between;
+    }
+    .topbar-brand { color: #fff; font-size: 18px; font-weight: 800; letter-spacing: -0.02em; display: flex; align-items: center; gap: 10px; }
+    .topbar-brand span { opacity: 0.6; font-weight: 400; font-size: 13px; }
+    .nav-links { display: flex; gap: 6px; align-items: center; }
+    .nav-link { color: rgba(255,255,255,0.8); text-decoration: none; font-size: 13px; padding: 6px 12px; border-radius: 6px; transition: background 0.15s; }
+    .nav-link:hover { background: rgba(255,255,255,0.1); color: #fff; }
+    .nav-cta { background: var(--cyan-500); color: #fff !important; font-weight: 600; border-radius: 8px; padding: 7px 16px !important; }
+    .nav-cta:hover { background: var(--cyan-400) !important; }
+
+    /* ── Hero ── */
+    .hero {
+      background: linear-gradient(135deg, var(--blue-900) 0%, #0c1b4a 50%, #0d2b5e 100%);
+      color: #fff;
+      padding: 80px 5% 60px;
+      position: relative;
+      overflow: hidden;
+    }
+    .hero::before {
+      content: '';
+      position: absolute; bottom: 0; left: 0; right: 0; height: 120px;
+      background: linear-gradient(to bottom, transparent, rgba(6,182,212,0.08));
+    }
+    .water-anim {
+      position: absolute; bottom: 0; left: 0; right: 0; height: 60px;
+      background: linear-gradient(135deg, rgba(6,182,212,0.15), rgba(37,99,235,0.2));
+      animation: wave 4s ease-in-out infinite alternate;
+      border-radius: 50% 50% 0 0 / 30px 30px 0 0;
+    }
+    @keyframes wave { from { transform: scaleX(1.05) translateY(4px); } to { transform: scaleX(0.97) translateY(-4px); } }
+
+    .hero-inner { max-width: 900px; margin: 0 auto; position: relative; z-index: 1; }
+    .hero-badge {
+      display: inline-flex; align-items: center; gap: 6px;
+      background: rgba(6,182,212,0.2); border: 1px solid rgba(6,182,212,0.4);
+      color: var(--cyan-400); font-size: 12px; font-weight: 600; letter-spacing: 0.08em;
+      text-transform: uppercase; padding: 5px 12px; border-radius: 20px; margin-bottom: 24px;
+    }
+    .hero h1 {
+      font-size: clamp(28px, 5vw, 52px);
+      font-weight: 900;
+      line-height: 1.15;
+      letter-spacing: -0.03em;
+      margin-bottom: 20px;
+    }
+    .hero h1 em { color: var(--cyan-400); font-style: normal; }
+    .hero-sub { font-size: clamp(15px, 2.5vw, 18px); color: rgba(255,255,255,0.75); max-width: 640px; margin-bottom: 36px; }
+    .hero-ctas { display: flex; gap: 12px; flex-wrap: wrap; }
+    .btn-primary {
+      display: inline-flex; align-items: center; gap: 8px;
+      background: var(--cyan-500); color: #fff;
+      font-size: 15px; font-weight: 700;
+      padding: 14px 28px; border-radius: 10px;
+      text-decoration: none; transition: transform 0.15s, background 0.15s;
+    }
+    .btn-primary:hover { background: var(--cyan-400); transform: translateY(-1px); }
+    .btn-outline {
+      display: inline-flex; align-items: center; gap: 8px;
+      background: transparent; color: #fff;
+      font-size: 15px; font-weight: 600;
+      padding: 13px 24px; border-radius: 10px; border: 1.5px solid rgba(255,255,255,0.35);
+      text-decoration: none; transition: background 0.15s;
+    }
+    .btn-outline:hover { background: rgba(255,255,255,0.08); }
+
+    .hero-stats { display: flex; gap: 32px; flex-wrap: wrap; margin-top: 48px; padding-top: 32px; border-top: 1px solid rgba(255,255,255,0.1); }
+    .stat-item { text-align: center; }
+    .stat-num { font-size: 28px; font-weight: 900; color: var(--cyan-400); }
+    .stat-label { font-size: 12px; color: rgba(255,255,255,0.55); margin-top: 2px; }
+
+    /* ── Sections ── */
+    section { padding: 72px 5%; }
+    .section-inner { max-width: 1100px; margin: 0 auto; }
+    .section-tag { display: inline-block; font-size: 11px; font-weight: 700; letter-spacing: 0.1em; text-transform: uppercase; color: var(--blue-700); background: var(--blue-100); padding: 4px 12px; border-radius: 20px; margin-bottom: 12px; }
+    .section-title { font-size: clamp(22px, 3.5vw, 36px); font-weight: 800; color: var(--text); margin-bottom: 12px; line-height: 1.2; }
+    .section-sub { font-size: 16px; color: var(--sub); max-width: 600px; }
+
+    /* ── Problem ── */
+    .problem-section { background: #fff8f0; }
+    .problem-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(260px, 1fr)); gap: 20px; margin-top: 40px; }
+    .problem-card { background: #fff; border: 1px solid #fde68a; border-left: 4px solid var(--amber-500); border-radius: 10px; padding: 20px; }
+    .problem-icon { font-size: 28px; margin-bottom: 10px; }
+    .problem-card h3 { font-size: 16px; font-weight: 700; color: var(--text); margin-bottom: 6px; }
+    .problem-card p { font-size: 13px; color: var(--sub); line-height: 1.5; }
+
+    /* ── How it works ── */
+    .how-section { background: var(--blue-50); }
+    .steps { display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 0; margin-top: 48px; position: relative; }
+    .step {
+      text-align: center; padding: 24px 16px;
+      position: relative;
+    }
+    .step::after {
+      content: '→';
+      position: absolute; right: -10px; top: 50%; transform: translateY(-50%);
+      font-size: 22px; color: var(--blue-700); opacity: 0.4;
+    }
+    .step:last-child::after { display: none; }
+    .step-num {
+      width: 52px; height: 52px; border-radius: 50%;
+      background: var(--blue-700); color: #fff;
+      font-size: 18px; font-weight: 800;
+      display: flex; align-items: center; justify-content: center;
+      margin: 0 auto 14px;
+      box-shadow: 0 4px 14px rgba(29,78,216,0.3);
+    }
+    .step h3 { font-size: 14px; font-weight: 700; margin-bottom: 6px; }
+    .step p { font-size: 12px; color: var(--sub); }
+
+    /* ── Features ── */
+    .features-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(280px, 1fr)); gap: 20px; margin-top: 40px; }
+    .feature-card {
+      background: var(--light); border: 1px solid var(--border); border-radius: 12px;
+      padding: 22px 20px;
+      transition: box-shadow 0.2s, transform 0.2s;
+    }
+    .feature-card:hover { box-shadow: 0 8px 30px rgba(29,78,216,0.1); transform: translateY(-2px); }
+    .feature-icon { font-size: 28px; margin-bottom: 10px; }
+    .feature-card h3 { font-size: 15px; font-weight: 700; margin-bottom: 6px; }
+    .feature-card p { font-size: 13px; color: var(--sub); line-height: 1.55; }
+
+    /* ── Use Cases ── */
+    .usecases-section { background: var(--blue-900); color: #fff; }
+    .usecases-section .section-title { color: #fff; }
+    .usecases-section .section-sub { color: rgba(255,255,255,0.65); }
+    .usecases-section .section-tag { background: rgba(6,182,212,0.2); color: var(--cyan-400); }
+    .usecase-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(240px, 1fr)); gap: 16px; margin-top: 40px; }
+    .usecase-card {
+      background: rgba(255,255,255,0.05); border: 1px solid rgba(255,255,255,0.1);
+      border-radius: 12px; padding: 22px 18px;
+      transition: background 0.2s;
+    }
+    .usecase-card:hover { background: rgba(255,255,255,0.09); }
+    .usecase-icon { font-size: 32px; margin-bottom: 12px; }
+    .usecase-card h3 { font-size: 15px; font-weight: 700; color: #fff; margin-bottom: 6px; }
+    .usecase-card p { font-size: 13px; color: rgba(255,255,255,0.6); line-height: 1.5; }
+    .usecase-card ul { margin-top: 10px; padding-left: 16px; }
+    .usecase-card ul li { font-size: 12px; color: rgba(255,255,255,0.55); margin-bottom: 3px; }
+
+    /* ── Alerts / Level ── */
+    .alert-levels { display: flex; gap: 12px; flex-wrap: wrap; margin-top: 32px; }
+    .level-badge {
+      display: flex; align-items: center; gap: 10px;
+      padding: 12px 18px; border-radius: 10px; flex: 1; min-width: 180px;
+    }
+    .level-dot { width: 14px; height: 14px; border-radius: 50%; flex-shrink: 0; }
+    .level-normal { background: #dcfce7; }
+    .level-normal .level-dot { background: var(--green-600); }
+    .level-normal h4 { color: var(--green-600); }
+    .level-alert { background: #fef3c7; }
+    .level-alert .level-dot { background: var(--amber-500); animation: blink 1s infinite; }
+    .level-alert h4 { color: var(--amber-500); }
+    .level-danger { background: #fee2e2; }
+    .level-danger .level-dot { background: var(--red-600); animation: blink 0.5s infinite; }
+    .level-danger h4 { color: var(--red-600); }
+    @keyframes blink { 0%,100% { opacity: 1; } 50% { opacity: 0.2; } }
+    .level-badge h4 { font-size: 13px; font-weight: 700; }
+    .level-badge p { font-size: 11px; color: var(--sub); margin-top: 2px; }
+
+    /* ── Tech Spec ── */
+    .spec-table { width: 100%; border-collapse: collapse; margin-top: 24px; font-size: 13px; }
+    .spec-table th { text-align: left; background: var(--blue-50); color: var(--blue-800); font-weight: 700; padding: 10px 14px; border-bottom: 2px solid var(--blue-100); }
+    .spec-table td { padding: 9px 14px; border-bottom: 1px solid var(--border); color: var(--text); vertical-align: top; }
+    .spec-table tr:last-child td { border-bottom: none; }
+    .spec-table tr:hover td { background: var(--light); }
+    .spec-table td:first-child { color: var(--sub); white-space: nowrap; width: 35%; }
+
+    /* ── Demo CTA ── */
+    .demo-section {
+      background: linear-gradient(135deg, var(--blue-700) 0%, var(--cyan-500) 100%);
+      color: #fff; text-align: center;
+    }
+    .demo-section h2 { font-size: clamp(24px,4vw,40px); font-weight: 900; margin-bottom: 14px; }
+    .demo-section p { font-size: 16px; opacity: 0.85; margin-bottom: 32px; max-width: 520px; margin-left: auto; margin-right: auto; }
+    .demo-credential {
+      display: inline-flex; align-items: center; gap: 10px;
+      background: rgba(255,255,255,0.15); border: 1px solid rgba(255,255,255,0.3);
+      border-radius: 10px; padding: 10px 20px; margin-bottom: 28px;
+      font-size: 14px;
+    }
+    .demo-credential code { font-family: 'Courier New', monospace; font-size: 15px; font-weight: 700; background: rgba(255,255,255,0.2); padding: 2px 8px; border-radius: 4px; }
+    .demo-btns { display: flex; gap: 12px; justify-content: center; flex-wrap: wrap; }
+    .btn-white { background: #fff; color: var(--blue-700); font-weight: 700; padding: 14px 28px; border-radius: 10px; font-size: 15px; text-decoration: none; transition: transform 0.15s; display: inline-flex; align-items: center; gap: 8px; }
+    .btn-white:hover { transform: translateY(-2px); }
+    .btn-outline-white { background: transparent; color: #fff; border: 2px solid rgba(255,255,255,0.5); font-weight: 600; padding: 13px 24px; border-radius: 10px; font-size: 15px; text-decoration: none; display: inline-flex; align-items: center; gap: 8px; }
+    .btn-outline-white:hover { border-color: #fff; background: rgba(255,255,255,0.08); }
+
+    /* ── FAQ ── */
+    .faq-list { margin-top: 32px; max-width: 800px; }
+    .faq-item { border-bottom: 1px solid var(--border); }
+    .faq-q {
+      width: 100%; background: none; border: none; text-align: left;
+      padding: 18px 0; font-size: 15px; font-weight: 600; color: var(--text);
+      cursor: pointer; display: flex; justify-content: space-between; align-items: center; gap: 12px;
+    }
+    .faq-q:hover { color: var(--blue-700); }
+    .faq-arrow { font-size: 20px; color: var(--blue-700); transition: transform 0.2s; flex-shrink: 0; }
+    .faq-a { font-size: 14px; color: var(--sub); line-height: 1.65; max-height: 0; overflow: hidden; transition: max-height 0.3s ease, padding 0.3s; }
+    .faq-item.open .faq-a { max-height: 300px; padding-bottom: 16px; }
+    .faq-item.open .faq-arrow { transform: rotate(45deg); }
+
+    /* ── Contact ── */
+    .contact-section { background: var(--light); }
+    .contact-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 40px; margin-top: 40px; }
+    .contact-info h3 { font-size: 18px; font-weight: 700; margin-bottom: 16px; }
+    .contact-info p { font-size: 14px; color: var(--sub); margin-bottom: 20px; }
+    .contact-item { display: flex; align-items: flex-start; gap: 12px; margin-bottom: 14px; }
+    .contact-icon { font-size: 20px; width: 36px; height: 36px; background: var(--blue-100); border-radius: 8px; display: flex; align-items: center; justify-content: center; flex-shrink: 0; }
+    .contact-item p { font-size: 14px; color: var(--text); margin: 0; }
+    .contact-item span { font-size: 11px; color: var(--sub); }
+    .contact-form { background: #fff; border: 1px solid var(--border); border-radius: 14px; padding: 28px; }
+    .contact-form h3 { font-size: 17px; font-weight: 700; margin-bottom: 20px; }
+    .form-row { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }
+    .form-group { margin-bottom: 14px; }
+    .form-group label { display: block; font-size: 11px; font-weight: 600; color: var(--sub); text-transform: uppercase; letter-spacing: 0.05em; margin-bottom: 5px; }
+    .form-group input, .form-group select, .form-group textarea {
+      width: 100%; border: 1px solid var(--border); border-radius: 8px;
+      padding: 10px 12px; font-size: 14px; color: var(--text); background: var(--light); outline: none;
+    }
+    .form-group input:focus, .form-group select:focus, .form-group textarea:focus { border-color: var(--blue-700); background: #fff; }
+    .form-group textarea { resize: vertical; min-height: 90px; }
+    .form-submit { width: 100%; background: var(--blue-700); color: #fff; border: none; border-radius: 8px; padding: 12px; font-size: 15px; font-weight: 700; cursor: pointer; margin-top: 4px; }
+    .form-submit:hover { background: var(--blue-800); }
+    .form-note { font-size: 11px; color: var(--sub); margin-top: 8px; text-align: center; }
+    #form-success { display: none; text-align: center; padding: 20px; color: var(--green-600); font-weight: 600; }
+
+    /* ── Footer ── */
+    footer {
+      background: #0a1628;
+      color: rgba(255,255,255,0.6);
+      padding: 40px 5% 24px;
+    }
+    .footer-inner { max-width: 1100px; margin: 0 auto; }
+    .footer-top { display: flex; justify-content: space-between; flex-wrap: wrap; gap: 32px; padding-bottom: 28px; border-bottom: 1px solid rgba(255,255,255,0.08); }
+    .footer-brand { font-size: 20px; font-weight: 800; color: #fff; margin-bottom: 8px; }
+    .footer-tagline { font-size: 13px; max-width: 260px; }
+    .footer-col h4 { color: #fff; font-size: 13px; font-weight: 700; margin-bottom: 12px; text-transform: uppercase; letter-spacing: 0.06em; }
+    .footer-col a { display: block; font-size: 13px; color: rgba(255,255,255,0.55); text-decoration: none; margin-bottom: 6px; }
+    .footer-col a:hover { color: var(--cyan-400); }
+    .footer-bottom { padding-top: 20px; display: flex; justify-content: space-between; flex-wrap: wrap; gap: 8px; font-size: 12px; }
+    .footer-bottom a { color: rgba(255,255,255,0.45); text-decoration: none; }
+    .footer-bottom a:hover { color: #fff; }
+
+    /* ── Responsive ── */
+    @media (max-width: 768px) {
+      .nav-links .nav-link:not(.nav-cta) { display: none; }
+      .contact-grid, .form-row { grid-template-columns: 1fr; }
+      .step::after { display: none; }
+      .hero-stats { gap: 20px; }
+    }
+    @media (max-width: 480px) {
+      section { padding: 48px 4%; }
+      .hero { padding: 56px 4% 48px; }
+      .topbar { padding: 0 4%; }
+    }
+  </style>
+</head>
+<body>
+
+<!-- ═══════════════════════════════ TOPBAR ══════════════════════════════════════ -->
+<header class="topbar" role="banner">
+  <div class="topbar-brand">
+    🌊 FloodGuard <span>by Jenix Technology</span>
+  </div>
+  <nav class="nav-links" aria-label="Main navigation">
+    <a class="nav-link" href="#how-it-works">How It Works</a>
+    <a class="nav-link" href="#features">Features</a>
+    <a class="nav-link" href="#use-cases">Use Cases</a>
+    <a class="nav-link" href="#faq">FAQ</a>
+    <a class="nav-link nav-cta" href="/app">🚀 Live Demo</a>
+  </nav>
+</header>
+
+<!-- ═══════════════════════════════ HERO ════════════════════════════════════════ -->
+<main>
+<section class="hero" aria-label="Hero">
+  <div class="hero-inner">
+    <div class="hero-badge">🚨 IoT-Powered Flood Safety System</div>
+    <h1>Stop Underpass Floods<br>Before They Claim <em>Another Life</em></h1>
+    <p class="hero-sub">FloodGuard monitors water levels at railway underbridges and urban underpasses in real-time — triggering on-site alarms and instant mobile alerts the moment water rises to dangerous levels.</p>
+    <div class="hero-ctas">
+      <a class="btn-primary" href="/app">🚀 Try Live Demo</a>
+      <a class="btn-outline" href="#contact">📞 Request a Quote</a>
+    </div>
+    <div class="hero-stats">
+      <div class="stat-item"><div class="stat-num">24/7</div><div class="stat-label">Real-Time Monitoring</div></div>
+      <div class="stat-item"><div class="stat-num">&lt;5s</div><div class="stat-label">Alert Response Time</div></div>
+      <div class="stat-item"><div class="stat-num">∞</div><div class="stat-label">Locations per Dashboard</div></div>
+      <div class="stat-item"><div class="stat-num">100%</div><div class="stat-label">Offline-Resilient Firmware</div></div>
+    </div>
+  </div>
+  <div class="water-anim" aria-hidden="true"></div>
+</section>
+
+<!-- ═══════════════════════════════ PROBLEM ═════════════════════════════════════ -->
+<section class="problem-section" aria-labelledby="problem-heading">
+  <div class="section-inner">
+    <span class="section-tag">The Problem</span>
+    <h2 class="section-title" id="problem-heading">Underpasses Flood Without Warning — Every Monsoon Season</h2>
+    <p class="section-sub">Across India, hundreds of railway underbridges and urban underpasses flood during heavy rains. Without a real-time alert system, drivers enter waterlogged underpasses unaware of the danger.</p>
+
+    <div class="alert-levels" style="margin-top:32px">
+      <div class="level-badge level-normal">
+        <div class="level-dot"></div>
+        <div><h4>Normal</h4><p>Water below 300 mm — passage safe</p></div>
+      </div>
+      <div class="level-badge level-alert">
+        <div class="level-dot"></div>
+        <div><h4>Alert Level</h4><p>Water rising — drivers warned, operators notified</p></div>
+      </div>
+      <div class="level-badge level-danger">
+        <div class="level-dot"></div>
+        <div><h4>Danger Level</h4><p>Flood! On-site alarm + emergency notifications</p></div>
+      </div>
+    </div>
+
+    <div class="problem-grid" style="margin-top:32px">
+      <div class="problem-card">
+        <div class="problem-icon">🚗</div>
+        <h3>Vehicles Swept Away</h3>
+        <p>Two-wheelers, autos, and cars enter flooded underpasses unaware. Even 30 cm of fast-moving water can sweep a vehicle. Lack of advance warning is the primary cause of these accidents.</p>
+      </div>
+      <div class="problem-card">
+        <div class="problem-icon">🚷</div>
+        <h3>No On-Site Warning</h3>
+        <p>Most underpasses have no water level sensor, no alarm, and no automated barrier. Manual patrolling is inconsistent — especially at night or during heavy rain when visibility is poor.</p>
+      </div>
+      <div class="problem-card">
+        <div class="problem-icon">📵</div>
+        <h3>Operators Unaware</h3>
+        <p>Municipal workers and railway staff often learn about flooding only after accidents happen. There is no centralized monitoring system to track multiple underpasses simultaneously.</p>
+      </div>
+      <div class="problem-card">
+        <div class="problem-icon">📋</div>
+        <h3>No Audit Trail</h3>
+        <p>Without digital records, it is impossible to prove response times or demonstrate compliance. Legal liability falls on the authority with no evidence of timely action.</p>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- ═══════════════════════════════ HOW IT WORKS ════════════════════════════════ -->
+<section class="how-section" id="how-it-works" aria-labelledby="how-heading">
+  <div class="section-inner">
+    <span class="section-tag">How It Works</span>
+    <h2 class="section-title" id="how-heading">From Sensor to Alert in Under 5 Seconds</h2>
+    <p class="section-sub">A rugged IoT controller at each site measures water depth continuously and talks to the cloud via cellular/Wi-Fi.</p>
+
+    <div class="steps">
+      <div class="step">
+        <div class="step-num">1</div>
+        <h3>Sensor Measures</h3>
+        <p>Ultrasonic + RS485 sensors mounted at top of underpass measure water depth every few seconds with millimetre accuracy.</p>
+      </div>
+      <div class="step">
+        <div class="step-num">2</div>
+        <h3>Controller Processes</h3>
+        <p>ESP32-S3 controller evaluates water level against configured thresholds (Alert / Danger / Clear). Works offline too.</p>
+      </div>
+      <div class="step">
+        <div class="step-num">3</div>
+        <h3>On-Site Alarm Fires</h3>
+        <p>Loud siren + visual indicator activates instantly at the underpass. No internet required for local alarm.</p>
+      </div>
+      <div class="step">
+        <div class="step-num">4</div>
+        <h3>Cloud Notifies</h3>
+        <p>Live telemetry pushed via MQTT to cloud. Operators receive instant in-app alerts and can view live dashboard.</p>
+      </div>
+      <div class="step">
+        <div class="step-num">5</div>
+        <h3>Full Audit Trail</h3>
+        <p>Every event, alarm, acknowledgement, and action is timestamped and logged. Exportable reports for compliance.</p>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- ═══════════════════════════════ FEATURES ════════════════════════════════════ -->
+<section id="features" aria-labelledby="features-heading">
+  <div class="section-inner">
+    <span class="section-tag">Features</span>
+    <h2 class="section-title" id="features-heading">Everything You Need to Protect Your Underpass</h2>
+    <p class="section-sub">Purpose-built for India's monsoon conditions and civic infrastructure management workflows.</p>
+
+    <div class="features-grid">
+      <div class="feature-card">
+        <div class="feature-icon">📡</div>
+        <h3>Real-Time Water Level Monitoring</h3>
+        <p>Continuous mm-level water depth readings every few seconds. Live gauge displayed on dashboard with historical trend graphs.</p>
+      </div>
+      <div class="feature-card">
+        <div class="feature-icon">🚨</div>
+        <h3>Multi-Level Alert System</h3>
+        <p>Configurable Alert, Danger, and Clear thresholds per site. Separate delay timers for trigger and clear to prevent false alarms.</p>
+      </div>
+      <div class="feature-card">
+        <div class="feature-icon">📱</div>
+        <h3>Mobile PWA Dashboard</h3>
+        <p>Install as an app on any Android or iOS device. Works in browser too. No App Store required. Real-time live view with vessel indicator.</p>
+      </div>
+      <div class="feature-card">
+        <div class="feature-icon">🔕</div>
+        <h3>Remote Alarm Control</h3>
+        <p>Operators can mute alarms, force-clear incidents, and run dry-run tests remotely from the app — no site visit needed.</p>
+      </div>
+      <div class="feature-card">
+        <div class="feature-icon">📊</div>
+        <h3>Audit Reports & CSV Export</h3>
+        <p>Filter events by date, location, and event type. Export to CSV for government compliance, internal review, or legal documentation.</p>
+      </div>
+      <div class="feature-card">
+        <div class="feature-icon">🗺️</div>
+        <h3>Multi-Location Dashboard</h3>
+        <p>Monitor all your RUB / underpass sites from a single screen. Each location shows live status, last alarm, and device health.</p>
+      </div>
+      <div class="feature-card">
+        <div class="feature-icon">⚡</div>
+        <h3>Offline-Resilient Firmware</h3>
+        <p>On-site alarm triggers even without internet. Cloud sync resumes automatically on reconnect. No data loss.</p>
+      </div>
+      <div class="feature-card">
+        <div class="feature-icon">🔁</div>
+        <h3>OTA Firmware Updates</h3>
+        <p>Update all deployed controllers remotely over-the-air. No field engineer visit needed for firmware upgrades.</p>
+      </div>
+      <div class="feature-card">
+        <div class="feature-icon">👥</div>
+        <h3>Role-Based User Access</h3>
+        <p>Super Admin, Department Admin, Operator, and Viewer roles. Each site can have dedicated operators. Full access audit trail.</p>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- ═══════════════════════════════ USE CASES ════════════════════════════════════ -->
+<section class="usecases-section" id="use-cases" aria-labelledby="usecases-heading">
+  <div class="section-inner">
+    <span class="section-tag">Who Needs FloodGuard</span>
+    <h2 class="section-title" id="usecases-heading">Trusted by Infrastructure Authorities Across India</h2>
+    <p class="section-sub">Any authority responsible for underpasses, low-lying roads, or drainage infrastructure can deploy FloodGuard.</p>
+
+    <div class="usecase-grid">
+      <div class="usecase-card">
+        <div class="usecase-icon">🚂</div>
+        <h3>Indian Railways / Railway Divisions</h3>
+        <p>Monitor Railway Under Bridges (RUBs) across divisions.</p>
+        <ul>
+          <li>Real-time water level per RUB</li>
+          <li>Division-level multi-site dashboard</li>
+          <li>Audit logs for compliance</li>
+          <li>Instant alerts to station masters</li>
+        </ul>
+      </div>
+      <div class="usecase-card">
+        <div class="usecase-icon">🏙️</div>
+        <h3>Municipal Corporations</h3>
+        <p>BMC, GHMC, PMC, BBMP and other city bodies managing urban underpasses.</p>
+        <ul>
+          <li>Ward-wise location management</li>
+          <li>Complaint and incident tracking</li>
+          <li>Integration with SCADA/ERP</li>
+          <li>Real-time field staff alerts</li>
+        </ul>
+      </div>
+      <div class="usecase-card">
+        <div class="usecase-icon">🛣️</div>
+        <h3>NHAI / State Highways</h3>
+        <p>Highway underpasses and low-lying stretches prone to flash flooding.</p>
+        <ul>
+          <li>Remote site monitoring</li>
+          <li>Highway patrol notifications</li>
+          <li>Variable message sign integration</li>
+          <li>Insurance & liability documentation</li>
+        </ul>
+      </div>
+      <div class="usecase-card">
+        <div class="usecase-icon">🏗️</div>
+        <h3>Development Authorities</h3>
+        <p>HUDA, BDA, DUDA and similar bodies managing new urban infrastructure.</p>
+        <ul>
+          <li>New township underpass monitoring</li>
+          <li>Smart city dashboard integration</li>
+          <li>Handover compliance documentation</li>
+        </ul>
+      </div>
+      <div class="usecase-card">
+        <div class="usecase-icon">🌆</div>
+        <h3>Smart City Missions</h3>
+        <p>Integrate into city-wide command and control centres.</p>
+        <ul>
+          <li>REST API for ICCC integration</li>
+          <li>MQTT data streaming</li>
+          <li>Multi-department access control</li>
+        </ul>
+      </div>
+      <div class="usecase-card">
+        <div class="usecase-icon">🏢</div>
+        <h3>Private Infrastructure Owners</h3>
+        <p>Hospitals, campuses, industrial parks with underground access roads.</p>
+        <ul>
+          <li>Liability protection</li>
+          <li>24×7 automated monitoring</li>
+          <li>Minimal maintenance overhead</li>
+        </ul>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- ═══════════════════════════════ TECHNICAL SPECS ═════════════════════════════ -->
+<section aria-labelledby="tech-heading">
+  <div class="section-inner">
+    <span class="section-tag">Technical Specifications</span>
+    <h2 class="section-title" id="tech-heading">Built for India's Field Conditions</h2>
+    <p class="section-sub">Industrial-grade hardware with a modern cloud backend — designed to survive monsoons and power outages.</p>
+
+    <table class="spec-table" aria-label="Technical specifications">
+      <thead><tr><th>Component</th><th>Specification</th></tr></thead>
+      <tbody>
+        <tr><td>Controller</td><td>ESP32-S3 (Dual-core 240 MHz, Wi-Fi + BLE 5.0)</td></tr>
+        <tr><td>Primary Sensor</td><td>Ultrasonic distance sensor (non-contact, mounted at top of underpass)</td></tr>
+        <tr><td>Secondary Sensor</td><td>RS485 water level transducer (redundancy + cross-validation)</td></tr>
+        <tr><td>Connectivity</td><td>Wi-Fi (2.4 GHz) — SIM/cellular module optional</td></tr>
+        <tr><td>Protocol</td><td>MQTT over TCP (primary) + HTTP REST fallback</td></tr>
+        <tr><td>Cloud Backend</td><td>Node.js REST API + MQTT broker — hosted on dedicated VPS</td></tr>
+        <tr><td>Dashboard</td><td>Progressive Web App (PWA) — works on any smartphone/tablet/desktop</td></tr>
+        <tr><td>Data Storage</td><td>MongoDB (cloud) + local EEPROM buffer (offline resilience)</td></tr>
+        <tr><td>Firmware Updates</td><td>Over-the-Air (OTA) — zero field visit required</td></tr>
+        <tr><td>Power</td><td>12V DC (solar-ready) with daily scheduled reboot at configurable time</td></tr>
+        <tr><td>Alert Outputs</td><td>On-site siren relay + cloud push notifications + in-app alerts</td></tr>
+        <tr><td>Measurement Range</td><td>0–400 cm water depth (configurable per site)</td></tr>
+      </tbody>
+    </table>
+  </div>
+</section>
+
+<!-- ═══════════════════════════════ DEMO CTA ════════════════════════════════════ -->
+<section class="demo-section" aria-labelledby="demo-heading">
+  <div class="section-inner" style="text-align:center">
+    <h2 id="demo-heading">See FloodGuard Live — Right Now</h2>
+    <p>Explore the full live dashboard with real-time monitoring, alarm controls, user management, and audit reports. No sign-up needed.</p>
+    <div style="margin-bottom:28px">
+      <div class="demo-credential">
+        <span>Demo Login:</span>
+        <code>demo</code>
+        <span>/</span>
+        <code>123456</code>
+      </div>
+    </div>
+    <div class="demo-btns">
+      <a class="btn-white" href="/app" target="_blank" rel="noopener">🚀 Open Live Demo</a>
+      <a class="btn-outline-white" href="#contact">📞 Request Custom Demo</a>
+    </div>
+    <p style="font-size:12px;opacity:0.5;margin-top:20px">The demo shows real data from a deployed FloodGuard installation. Explore all features freely.</p>
+  </div>
+</section>
+
+<!-- ═══════════════════════════════ FAQ ═════════════════════════════════════════ -->
+<section id="faq" aria-labelledby="faq-heading">
+  <div class="section-inner">
+    <span class="section-tag">FAQ</span>
+    <h2 class="section-title" id="faq-heading">Frequently Asked Questions</h2>
+
+    <div class="faq-list" role="list">
+      <div class="faq-item" role="listitem">
+        <button class="faq-q" aria-expanded="false" onclick="toggleFaq(this)">
+          What is a Railway Under Bridge (RUB) flood monitoring system?
+          <span class="faq-arrow" aria-hidden="true">+</span>
+        </button>
+        <div class="faq-a">An RUB flood monitoring system is an IoT device installed at railway underbridges to continuously measure water depth. When water rises above safe levels, it triggers on-site alarms (sirens, lights) and sends digital alerts to operators via mobile app — preventing vehicles from entering a flooded underpass.</div>
+      </div>
+      <div class="faq-item" role="listitem">
+        <button class="faq-q" aria-expanded="false" onclick="toggleFaq(this)">
+          How quickly does FloodGuard send an alert when flooding starts?
+          <span class="faq-arrow" aria-hidden="true">+</span>
+        </button>
+        <div class="faq-a">The on-site alarm activates within seconds of the water crossing the configured threshold — even without internet. Cloud notifications are delivered to the mobile app within 2–5 seconds when connectivity is available. A configurable trigger delay (default 60 seconds) prevents false alarms from wave splashes.</div>
+      </div>
+      <div class="faq-item" role="listitem">
+        <button class="faq-q" aria-expanded="false" onclick="toggleFaq(this)">
+          Can it monitor multiple underpasses from one dashboard?
+          <span class="faq-arrow" aria-hidden="true">+</span>
+        </button>
+        <div class="faq-a">Yes. A single FloodGuard dashboard supports unlimited monitoring locations. Each location has its own sensor, thresholds, and assigned operators. The dashboard shows all sites simultaneously with live status, making it ideal for a division-level control room or a city-wide ICCC.</div>
+      </div>
+      <div class="faq-item" role="listitem">
+        <button class="faq-q" aria-expanded="false" onclick="toggleFaq(this)">
+          Does the alarm work without internet or power failure?
+          <span class="faq-arrow" aria-hidden="true">+</span>
+        </button>
+        <div class="faq-a">The firmware triggers the on-site siren alarm independently of cloud connectivity. If the internet is unavailable, the alarm still fires locally. With a battery or solar backup on the 12V DC supply line, the system continues operating during power cuts. Cloud sync and audit logging resume automatically when connectivity is restored.</div>
+      </div>
+      <div class="faq-item" role="listitem">
+        <button class="faq-q" aria-expanded="false" onclick="toggleFaq(this)">
+          What is the installation process? How much time does it take?
+          <span class="faq-arrow" aria-hidden="true">+</span>
+        </button>
+        <div class="faq-a">Installation at a new site takes 2–4 hours: mount the ultrasonic sensor at the top of the underpass, install the ESP32-S3 controller unit in a weatherproof enclosure, connect the 12V power supply, configure Wi-Fi via the mobile app over Bluetooth, and bind the device to the cloud dashboard. No civil work is required in most cases.</div>
+      </div>
+      <div class="faq-item" role="listitem">
+        <button class="faq-q" aria-expanded="false" onclick="toggleFaq(this)">
+          Is there an API for integration with existing SCADA or ICCC systems?
+          <span class="faq-arrow" aria-hidden="true">+</span>
+        </button>
+        <div class="faq-a">Yes. FloodGuard exposes a documented REST API and streams real-time data over MQTT. Integration with Smart City ICCC platforms, SCADA systems, and government portals is supported. Contact Jenix Technology for an API integration guide.</div>
+      </div>
+      <div class="faq-item" role="listitem">
+        <button class="faq-q" aria-expanded="false" onclick="toggleFaq(this)">
+          What is the pricing model?
+          <span class="faq-arrow" aria-hidden="true">+</span>
+        </button>
+        <div class="faq-a">FloodGuard is priced per site (hardware + installation + cloud subscription). Volume discounts are available for bulk deployments across divisions or municipalities. Contact us for a project-specific quote — we provide site assessment, detailed BOM, and government tender support.</div>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- ═══════════════════════════════ CONTACT ══════════════════════════════════════ -->
+<section class="contact-section" id="contact" aria-labelledby="contact-heading">
+  <div class="section-inner">
+    <span class="section-tag">Get In Touch</span>
+    <h2 class="section-title" id="contact-heading">Request a Demo or Project Quote</h2>
+
+    <div class="contact-grid">
+      <div class="contact-info">
+        <h3>We'll respond within 24 hours</h3>
+        <p>Whether you need a single RUB installation or a city-wide rollout across 500 underpasses, we can help. We also support government tender documentation and pilot project proposals.</p>
+        <div class="contact-item">
+          <div class="contact-icon">📧</div>
+          <div><p>sales@jenix.in</p><span>Email us anytime</span></div>
+        </div>
+        <div class="contact-item">
+          <div class="contact-icon">💬</div>
+          <div><p>WhatsApp / Call</p><span>Available on request</span></div>
+        </div>
+        <div class="contact-item">
+          <div class="contact-icon">🌐</div>
+          <div><p>floodguard.jenix.in</p><span>Live demo available 24×7</span></div>
+        </div>
+        <div style="margin-top:24px;padding:16px;background:var(--blue-50);border-radius:10px;border-left:4px solid var(--blue-700)">
+          <p style="font-size:13px;font-weight:600;color:var(--blue-800);margin-bottom:4px">Try the live demo now</p>
+          <p style="font-size:12px;color:var(--sub)">Visit <a href="/app" style="color:var(--blue-700)">floodguard.jenix.in/app</a> and login with <strong>demo / 123456</strong> to explore all features immediately — no sign-up needed.</p>
+        </div>
+      </div>
+
+      <div class="contact-form">
+        <h3>Send us a message</h3>
+        <div id="form-success">
+          ✅ Thank you! We'll get back to you within 24 hours.<br>
+          Meanwhile, <a href="/app" style="color:var(--blue-700)">try the live demo</a>.
+        </div>
+        <form id="contact-form" onsubmit="submitForm(event)" novalidate>
+          <div class="form-row">
+            <div class="form-group">
+              <label for="cf-name">Your Name *</label>
+              <input type="text" id="cf-name" placeholder="e.g. Rajesh Kumar" required>
+            </div>
+            <div class="form-group">
+              <label for="cf-org">Organisation *</label>
+              <input type="text" id="cf-org" placeholder="e.g. BMC / Central Railway" required>
+            </div>
+          </div>
+          <div class="form-row">
+            <div class="form-group">
+              <label for="cf-phone">Phone / WhatsApp *</label>
+              <input type="tel" id="cf-phone" placeholder="9876543210" required>
+            </div>
+            <div class="form-group">
+              <label for="cf-email">Email</label>
+              <input type="email" id="cf-email" placeholder="you@org.gov.in">
+            </div>
+          </div>
+          <div class="form-group">
+            <label for="cf-type">I represent</label>
+            <select id="cf-type">
+              <option value="">Select organisation type</option>
+              <option>Indian Railways / Railway Division</option>
+              <option>Municipal Corporation</option>
+              <option>NHAI / State Highways</option>
+              <option>Development Authority</option>
+              <option>Smart City Mission</option>
+              <option>State Government Department</option>
+              <option>Private Infrastructure Owner</option>
+              <option>Other</option>
+            </select>
+          </div>
+          <div class="form-group">
+            <label for="cf-sites">Number of sites to monitor</label>
+            <select id="cf-sites">
+              <option value="">Select approximate count</option>
+              <option>1–5 sites (pilot)</option>
+              <option>6–25 sites</option>
+              <option>26–100 sites</option>
+              <option>100+ sites (large rollout)</option>
+            </select>
+          </div>
+          <div class="form-group">
+            <label for="cf-message">Message</label>
+            <textarea id="cf-message" placeholder="Tell us about your requirement, city, or specific challenges..."></textarea>
+          </div>
+          <button type="submit" class="form-submit">Send Message →</button>
+          <p class="form-note">We do not share your information with third parties.</p>
+        </form>
+      </div>
+    </div>
+  </div>
+</section>
+</main>
+
+<!-- ═══════════════════════════════ FOOTER ══════════════════════════════════════ -->
+<footer role="contentinfo">
+  <div class="footer-inner">
+    <div class="footer-top">
+      <div>
+        <div class="footer-brand">🌊 FloodGuard</div>
+        <p class="footer-tagline">Real-time IoT flood monitoring for railway underbridges and urban underpasses. Built for India's infrastructure authorities.</p>
+      </div>
+      <div class="footer-col">
+        <h4>Product</h4>
+        <a href="#how-it-works">How It Works</a>
+        <a href="#features">Features</a>
+        <a href="#use-cases">Use Cases</a>
+        <a href="/app">Live Demo</a>
+      </div>
+      <div class="footer-col">
+        <h4>For Authorities</h4>
+        <a href="#use-cases">Indian Railways</a>
+        <a href="#use-cases">Municipal Corporations</a>
+        <a href="#use-cases">NHAI / Highways</a>
+        <a href="#use-cases">Smart Cities</a>
+      </div>
+      <div class="footer-col">
+        <h4>Company</h4>
+        <a href="#contact">Contact Sales</a>
+        <a href="#faq">FAQ</a>
+        <a href="mailto:sales@jenix.in">sales@jenix.in</a>
+      </div>
+    </div>
+    <div class="footer-bottom">
+      <span>© 2026 Jenix Technology. All rights reserved.</span>
+      <span>FloodGuard is a product of <a href="https://floodguard.jenix.in">Jenix Technology</a> — IoT Solutions for Public Safety</span>
+    </div>
+  </div>
+</footer>
+
+<script>
+  // FAQ toggle
+  function toggleFaq(btn) {
+    const item = btn.closest('.faq-item');
+    const isOpen = item.classList.contains('open');
+    document.querySelectorAll('.faq-item.open').forEach(el => {
+      el.classList.remove('open');
+      el.querySelector('.faq-q').setAttribute('aria-expanded', 'false');
+    });
+    if (!isOpen) {
+      item.classList.add('open');
+      btn.setAttribute('aria-expanded', 'true');
+    }
+  }
+
+  // Contact form — sends to mailto as fallback (replace with real API if available)
+  function submitForm(e) {
+    e.preventDefault();
+    const name = document.getElementById('cf-name').value.trim();
+    const org = document.getElementById('cf-org').value.trim();
+    const phone = document.getElementById('cf-phone').value.trim();
+    if (!name || !org || !phone) {
+      alert('Please fill in Name, Organisation, and Phone.');
+      return;
+    }
+    const email = document.getElementById('cf-email').value.trim();
+    const type = document.getElementById('cf-type').value;
+    const sites = document.getElementById('cf-sites').value;
+    const msg = document.getElementById('cf-message').value.trim();
+
+    const body = encodeURIComponent(
+      `Name: ${name}\nOrganisation: ${org}\nPhone: ${phone}\nEmail: ${email}\nType: ${type}\nSites: ${sites}\n\nMessage:\n${msg}`
+    );
+    window.location.href = `mailto:sales@jenix.in?subject=${encodeURIComponent('FloodGuard Enquiry — ' + org)}&body=${body}`;
+
+    document.getElementById('contact-form').style.display = 'none';
+    document.getElementById('form-success').style.display = 'block';
+  }
+
+  // Smooth-scroll for anchor links
+  document.querySelectorAll('a[href^="#"]').forEach(a => {
+    a.addEventListener('click', e => {
+      const target = document.querySelector(a.getAttribute('href'));
+      if (target) { e.preventDefault(); target.scrollIntoView({ behavior: 'smooth', block: 'start' }); }
+    });
+  });
+</script>
+</body>
+</html>
