@@ -2398,8 +2398,10 @@
     const badge = byId('dash-status-badge');
     if (badge) {
       badge.textContent = meta.label;
-      badge.classList.toggle('danger', meta.cls === 'danger');
-      badge.classList.toggle('off', meta.cls === 'off');
+      badge.classList.remove('danger', 'warn', 'off');
+      if (meta.cls === 'danger') badge.classList.add('danger');
+      else if (meta.cls === 'warn') badge.classList.add('warn');
+      else if (meta.cls === 'off') badge.classList.add('off');
     }
 
     setText('dash-water-level', String(waterLevel));
@@ -2444,6 +2446,46 @@
       dangerMarker.textContent = `${Math.round(dangerLevel)}mm`;
       dangerMarker.style.bottom = `${dangerBottom.toFixed(1)}%`;
     }
+
+    // Live status dot
+    const liveDot = byId('dash-live-dot');
+    if (liveDot) {
+      const devOnline = String(location?.device_status || '').toUpperCase() === 'ONLINE';
+      liveDot.className = 'live-dot ' + (
+        !devOnline ? 'live-dot--offline' :
+        meta.cls === 'danger' ? 'live-dot--danger' :
+        meta.cls === 'warn' ? 'live-dot--warn' :
+        'live-dot--online'
+      );
+    }
+
+    // SW1 threshold marker (dynamic position)
+    const sw1Level = Number(liveConfig.switch_level_1_mm || 300);
+    const sw1Bottom = Math.max(2, Math.min(95, (sw1Level / mountHeight) * 100));
+    const sw1Marker = byId('dash-marker-sw1');
+    if (sw1Marker) {
+      sw1Marker.textContent = `${sw1Level}mm`;
+      sw1Marker.style.bottom = `${sw1Bottom.toFixed(1)}%`;
+    }
+
+    // Relay/output indicators
+    const outputs = latest?.outputs || {};
+    const relayStates = {
+      siren:   Boolean(outputs.siren   ?? latest?.relay_siren   ?? latest?.siren_active   ?? false),
+      beacon:  Boolean(outputs.beacon  ?? latest?.relay_beacon  ?? latest?.beacon_active  ?? false),
+      voice:   Boolean(outputs.voice   ?? latest?.relay_voice   ?? latest?.voice_active   ?? false),
+      barrier: Boolean(outputs.barrier ?? latest?.relay_barrier ?? false)
+    };
+    Object.entries(relayStates).forEach(([key, isOn]) => {
+      const item = byId(`relay-item-${key}`);
+      const status = byId(`relay-${key}`);
+      if (item) item.classList.toggle('relay-on', isOn);
+      if (status) status.textContent = latest ? (isOn ? 'ON' : 'OFF') : '--';
+    });
+
+    // Quick controls visibility (OPERATOR+ roles)
+    const qc = byId('dash-quick-controls');
+    if (qc) qc.style.display = canOperate() ? 'block' : 'none';
 
     state.activeIncident = incident;
     startIncidentTimer(incident);
@@ -3491,7 +3533,9 @@
       showToast('Force clear is not available for your role.', true);
       return;
     }
-    const reason = String(byId('force-clear-reason')?.value || '').trim();
+    const reason = String(
+      byId('dash-force-clear-reason')?.value || byId('force-clear-reason')?.value || ''
+    ).trim();
     if (reason.length < 5) {
       showToast('Force clear reason is required (min 5 chars).', true);
       return;
@@ -3511,9 +3555,10 @@
         }
       });
 
-      if (byId('force-clear-reason')) {
-        byId('force-clear-reason').value = '';
-      }
+      ['force-clear-reason', 'dash-force-clear-reason'].forEach((id) => {
+        const el = byId(id);
+        if (el) el.value = '';
+      });
       showToast('Force clear submitted.');
       await refreshAppData();
     } catch (error) {

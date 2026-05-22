@@ -51,19 +51,25 @@
 
       <section class="view" id="view-dashboard">
         <div class="card">
-          <div class="row between">
-            <div>
-              <h2 class="view-title" id="dash-location-name">--</h2>
-              <p class="view-subtitle" id="dash-location-sub">No location selected</p>
+          <!-- Live header: dot + name + status badge -->
+          <div class="live-hdr">
+            <div class="live-hdr-left">
+              <span class="live-dot live-dot--offline" id="dash-live-dot"></span>
+              <div>
+                <h2 class="view-title" id="dash-location-name">--</h2>
+                <p class="view-subtitle" id="dash-location-sub">No location selected</p>
+              </div>
             </div>
-            <span class="chip danger" id="dash-status-badge">OFFLINE</span>
+            <span class="chip off" id="dash-status-badge">OFFLINE</span>
           </div>
           <div class="meta" id="dash-status-note">Status note: --</div>
 
+          <!-- Animated water vessel with threshold markers -->
           <div class="vessel-wrap">
             <div class="vessel">
               <div class="vessel-fill" id="vessel-fill"></div>
               <div class="marker marker-alert" id="dash-marker-alert">200mm</div>
+              <div class="marker marker-sw1"   id="dash-marker-sw1">300mm</div>
               <div class="marker marker-danger" id="dash-marker-danger">500mm</div>
             </div>
             <div class="vessel-metrics">
@@ -74,6 +80,31 @@
             </div>
           </div>
 
+          <!-- Relay / output indicators -->
+          <div class="relay-row">
+            <div class="relay-item" id="relay-item-siren">
+              <div class="relay-led" id="relay-led-siren"></div>
+              <div class="relay-label">Siren</div>
+              <div class="relay-status" id="relay-siren">--</div>
+            </div>
+            <div class="relay-item" id="relay-item-beacon">
+              <div class="relay-led" id="relay-led-beacon"></div>
+              <div class="relay-label">Beacon</div>
+              <div class="relay-status" id="relay-beacon">--</div>
+            </div>
+            <div class="relay-item" id="relay-item-voice">
+              <div class="relay-led" id="relay-led-voice"></div>
+              <div class="relay-label">Voice</div>
+              <div class="relay-status" id="relay-voice">--</div>
+            </div>
+            <div class="relay-item" id="relay-item-barrier">
+              <div class="relay-led" id="relay-led-barrier"></div>
+              <div class="relay-label">Barrier</div>
+              <div class="relay-status" id="relay-barrier">--</div>
+            </div>
+          </div>
+
+          <!-- Power & connectivity -->
           <div class="grid">
             <div class="mini-card">
               <div class="mini-label">Supply/Battery</div>
@@ -93,23 +124,34 @@
             </div>
           </div>
 
+          <!-- Sensor state -->
           <div class="grid" style="margin-top:8px">
             <div class="mini-card">
               <div class="mini-label">RS485 Sensor</div>
               <div class="mini-value" id="dash-rs485-status">--</div>
             </div>
             <div class="mini-card">
-              <div class="mini-label">Switch L1</div>
+              <div class="mini-label">Switch L1 300mm</div>
               <div class="mini-value" id="dash-switch-l1">--</div>
             </div>
             <div class="mini-card">
-              <div class="mini-label">Switch L2</div>
+              <div class="mini-label">Switch L2 500mm</div>
               <div class="mini-value" id="dash-switch-l2">--</div>
             </div>
             <div class="mini-card">
               <div class="mini-label">Logic Mode</div>
               <div class="mini-value" id="dash-logic-mode">--</div>
             </div>
+          </div>
+
+          <!-- Quick controls (OPERATOR+ only, shown by JS) -->
+          <div id="dash-quick-controls" style="display:none">
+            <p class="section-sep">Quick Controls</p>
+            <button class="control-btn warn" onclick="muteAlarmApp()">Mute Alarm</button>
+            <button class="control-btn info" onclick="dryRunApp()">Dry Run Test</button>
+            <input class="inp" id="dash-force-clear-reason" placeholder="Force clear reason (min 5 chars)" style="margin-top:8px">
+            <button class="control-btn danger" onclick="forceClearApp()">Force Clear Incident</button>
+            <p class="hint">All actions are audited with user/session/device metadata.</p>
           </div>
         </div>
       </section>
