@@ -1,26 +1,25 @@
-﻿const locationRepository = require('../repositories/locationRepository');
+const locationRepository = require('../repositories/locationRepository');
 const deviceRepository = require('../repositories/deviceRepository');
 const telemetryRepository = require('../repositories/telemetryRepository');
+const complaintRepository = require('../repositories/complaintRepository');
 const incidentService = require('./incidentService');
+const { listAccessibleLocationIds } = require('./accessService');
 
 function listUserLocations(authContext) {
   const user = authContext.user;
-  let locations = [];
+  let locationIds = listAccessibleLocationIds(user);
 
   if (user.role === 'VENDOR_SUPER_ADMIN') {
-    const allIds = new Set();
+    const allIds = new Set(locationIds);
     telemetryRepository.listAll().forEach((item) => {
       if (item.location_id) {
         allIds.add(item.location_id);
       }
     });
-
-    user.assigned_location_ids.forEach((locationId) => allIds.add(locationId));
-    locations = locationRepository.listByIds([...allIds]);
-  } else {
-    locations = locationRepository.listByIds(user.assigned_location_ids || []);
+    locationIds = [...allIds];
   }
 
+  const locations = locationRepository.listByIds(locationIds);
   return locations.map((location) => {
     const device = deviceRepository.findByLocation(location._id);
     const latestTelemetry = telemetryRepository
@@ -29,6 +28,7 @@ function listUserLocations(authContext) {
       .sort((a, b) => new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime())[0] || null;
 
     const activeIncident = incidentService.getActiveIncident(location._id);
+    const openComplaintCount = complaintRepository.countOpenByLocation(location._id);
     return {
       location_id: location._id,
       location_name: location.name,
@@ -37,6 +37,9 @@ function listUserLocations(authContext) {
       last_update: latestTelemetry ? latestTelemetry.timestamp : (device ? device.last_seen : null),
       device_id: device ? device._id : null,
       device_status: device ? device.status : 'UNMAPPED',
+      device_operational_status: device ? (device.operational_status || 'ACTIVE') : 'UNMAPPED',
+      maintenance_status: openComplaintCount > 0 ? 'COMPLAINT_OPEN' : (location.maintenance_status || 'OK'),
+      open_complaint_count: openComplaintCount,
       active_incident_id: activeIncident ? activeIncident._id : null
     };
   });

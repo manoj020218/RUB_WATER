@@ -9,6 +9,7 @@ const { createEventRecord } = require('../models/eventModel');
 const incidentService = require('./incidentService');
 const notificationService = require('./notificationService');
 const auditService = require('./auditService');
+const { publishRealtime } = require('./realtimeBus');
 const { notFound } = require('../utils/errors');
 const { toIso } = require('../utils/time');
 
@@ -37,6 +38,15 @@ function ingestTelemetry(payload) {
       source: 'telemetry'
     });
   }
+
+  publishRealtime('TELEMETRY_UPDATED', {
+    location_id: record.location_id,
+    device_id: record.device_id,
+    status: record.status,
+    water_level_mm: record.water_level_mm,
+    timestamp: record.timestamp,
+    payload: record
+  });
 
   return record;
 }
@@ -90,6 +100,14 @@ function ingestEvent(payload) {
     });
   }
 
+  publishRealtime('DEVICE_EVENT', {
+    location_id: event.location_id,
+    device_id: event.device_id,
+    event_type: event.event_type,
+    timestamp: event.timestamp,
+    payload: event
+  });
+
   return {
     event,
     incident
@@ -140,6 +158,13 @@ function ingestHeartbeat(payload = {}, topicDeviceId = null) {
   };
 
   telemetryRepository.insert(heartbeatRecord);
+  publishRealtime('DEVICE_HEARTBEAT', {
+    location_id: heartbeatRecord.location_id,
+    device_id: heartbeatRecord.device_id,
+    status: heartbeatRecord.status,
+    timestamp: heartbeatRecord.timestamp,
+    payload: heartbeatRecord
+  });
   return heartbeatRecord;
 }
 

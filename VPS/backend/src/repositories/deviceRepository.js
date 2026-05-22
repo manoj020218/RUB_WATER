@@ -37,6 +37,30 @@ function ensureSecurity(device) {
   return device.security;
 }
 
+function ensureLifecycle(device) {
+  if (!device) {
+    return null;
+  }
+  if (!device.operational_status) {
+    device.operational_status = 'ACTIVE';
+  }
+  if (!device.lifecycle_updated_at) {
+    device.lifecycle_updated_at = new Date().toISOString();
+  }
+  if (!Object.prototype.hasOwnProperty.call(device, 'lifecycle_note')) {
+    device.lifecycle_note = null;
+  }
+  return device;
+}
+
+function listAll() {
+  return dataStore.devices.map((item) => {
+    ensureSecurity(item);
+    ensureLifecycle(item);
+    return item;
+  });
+}
+
 function findById(deviceId) {
   const lookup = String(deviceId || '').trim().toUpperCase();
   const device = dataStore.devices.find((item) => String(item._id || '').toUpperCase() === lookup) || null;
@@ -44,6 +68,7 @@ function findById(deviceId) {
     return null;
   }
   ensureSecurity(device);
+  ensureLifecycle(device);
   return device;
 }
 
@@ -53,6 +78,7 @@ function findByLocation(locationId) {
     return null;
   }
   ensureSecurity(device);
+  ensureLifecycle(device);
   return device;
 }
 
@@ -62,6 +88,17 @@ function updateRuntime(deviceId, patch) {
     return null;
   }
   Object.assign(device, patch);
+  return device;
+}
+
+function updateOperationalStatus(deviceId, status, note = null) {
+  const device = findById(deviceId);
+  if (!device) {
+    return null;
+  }
+  device.operational_status = String(status || '').trim().toUpperCase() || device.operational_status;
+  device.lifecycle_note = note || null;
+  device.lifecycle_updated_at = new Date().toISOString();
   return device;
 }
 
@@ -131,9 +168,11 @@ function getClaimInfo(deviceId) {
 }
 
 module.exports = {
+  listAll,
   findById,
   findByLocation,
   updateRuntime,
+  updateOperationalStatus,
   claimDevice,
   setDeviceToken,
   verifyDeviceToken,

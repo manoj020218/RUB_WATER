@@ -1,13 +1,23 @@
-﻿const env = require('./config/env');
+const http = require('http');
+const env = require('./config/env');
 const { createApp } = require('./app');
 const { startMqttBridge } = require('./mqtt/mqttBridge');
+const { createLiveSocketServer } = require('./services/liveSocketService');
+const { startWebhookDispatcher } = require('./services/headOfficeIntegrationService');
 
 const app = createApp();
+const httpServer = http.createServer(app);
 const mqttClient = startMqttBridge();
+const liveSocket = createLiveSocketServer(httpServer);
+const stopWebhookDispatcher = startWebhookDispatcher();
 
-const server = app.listen(env.port, () => {
+httpServer.listen(env.port, () => {
   // eslint-disable-next-line no-console
   console.log(`[FloodGuard VPS] listening on port ${env.port}`);
+  if (liveSocket?.enabled) {
+    // eslint-disable-next-line no-console
+    console.log('[FloodGuard Live] WebSocket enabled at /ws/live');
+  }
 });
 
 function shutdown(signalName) {
@@ -17,8 +27,14 @@ function shutdown(signalName) {
   if (mqttClient && typeof mqttClient.end === 'function') {
     mqttClient.end(true);
   }
+  if (liveSocket && typeof liveSocket.close === 'function') {
+    liveSocket.close();
+  }
+  if (typeof stopWebhookDispatcher === 'function') {
+    stopWebhookDispatcher();
+  }
 
-  server.close(() => process.exit(0));
+  httpServer.close(() => process.exit(0));
 }
 
 process.on('SIGINT', () => shutdown('SIGINT'));

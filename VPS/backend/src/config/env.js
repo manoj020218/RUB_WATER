@@ -68,6 +68,7 @@ module.exports = {
   deviceTokenTtlHours: readNumber('DEVICE_TOKEN_TTL_HOURS', Number(security.deviceTokenTtlHours || 720)),
   jwtSecret: process.env.JWT_SECRET || security.jwtSecret || 'floodguard-dev-secret',
   jwtTtl: process.env.JWT_TTL || '8h',
+  defaultResetPassword: process.env.DEFAULT_RESET_PASSWORD || security.defaultResetPassword || '123456',
   apiKey: process.env.API_KEY || security.apiKey || 'FG_LOCAL_DEV_KEY',
   deviceProvisionKey: process.env.DEVICE_PROVISION_KEY || security.deviceProvisionKey || '',
   requireDeviceProvisionKey: readBool('REQUIRE_DEVICE_PROVISION_KEY', security.requireDeviceProvisionKey !== false),

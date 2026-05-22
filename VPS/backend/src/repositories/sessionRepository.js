@@ -36,10 +36,28 @@ function deactivateByUserId(userId) {
   return count;
 }
 
+function deactivateOtherSessions(userId, keepSessionId) {
+  const now = new Date().toISOString();
+  let count = 0;
+  dataStore.userSessions.forEach((session) => {
+    if (
+      session.user_id === userId
+      && session.is_active
+      && session._id !== keepSessionId
+    ) {
+      session.is_active = false;
+      session.last_seen = now;
+      count += 1;
+    }
+  });
+  return count;
+}
+
 module.exports = {
   create,
   findActiveById,
   deactivate,
   listActiveByUserId,
-  deactivateByUserId
+  deactivateByUserId,
+  deactivateOtherSessions
 };

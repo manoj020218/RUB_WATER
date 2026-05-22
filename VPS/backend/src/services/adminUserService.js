@@ -11,7 +11,11 @@ const { nowIso } = require('../utils/time');
 const ROLE_SET = new Set(Object.values(ROLE));
 
 function normalizeRole(value) {
-  return String(value || '').trim().toUpperCase();
+  const normalized = String(value || '').trim().toUpperCase();
+  if (normalized === 'THIRD_PARTY_MONITORING') {
+    return ROLE.THIRD_PARTY_MONITORING_USER;
+  }
+  return normalized;
 }
 
 function normalizeString(value) {

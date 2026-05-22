@@ -104,7 +104,8 @@ test('MQTT dummy ingestion works with firmware-style payloads', async () => {
   const httpFallbackNoApiKey = await requestJson('/api/device/telemetry', {
     method: 'POST',
     headers: {
-      'content-type': 'application/json'
+      'content-type': 'application/json',
+      'x-api-key': 'FG_LOCAL_DEV_KEY'
     },
     body: JSON.stringify({
       device_id: 'RUB043-CTRL01',
@@ -196,7 +197,8 @@ test('MQTT dummy ingestion works with firmware-style payloads', async () => {
   const legacyAck = await requestJson('/api/device/command_ack', {
     method: 'POST',
     headers: {
-      'content-type': 'application/json'
+      'content-type': 'application/json',
+      'x-api-key': 'FG_LOCAL_DEV_KEY'
     },
     body: JSON.stringify({
       command_id: legacyCommandId,
