@@ -22,6 +22,8 @@
     deviceConfigHistory: [],
     configDeviceId: null,
     adminUsers: [],
+    complaints: [],
+    complaintsLocationId: null,
     refreshTimer: null,
     incidentTimer: null,
     loading: false,
@@ -229,6 +231,9 @@
       refreshDeviceConfigApp().catch(() => {
         // handled internally
       });
+    }
+    if (viewId === 'view-complaints') {
+      refreshComplaintsApp().catch(() => {});
     }
   }
 
@@ -2422,6 +2427,7 @@
     applyVendorInstallVisibility();
     applyConfigVisibility();
     applySettingsVisibility();
+    applyComplaintsVisibility();
     renderInstallCloudStatuses();
 
     const fill = byId('vessel-fill');
@@ -3338,6 +3344,11 @@
 
       renderDashboard(selectedLocation, details.dashboardData, activeIncident);
       renderAudit(details.auditLogs);
+      fetchComplaints(state.selectedLocationId).then((complaints) => {
+        state.complaints = complaints;
+        state.complaintsLocationId = state.selectedLocationId;
+        renderComplaints(complaints);
+      }).catch(() => {});
       if (isSuperAdmin()) {
         await refreshAdminUsersApp();
       }
@@ -3417,6 +3428,7 @@
       applyVendorInstallVisibility();
       applyConfigVisibility();
       applySettingsVisibility();
+    applyComplaintsVisibility();
       showToast('Login successful');
       await refreshAppData();
       startPolling();
@@ -3438,6 +3450,8 @@
     state.deviceConfigHistory = [];
     state.configDeviceId = null;
     state.adminUsers = [];
+    state.complaints = [];
+    state.complaintsLocationId = null;
     state.install.tokenExpiresAt = '';
 
     if (state.refreshTimer) {
@@ -3456,6 +3470,7 @@
     applyVendorInstallVisibility();
     applyConfigVisibility();
     applySettingsVisibility();
+    applyComplaintsVisibility();
     renderAdminUsersApp([]);
     renderDeviceConfig(null);
     renderDeviceConfigHistory([]);
@@ -3566,6 +3581,204 @@
     }
   }
 
+  const COMPLAINT_TYPE_LABELS = {
+    device_offline: 'Device offline',
+    water_sensor_faulty: 'Water level sensor faulty',
+    level_switch_faulty: 'Level switch faulty',
+    siren_not_working: 'Siren not working',
+    beacon_not_working: 'Beacon light not working',
+    voice_not_working: 'Voice announcement not working',
+    battery_solar_issue: 'Battery low / solar issue',
+    network_issue: '4G router / network issue',
+    false_alarm: 'False alarm suspected',
+    physical_damage: 'Physical damage / theft',
+    other: 'Other'
+  };
+
+  function complaintTypeLabel(type) {
+    return COMPLAINT_TYPE_LABELS[String(type || '')] || String(type || 'Other');
+  }
+
+  async function fetchComplaints(locationId) {
+    if (!locationId) return [];
+    try {
+      const result = await apiRequest(`/locations/${encodeURIComponent(locationId)}/complaints`);
+      return Array.isArray(result?.data) ? result.data : (Array.isArray(result) ? result : []);
+    } catch (error) {
+      return [];
+    }
+  }
+
+  function renderComplaints(complaints) {
+    const list = byId('complaint-list');
+    if (!list) return;
+
+    const loc = state.locations.find((l) => l.location_id === state.selectedLocationId);
+    const locName = loc?.location_name || state.selectedLocationId || '--';
+    setText('complaint-location-sub', state.selectedLocationId
+      ? `${locName} · ${state.selectedLocationId}`
+      : 'Select a location first');
+
+    const openCount = Array.isArray(complaints)
+      ? complaints.filter((c) => String(c.status || '').toUpperCase() === 'OPEN').length
+      : 0;
+    const countEl = byId('complaint-open-count');
+    if (countEl) {
+      countEl.textContent = `${openCount} open`;
+      countEl.classList.toggle('danger', openCount > 0);
+      countEl.classList.toggle('off', openCount === 0);
+    }
+
+    if (!Array.isArray(complaints) || complaints.length === 0) {
+      list.innerHTML = '<div class="empty">No complaints for this location.</div>';
+      return;
+    }
+
+    const role = userRole();
+    const canAcknowledge = ['VENDOR_SUPER_ADMIN', 'VENDOR_MONITORING_USER', 'DEPARTMENT_SUPER_ADMIN', 'DEPARTMENT_ADMIN'].includes(role);
+    const canResolve = ['VENDOR_SUPER_ADMIN', 'DEPARTMENT_SUPER_ADMIN', 'DEPARTMENT_ADMIN'].includes(role);
+
+    list.innerHTML = complaints.map((c) => {
+      const id = escapeHtml(String(c._id || c.complaint_id || ''));
+      const no = escapeHtml(String(c.complaint_no || c._id?.slice(-6) || '--'));
+      const type = escapeHtml(complaintTypeLabel(c.type || c.complaint_type));
+      const priority = String(c.priority || 'LOW').toUpperCase();
+      const status = String(c.status || 'OPEN').toUpperCase();
+      const priorityCls = priority.toLowerCase();
+      const statusCls = status.toLowerCase().replace(/_/g, '_');
+      const desc = escapeHtml(String(c.description || '').slice(0, 120));
+      const raisedBy = escapeHtml(c.raised_by_login_id || c.raisedByLoginId || '--');
+      const raisedAt = escapeHtml(formatTime(c.created_at || c.createdAt));
+
+      const ackBtn = canAcknowledge && status === 'OPEN'
+        ? `<button class="ghost-btn" style="padding:5px 10px;font-size:11px" onclick="acknowledgeComplaintApp('${id}')">Acknowledge</button>`
+        : '';
+      const resolveBtn = canResolve && ['OPEN', 'ACKNOWLEDGED', 'ASSIGNED', 'IN_PROGRESS'].includes(status)
+        ? `<button class="ghost-btn" style="padding:5px 10px;font-size:11px" onclick="resolveComplaintApp('${id}')">Resolve</button>`
+        : '';
+      const closeBtn = canResolve && status === 'RESOLVED'
+        ? `<button class="ghost-btn" style="padding:5px 10px;font-size:11px" onclick="closeComplaintApp('${id}')">Close</button>`
+        : '';
+      const actionRow = (ackBtn || resolveBtn || closeBtn)
+        ? `<div class="row" style="margin-top:8px;justify-content:flex-end;gap:6px">${ackBtn}${resolveBtn}${closeBtn}</div>`
+        : '';
+
+      return `
+        <div class="complaint-card">
+          <div class="complaint-head">
+            <div>
+              <div class="complaint-no">#${no} · ${type}</div>
+              <div class="complaint-desc">${desc}</div>
+            </div>
+            <div class="complaint-badges">
+              <span class="priority-pill priority-pill--${escapeHtml(priorityCls)}">${priority}</span>
+              <span class="complaint-status-pill status-pill--${escapeHtml(statusCls)}">${status}</span>
+            </div>
+          </div>
+          <div class="complaint-meta">${raisedBy} · ${raisedAt}</div>
+          ${actionRow}
+        </div>
+      `;
+    }).join('');
+  }
+
+  async function raiseComplaintApp() {
+    if (!state.selectedLocationId) {
+      showToast('Select a location first.', true);
+      return;
+    }
+
+    const type = String(byId('complaint-type')?.value || '').trim();
+    const priority = String(byId('complaint-priority')?.value || 'MEDIUM');
+    const description = String(byId('complaint-description')?.value || '').trim();
+
+    setText('complaint-raise-status', '');
+
+    if (!type) {
+      setText('complaint-raise-status', 'Please select a complaint type.');
+      return;
+    }
+    if (description.length < 10) {
+      setText('complaint-raise-status', 'Description must be at least 10 characters.');
+      return;
+    }
+
+    try {
+      await apiRequest('/complaints', {
+        method: 'POST',
+        body: {
+          location_id: state.selectedLocationId,
+          device_id: state.selectedDeviceId || null,
+          type,
+          priority,
+          description,
+          title: complaintTypeLabel(type)
+        }
+      });
+      if (byId('complaint-type')) byId('complaint-type').value = '';
+      if (byId('complaint-priority')) byId('complaint-priority').value = 'MEDIUM';
+      if (byId('complaint-description')) byId('complaint-description').value = '';
+      setText('complaint-raise-status', 'Complaint submitted successfully.');
+      showToast('Complaint submitted.');
+      await refreshComplaintsApp();
+    } catch (error) {
+      setText('complaint-raise-status', `Failed: ${error.message}`);
+    }
+  }
+
+  async function refreshComplaintsApp() {
+    if (!state.selectedLocationId) return;
+    const complaints = await fetchComplaints(state.selectedLocationId);
+    state.complaints = complaints;
+    state.complaintsLocationId = state.selectedLocationId;
+    renderComplaints(complaints);
+  }
+
+  async function acknowledgeComplaintApp(complaintId) {
+    try {
+      await apiRequest(`/complaints/${encodeURIComponent(complaintId)}/acknowledge`, { method: 'POST' });
+      showToast('Complaint acknowledged.');
+      await refreshComplaintsApp();
+    } catch (error) {
+      showToast(`Failed: ${error.message}`, true);
+    }
+  }
+
+  async function resolveComplaintApp(complaintId) {
+    try {
+      await apiRequest(`/complaints/${encodeURIComponent(complaintId)}/resolve`, {
+        method: 'POST',
+        body: { note: 'Marked resolved via mobile app' }
+      });
+      showToast('Complaint resolved.');
+      await refreshComplaintsApp();
+    } catch (error) {
+      showToast(`Failed: ${error.message}`, true);
+    }
+  }
+
+  async function closeComplaintApp(complaintId) {
+    try {
+      await apiRequest(`/complaints/${encodeURIComponent(complaintId)}/close`, {
+        method: 'POST',
+        body: { note: 'Closed via mobile app' }
+      });
+      showToast('Complaint closed.');
+      await refreshComplaintsApp();
+    } catch (error) {
+      showToast(`Failed: ${error.message}`, true);
+    }
+  }
+
+  function applyComplaintsVisibility() {
+    const tab = byId('complaints-tab');
+    const isLoggedIn = Boolean(state.token && state.user);
+    if (tab) {
+      tab.style.display = isLoggedIn ? 'inline-block' : 'none';
+    }
+    updateNavButtonCount();
+  }
+
   async function changePasswordApp() {
     const currentPassword = String(byId('settings-current-password')?.value || '').trim();
     const newPassword = String(byId('settings-new-password')?.value || '').trim();
@@ -3647,6 +3860,7 @@
       applyVendorInstallVisibility();
       applyConfigVisibility();
       applySettingsVisibility();
+    applyComplaintsVisibility();
       return;
     }
 
@@ -3656,6 +3870,7 @@
     applyVendorInstallVisibility();
     applyConfigVisibility();
     applySettingsVisibility();
+    applyComplaintsVisibility();
     await refreshAppData();
     startPolling();
   }
@@ -3758,6 +3973,10 @@
   window.saveDeviceConfigLocalLanApp = saveDeviceConfigLocalLanApp;
   window.pushDeviceConfigApp = pushDeviceConfigApp;
   window.changePasswordApp = changePasswordApp;
+  window.raiseComplaintApp = raiseComplaintApp;
+  window.acknowledgeComplaintApp = acknowledgeComplaintApp;
+  window.resolveComplaintApp = resolveComplaintApp;
+  window.closeComplaintApp = closeComplaintApp;
 
   window.addEventListener('load', () => {
     bootstrap().catch((error) => {

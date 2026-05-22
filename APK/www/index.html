@@ -362,6 +362,51 @@
         </div>
       </section>
 
+      <section class="view" id="view-complaints">
+        <div class="card">
+          <div class="row between">
+            <div>
+              <h2 class="view-title">Complaints</h2>
+              <p class="view-subtitle" id="complaint-location-sub">Select a location first</p>
+            </div>
+            <span class="chip off" id="complaint-open-count">0 open</span>
+          </div>
+
+          <p class="section-sep">Raise New Complaint</p>
+          <label class="lbl">Complaint Type</label>
+          <select class="inp" id="complaint-type">
+            <option value="">Select type...</option>
+            <option value="device_offline">Device offline</option>
+            <option value="water_sensor_faulty">Water level sensor faulty</option>
+            <option value="level_switch_faulty">Level switch faulty</option>
+            <option value="siren_not_working">Siren not working</option>
+            <option value="beacon_not_working">Beacon light not working</option>
+            <option value="voice_not_working">Voice announcement not working</option>
+            <option value="battery_solar_issue">Battery low / solar issue</option>
+            <option value="network_issue">4G router / network issue</option>
+            <option value="false_alarm">False alarm suspected</option>
+            <option value="physical_damage">Physical damage / theft</option>
+            <option value="other">Other</option>
+          </select>
+          <label class="lbl">Priority</label>
+          <select class="inp" id="complaint-priority">
+            <option value="LOW">Low</option>
+            <option value="MEDIUM" selected>Medium</option>
+            <option value="HIGH">High</option>
+            <option value="CRITICAL">Critical</option>
+          </select>
+          <label class="lbl">Description</label>
+          <textarea class="inp complaint-textarea" id="complaint-description" rows="3" placeholder="Describe the issue (min 10 chars)..."></textarea>
+          <button class="primary-btn" onclick="raiseComplaintApp()">Submit Complaint</button>
+          <div class="meta" id="complaint-raise-status"></div>
+
+          <p class="section-sep">Complaint History</p>
+          <div class="timeline" id="complaint-list">
+            <div class="empty">No complaints for this location.</div>
+          </div>
+        </div>
+      </section>
+
       <section class="view" id="view-settings">
         <div class="card">
           <h2 class="view-title">Settings</h2>
@@ -384,6 +429,7 @@
       <button class="nav-btn active" data-view="view-locations" onclick="openView('view-locations')">Locations</button>
       <button class="nav-btn" data-view="view-dashboard" onclick="openView('view-dashboard')">Live</button>
       <button class="nav-btn" data-view="view-controls" onclick="openView('view-controls')">Controls</button>
+      <button class="nav-btn" id="complaints-tab" data-view="view-complaints" onclick="openView('view-complaints')" style="display:none">Complaints</button>
       <button class="nav-btn" id="vendor-install-tab" data-view="view-install" onclick="openView('view-install')" style="display:none">Install</button>
       <button class="nav-btn" id="config-tab" data-view="view-config" onclick="openView('view-config')">Config</button>
       <button class="nav-btn" data-view="view-audit" onclick="openView('view-audit')">Audit</button>

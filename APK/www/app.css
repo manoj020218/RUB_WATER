@@ -970,6 +970,84 @@ button {
   50%       { opacity: .72; }
 }
 
+/* ── Complaint cards ── */
+.complaint-card {
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  padding: 10px;
+  background: #f8fafc;
+}
+
+.complaint-head {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 8px;
+}
+
+.complaint-no {
+  font-size: 12px;
+  font-weight: 800;
+}
+
+.complaint-desc {
+  margin-top: 3px;
+  font-size: 12px;
+  color: #334155;
+}
+
+.complaint-badges {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  align-items: flex-end;
+  flex-shrink: 0;
+}
+
+.complaint-meta {
+  margin-top: 6px;
+  font-size: 11px;
+  color: var(--sub);
+}
+
+.complaint-textarea {
+  resize: vertical;
+  min-height: 72px;
+}
+
+/* Priority pills */
+.priority-pill {
+  font-size: 9px;
+  font-weight: 800;
+  text-transform: uppercase;
+  padding: 2px 7px;
+  border-radius: 999px;
+  border: 1px solid;
+}
+
+.priority-pill--low      { border-color: #86efac; background: #ecfdf5; color: #047857; }
+.priority-pill--medium   { border-color: #93c5fd; background: #eff6ff; color: #1d4ed8; }
+.priority-pill--high     { border-color: #fcd34d; background: #fffbeb; color: #92400e; }
+.priority-pill--critical { border-color: #fca5a5; background: #fee2e2; color: #b91c1c; animation: blink 1.2s infinite; }
+
+/* Complaint status pills */
+.complaint-status-pill {
+  font-size: 9px;
+  font-weight: 800;
+  text-transform: uppercase;
+  padding: 2px 7px;
+  border-radius: 999px;
+  border: 1px solid;
+}
+
+.status-pill--open         { border-color: #fca5a5; background: #fee2e2;  color: #b91c1c; }
+.status-pill--acknowledged { border-color: #93c5fd; background: #eff6ff;  color: #1d4ed8; }
+.status-pill--assigned     { border-color: #c4b5fd; background: #f5f3ff;  color: #6d28d9; }
+.status-pill--in_progress  { border-color: #fcd34d; background: #fffbeb;  color: #92400e; }
+.status-pill--resolved     { border-color: #86efac; background: #ecfdf5;  color: #047857; }
+.status-pill--closed       { border-color: #cbd5e1; background: #f1f5f9;  color: #64748b; }
+.status-pill--rejected     { border-color: #fca5a5; background: #fef2f2;  color: #991b1b; }
+
 /* Section separator */
 .section-sep {
   margin: 12px 0 6px;
