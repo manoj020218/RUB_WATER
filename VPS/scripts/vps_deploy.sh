@@ -13,6 +13,7 @@ VENDOR_DIR_NAME="vendor-mgmt"
 # ── Find project root ──────────────────────────────────────────────────────────
 find_project_root() {
   for candidate in \
+    /root/projects/flood_guard \
     /root/RUB_WATER \
     /root/FloodGuard \
     /root/floodguard \
