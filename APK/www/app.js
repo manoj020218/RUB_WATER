@@ -24,6 +24,7 @@
     adminUsers: [],
     complaints: [],
     complaintsLocationId: null,
+    report: { rows: [], loaded: false },
     refreshTimer: null,
     incidentTimer: null,
     loading: false,
@@ -234,6 +235,9 @@
     }
     if (viewId === 'view-complaints') {
       refreshComplaintsApp().catch(() => {});
+    }
+    if (viewId === 'view-reports') {
+      populateReportLocationSelect();
     }
   }
 
@@ -2435,6 +2439,7 @@
     applyConfigVisibility();
     applySettingsVisibility();
     applyComplaintsVisibility();
+    applyReportsVisibility();
     renderInstallCloudStatuses();
 
     const fill = byId('vessel-fill');
@@ -3439,6 +3444,7 @@
       applyConfigVisibility();
       applySettingsVisibility();
     applyComplaintsVisibility();
+    applyReportsVisibility();
       showToast('Login successful');
       await refreshAppData();
       startPolling();
@@ -3462,6 +3468,7 @@
     state.adminUsers = [];
     state.complaints = [];
     state.complaintsLocationId = null;
+    state.report = { rows: [], loaded: false };
     state.install.tokenExpiresAt = '';
 
     if (state.refreshTimer) {
@@ -3481,6 +3488,7 @@
     applyConfigVisibility();
     applySettingsVisibility();
     applyComplaintsVisibility();
+    applyReportsVisibility();
     renderAdminUsersApp([]);
     renderDeviceConfig(null);
     renderDeviceConfigHistory([]);
@@ -3927,6 +3935,148 @@
     updateNavButtonCount();
   }
 
+  function canViewReports() {
+    return ['VENDOR_SUPER_ADMIN', 'DEPARTMENT_SUPER_ADMIN', 'DEPARTMENT_ADMIN'].includes(userRole());
+  }
+
+  function applyReportsVisibility() {
+    const tab = byId('reports-tab');
+    if (tab) tab.style.display = (state.token && state.user && canViewReports()) ? 'inline-block' : 'none';
+    updateNavButtonCount();
+  }
+
+  function populateReportLocationSelect() {
+    const sel = byId('report-location-id');
+    if (!sel) return;
+    const prev = sel.value;
+    while (sel.options.length > 1) sel.remove(1);
+    state.locations.forEach((loc) => {
+      const opt = document.createElement('option');
+      opt.value = loc.location_id;
+      opt.textContent = `${loc.location_name} (${loc.location_id})`;
+      sel.appendChild(opt);
+    });
+    if (prev && Array.from(sel.options).some((o) => o.value === prev)) sel.value = prev;
+
+    const fromEl = byId('report-date-from');
+    const toEl = byId('report-date-to');
+    if (fromEl && !fromEl.value) {
+      const d = new Date();
+      d.setDate(d.getDate() - 7);
+      fromEl.value = d.toISOString().slice(0, 10);
+    }
+    if (toEl && !toEl.value) {
+      toEl.value = new Date().toISOString().slice(0, 10);
+    }
+  }
+
+  async function loadAuditReportApp() {
+    setText('report-status', 'Loading...');
+    const fromDate = String(byId('report-date-from')?.value || '').trim();
+    const toDate = String(byId('report-date-to')?.value || '').trim();
+    const locationId = String(byId('report-location-id')?.value || '').trim();
+    const eventType = String(byId('report-event-type')?.value || '').trim();
+    const limit = Number(byId('report-limit')?.value || 100);
+
+    const params = new URLSearchParams();
+    if (fromDate) params.set('from_date', fromDate);
+    if (toDate) params.set('to_date', `${toDate}T23:59:59`);
+    if (locationId) params.set('location_id', locationId);
+    if (eventType) params.set('event_type', eventType);
+    params.set('limit', String(limit));
+
+    try {
+      const result = await apiRequest(`/audit-logs?${params.toString()}`);
+      const rows = Array.isArray(result?.data) ? result.data : (Array.isArray(result) ? result : []);
+      state.report.rows = rows;
+      state.report.loaded = true;
+      renderAuditReportRows(rows);
+      setText('report-status', '');
+    } catch (error) {
+      setText('report-status', `Failed: ${error.message}`);
+      state.report.rows = [];
+      state.report.loaded = false;
+    }
+  }
+
+  function renderAuditReportRows(rows) {
+    const wrap = byId('report-results-wrap');
+    const tbody = byId('report-table-body');
+    const countEl = byId('report-record-count');
+    const countLabel = byId('report-count-label');
+
+    if (countEl) {
+      countEl.textContent = `${rows.length} records`;
+      countEl.classList.toggle('off', rows.length === 0);
+      countEl.classList.toggle('ok', rows.length > 0);
+    }
+    if (countLabel) countLabel.textContent = `${rows.length} record${rows.length !== 1 ? 's' : ''} loaded`;
+    if (!wrap || !tbody) return;
+
+    wrap.style.display = 'block';
+    if (rows.length === 0) {
+      tbody.innerHTML = '<tr><td colspan="5" class="report-empty">No records found for the selected filters.</td></tr>';
+      return;
+    }
+
+    tbody.innerHTML = rows.map((row) => {
+      const time = escapeHtml(formatDateTime(row.created_at || row.timestamp || row.createdAt));
+      const loc = escapeHtml(row.location_id || row.locationId || '--');
+      const event = escapeHtml(String(row.event_type || row.eventType || row.action || '--').toUpperCase());
+      const details = escapeHtml(String(row.details || row.note || row.message || row.description || '').slice(0, 80));
+      const user = escapeHtml(row.performed_by_login_id || row.performedByLoginId || row.user_login_id || 'System');
+      return `<tr>
+        <td>${time}</td>
+        <td>${loc}</td>
+        <td><span class="report-event-tag">${event}</span></td>
+        <td>${details}</td>
+        <td>${user}</td>
+      </tr>`;
+    }).join('');
+  }
+
+  function exportAuditCsvApp() {
+    const rows = state.report?.rows;
+    if (!Array.isArray(rows) || rows.length === 0) {
+      showToast('No data loaded. Use "Load Preview" first.', true);
+      return;
+    }
+    const headers = ['Time (IST)', 'Location ID', 'Event Type', 'Details', 'User', 'Device ID'];
+    const csvRows = [headers.join(',')];
+    rows.forEach((row) => {
+      const time = formatDateTime(row.created_at || row.timestamp || row.createdAt);
+      const loc = row.location_id || row.locationId || '';
+      const event = String(row.event_type || row.eventType || row.action || '').toUpperCase();
+      const details = String(row.details || row.note || row.message || row.description || '').replace(/"/g, '""');
+      const user = row.performed_by_login_id || row.performedByLoginId || row.user_login_id || 'System';
+      const device = row.device_id || row.deviceId || '';
+      csvRows.push([`"${time}"`, `"${loc}"`, `"${event}"`, `"${details}"`, `"${user}"`, `"${device}"`].join(','));
+    });
+
+    const csvContent = csvRows.join('\n');
+    const filename = `floodguard-audit-${new Date().toISOString().slice(0, 10)}.csv`;
+    try {
+      const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = filename;
+      document.body.appendChild(a);
+      a.click();
+      document.body.removeChild(a);
+      URL.revokeObjectURL(url);
+      showToast(`CSV exported: ${rows.length} records`);
+    } catch (_) {
+      if (navigator.clipboard) {
+        navigator.clipboard.writeText(csvContent)
+          .then(() => showToast('CSV copied to clipboard.'))
+          .catch(() => showToast('Export failed.', true));
+      } else {
+        showToast('Export not supported on this device.', true);
+      }
+    }
+  }
+
   async function changePasswordApp() {
     const currentPassword = String(byId('settings-current-password')?.value || '').trim();
     const newPassword = String(byId('settings-new-password')?.value || '').trim();
@@ -4009,6 +4159,7 @@
       applyConfigVisibility();
       applySettingsVisibility();
     applyComplaintsVisibility();
+    applyReportsVisibility();
       return;
     }
 
@@ -4019,6 +4170,7 @@
     applyConfigVisibility();
     applySettingsVisibility();
     applyComplaintsVisibility();
+    applyReportsVisibility();
     await refreshAppData();
     startPolling();
   }
@@ -4129,6 +4281,8 @@
   window.acknowledgeComplaintApp = acknowledgeComplaintApp;
   window.resolveComplaintApp = resolveComplaintApp;
   window.closeComplaintApp = closeComplaintApp;
+  window.loadAuditReportApp = loadAuditReportApp;
+  window.exportAuditCsvApp = exportAuditCsvApp;
 
   window.addEventListener('load', () => {
     bootstrap().catch((error) => {

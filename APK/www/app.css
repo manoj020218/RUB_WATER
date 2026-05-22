@@ -1171,6 +1171,74 @@ button {
   padding-top: 10px;
 }
 
+/* --- Phase 6: Reports --- */
+.report-filter-grid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 8px;
+  margin-bottom: 4px;
+}
+.report-count-bar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin: 12px 0 6px;
+  padding: 6px 10px;
+  background: #f1f5f9;
+  border-radius: 8px;
+  font-size: 12px;
+  font-weight: 600;
+  color: #334155;
+}
+.report-table-wrap {
+  overflow-x: auto;
+  -webkit-overflow-scrolling: touch;
+  border: 1px solid #e2e8f0;
+  border-radius: 8px;
+}
+.report-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 11px;
+  min-width: 460px;
+}
+.report-table th {
+  background: #f8fafc;
+  color: #64748b;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  padding: 7px 8px;
+  text-align: left;
+  border-bottom: 1px solid #e2e8f0;
+  white-space: nowrap;
+}
+.report-table td {
+  padding: 6px 8px;
+  border-bottom: 1px solid #f1f5f9;
+  color: #1e293b;
+  vertical-align: top;
+  word-break: break-word;
+}
+.report-table tr:last-child td { border-bottom: none; }
+.report-table tr:hover td { background: #f8fafc; }
+.report-event-tag {
+  display: inline-block;
+  font-size: 10px;
+  font-weight: 700;
+  padding: 2px 5px;
+  border-radius: 4px;
+  background: #e2e8f0;
+  color: #334155;
+  white-space: nowrap;
+}
+.report-empty {
+  text-align: center;
+  color: #94a3b8;
+  padding: 20px;
+  font-style: italic;
+}
+
 @media (min-width: 700px) {
   .app-shell {
     margin: 16px auto;

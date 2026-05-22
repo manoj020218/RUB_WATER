@@ -434,6 +434,85 @@
         </div>
       </section>
 
+      <section class="view" id="view-reports">
+        <div class="card">
+          <div class="row between">
+            <div>
+              <h2 class="view-title">Audit Report</h2>
+              <p class="view-subtitle">Export filtered audit logs</p>
+            </div>
+            <span class="chip off" id="report-record-count">0 records</span>
+          </div>
+
+          <p class="section-sep">Filters</p>
+          <div class="report-filter-grid">
+            <div>
+              <label class="lbl">From Date</label>
+              <input class="inp" id="report-date-from" type="date">
+            </div>
+            <div>
+              <label class="lbl">To Date</label>
+              <input class="inp" id="report-date-to" type="date">
+            </div>
+          </div>
+          <label class="lbl">Location</label>
+          <select class="inp" id="report-location-id">
+            <option value="">All Locations</option>
+          </select>
+          <div class="report-filter-grid">
+            <div>
+              <label class="lbl">Event Type</label>
+              <select class="inp" id="report-event-type">
+                <option value="">All Events</option>
+                <option value="ALARM_TRIGGERED">Alarm Triggered</option>
+                <option value="ALARM_CLEARED">Alarm Cleared</option>
+                <option value="ALARM_MUTED">Alarm Muted</option>
+                <option value="COMMAND_FORCE_CLEAR">Force Clear</option>
+                <option value="COMMAND_DRY_RUN">Dry Run</option>
+                <option value="CONFIG_CHANGED">Config Changed</option>
+                <option value="DEVICE_ONLINE">Device Online</option>
+                <option value="DEVICE_OFFLINE">Device Offline</option>
+                <option value="LIFECYCLE_CHANGE">Lifecycle Change</option>
+                <option value="COMPLAINT_RAISED">Complaint Raised</option>
+              </select>
+            </div>
+            <div>
+              <label class="lbl">Max Records</label>
+              <select class="inp" id="report-limit">
+                <option value="50">50</option>
+                <option value="100" selected>100</option>
+                <option value="200">200</option>
+                <option value="500">500</option>
+              </select>
+            </div>
+          </div>
+
+          <button class="primary-btn" onclick="loadAuditReportApp()">Load Preview</button>
+          <div class="meta" id="report-status"></div>
+
+          <div id="report-results-wrap" style="display:none">
+            <div class="report-count-bar">
+              <span id="report-count-label">0 records loaded</span>
+              <button class="ghost-btn" style="padding:5px 10px;font-size:11px" onclick="exportAuditCsvApp()">Export CSV</button>
+            </div>
+            <div class="report-table-wrap">
+              <table class="report-table">
+                <thead>
+                  <tr>
+                    <th>Time (IST)</th>
+                    <th>Location</th>
+                    <th>Event</th>
+                    <th>Details</th>
+                    <th>User</th>
+                  </tr>
+                </thead>
+                <tbody id="report-table-body"></tbody>
+              </table>
+            </div>
+          </div>
+        </div>
+      </section>
+
       <section class="view" id="view-settings">
         <div class="card">
           <h2 class="view-title">Settings</h2>
@@ -460,6 +539,7 @@
       <button class="nav-btn" id="vendor-install-tab" data-view="view-install" onclick="openView('view-install')" style="display:none">Install</button>
       <button class="nav-btn" id="config-tab" data-view="view-config" onclick="openView('view-config')">Config</button>
       <button class="nav-btn" data-view="view-audit" onclick="openView('view-audit')">Audit</button>
+      <button class="nav-btn" id="reports-tab" data-view="view-reports" onclick="openView('view-reports')" style="display:none">Reports</button>
       <button class="nav-btn" id="settings-tab" data-view="view-settings" onclick="openView('view-settings')" style="display:none">Settings</button>
     </nav>
   </div>
