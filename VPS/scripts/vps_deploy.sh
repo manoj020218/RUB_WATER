@@ -81,57 +81,24 @@ if echo "$STASH_LIST" | grep -q "vps-deploy"; then
   git stash drop 2>/dev/null || true
 fi
 
-# ── npm install (only if package.json changed) ───────────────────────────────
+# ── pnpm install ─────────────────────────────────────────────────────────────
 echo ""
-echo "=== Installing Node.js dependencies ==="
+echo "=== Installing Node.js dependencies (pnpm) ==="
 cd "$BACKEND_DIR"
-npm install --no-audit --no-fund 2>&1 | tail -5
+pnpm install --frozen-lockfile 2>&1 | tail -5 || pnpm install 2>&1 | tail -5
 
 # ── Detect and restart service ────────────────────────────────────────────────
 echo ""
 echo "=== Restarting backend service ==="
 
-restart_service() {
-  # Try PM2
-  if command -v pm2 >/dev/null 2>&1; then
-    if pm2 list | grep -q "$SERVICE_NAME"; then
-      echo "Restarting via PM2..."
-      pm2 restart "$SERVICE_NAME"
-      pm2 save
-      return 0
-    else
-      # Start with PM2 if not running
-      echo "Starting via PM2 (not currently managed)..."
-      pm2 start "$BACKEND_DIR/src/server.js" --name "$SERVICE_NAME" --cwd "$BACKEND_DIR"
-      pm2 save
-      pm2 startup systemd -u root --hp /root 2>/dev/null || true
-      return 0
-    fi
-  fi
-
-  # Try systemctl
-  if systemctl is-active --quiet "$SERVICE_NAME" 2>/dev/null; then
-    echo "Restarting via systemctl..."
-    systemctl restart "$SERVICE_NAME"
-    return 0
-  fi
-
-  # Fallback: check if running as a raw node process and kill+restart
-  echo "PM2 and systemctl not found. Attempting raw node restart..."
-  OLD_PID=$(pgrep -f "node.*server.js" 2>/dev/null | head -1 || true)
-  if [ -n "$OLD_PID" ]; then
-    echo "Killing old node process PID $OLD_PID..."
-    kill "$OLD_PID" 2>/dev/null || true
-    sleep 2
-  fi
-  mkdir -p "$BACKEND_DIR/logs"
-  nohup node "$BACKEND_DIR/src/server.js" \
-    > "$BACKEND_DIR/logs/backend.stdout.log" \
-    2>"$BACKEND_DIR/logs/backend.stderr.log" &
-  echo "Started as background process PID $!"
-}
-
-restart_service
+if pm2 list | grep -q "$SERVICE_NAME"; then
+  echo "Restarting existing PM2 process '$SERVICE_NAME'..."
+  pm2 restart "$SERVICE_NAME"
+else
+  echo "No PM2 process named '$SERVICE_NAME' found — starting fresh..."
+  pm2 start "$BACKEND_DIR/src/server.js" --name "$SERVICE_NAME" --cwd "$BACKEND_DIR"
+fi
+pm2 save
 
 # ── Deploy PWA files ───────────────────────────────────────────────────────────
 echo ""
@@ -206,7 +173,7 @@ echo "API:     http://154.61.69.200/api"
 echo "Health:  http://154.61.69.200/health"
 echo "Vendors: http://154.61.69.200/vendors  (login: ebonx / ebnox_123)"
 echo ""
-echo "For HTTPS vendor management:"
+echo "To enable HTTPS (run once):"
 echo "  certbot --nginx -d api.floodguard.iotsoft.in --non-interactive --agree-tos -m admin@iotsoft.in --redirect || true"
 echo ""
 echo "For floodguard.jenix.in PWA (only if DNS points to this server):"
