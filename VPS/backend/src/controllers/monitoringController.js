@@ -2,6 +2,7 @@
 const deviceService = require('../services/deviceService');
 const incidentService = require('../services/incidentService');
 const auditService = require('../services/auditService');
+const { listAccessibleLocationIds, assertUserLocationAccess } = require('../services/accessService');
 
 function listLocations(req, res, next) {
   try {
@@ -32,8 +33,14 @@ function listIncidents(req, res, next) {
 
 function listAuditLogs(req, res, next) {
   try {
-    const data = auditService.listAuditLogs(req.query.location_id || null);
-    res.json({ ok: true, data });
+    const locationId = req.query.location_id || null;
+    if (locationId) {
+      assertUserLocationAccess(req.auth.user, locationId);
+    }
+    const data = auditService.listAuditLogs(locationId);
+    const accessibleIds = new Set(listAccessibleLocationIds(req.auth.user));
+    const filtered = data.filter((log) => !log.location_id || accessibleIds.has(log.location_id));
+    res.json({ ok: true, data: filtered });
   } catch (error) {
     next(error);
   }

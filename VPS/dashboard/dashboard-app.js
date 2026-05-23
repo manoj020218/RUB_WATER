@@ -138,6 +138,20 @@
     }, 3800);
   }
 
+  function isVendorRole(role) {
+    const r = String(role || '').toUpperCase();
+    return r === 'VENDOR_SUPER_ADMIN' || r === 'VENDOR_MONITORING_USER';
+  }
+
+  function updateVendorFieldsVisibility() {
+    const row = byId('auth-vendor-fields');
+    if (!row) {
+      return;
+    }
+    const role = appState.user?.role || loadSession()?.user?.role || '';
+    row.style.display = (!role || isVendorRole(role)) ? '' : 'none';
+  }
+
   function showAuthModal(show, errorMessage = '') {
     const modal = byId('auth-modal');
     if (!modal) {
@@ -148,6 +162,7 @@
     setText('auth-error', errorMessage || '');
 
     if (show) {
+      updateVendorFieldsVisibility();
       const apiInput = byId('auth-api-base');
       if (apiInput && !apiInput.value) {
         apiInput.value = normalizeApiBase(appState.apiBase || '');
@@ -644,23 +659,34 @@
       const badge = eventBadge(log.event_type);
       const time = formatTime(log.timestamp, true);
       const by = log.login_id || log.performed_by || 'System';
+      const deviceId = log.details?.device_id || log.device_id || null;
+      const locationId = log.location_id || appState.selectedLocationId || '--';
       const detailChunks = [];
       if (log.details?.reason) {
         detailChunks.push(`Reason: ${log.details.reason}`);
       }
       if (log.details?.command_id) {
-        detailChunks.push(`Command: ${log.details.command_id}`);
+        detailChunks.push(`Cmd: ${log.details.command_id}`);
+      }
+      if (log.details?.level) {
+        detailChunks.push(`Level: ${log.details.level}`);
+      }
+      if (log.details?.water_level_mm != null) {
+        detailChunks.push(`Water: ${Math.round(log.details.water_level_mm)}mm`);
       }
       if (log.details?.status) {
         detailChunks.push(`Status: ${log.details.status}`);
       }
       const detailsText = detailChunks.length > 0 ? detailChunks.join(' | ') : 'Action logged';
+      const locationCell = deviceId
+        ? `${escapeHtml(locationId)}<br><span style="font-size:11px;color:#64748b">${escapeHtml(deviceId)}</span>`
+        : escapeHtml(locationId);
 
       return `
         <tr>
           <td style="font-variant-numeric:tabular-nums;white-space:nowrap">${escapeHtml(time)}</td>
           <td><span class="${badge.cls}">${escapeHtml(badge.label)}</span></td>
-          <td>${escapeHtml(log.location_id || appState.selectedLocationId || '--')}</td>
+          <td>${locationCell}</td>
           <td>${escapeHtml(detailsText)}</td>
           <td>${escapeHtml(by)}</td>
         </tr>
@@ -751,9 +777,12 @@
         }
       });
 
-      if (byId('ua-password')) {
-        byId('ua-password').value = '';
-      }
+      ['ua-login-id', 'ua-name', 'ua-password', 'ua-assigned-locations'].forEach((fieldId) => {
+        const el = byId(fieldId);
+        if (el) {
+          el.value = '';
+        }
+      });
       showToast(`Login access created for ${loginId} (${isActive ? 'active' : 'deactive'})`);
       await refreshAdminUsers();
     } catch (error) {
@@ -872,6 +901,36 @@
     }
   }
 
+  function populateRoleDropdown() {
+    const select = byId('ua-role');
+    if (!select) {
+      return;
+    }
+
+    const role = String(appState.user?.role || '').toUpperCase();
+    const vendorOptions = [
+      { value: 'DEPARTMENT_SUPER_ADMIN', label: 'DEPARTMENT_SUPER_ADMIN' },
+      { value: 'DEPARTMENT_ADMIN', label: 'DEPARTMENT_ADMIN' },
+      { value: 'LOCATION_ADMIN', label: 'LOCATION_ADMIN' },
+      { value: 'OPERATOR', label: 'OPERATOR' },
+      { value: 'VIEWER', label: 'VIEWER' },
+      { value: 'AUDITOR', label: 'AUDITOR' },
+      { value: 'VENDOR_MONITORING_USER', label: 'VENDOR_MONITORING_USER' }
+    ];
+    const deptOptions = [
+      { value: 'DEPARTMENT_ADMIN', label: 'DEPARTMENT_ADMIN' },
+      { value: 'LOCATION_ADMIN', label: 'LOCATION_ADMIN' },
+      { value: 'OPERATOR', label: 'OPERATOR' },
+      { value: 'VIEWER', label: 'VIEWER' },
+      { value: 'AUDITOR', label: 'AUDITOR' }
+    ];
+
+    const options = role === 'VENDOR_SUPER_ADMIN' ? vendorOptions : deptOptions;
+    select.innerHTML = options
+      .map((opt) => `<option value="${escapeHtml(opt.value)}">${escapeHtml(opt.label)}</option>`)
+      .join('');
+  }
+
   function hydrateUserChip() {
     const name = appState.user?.name || appState.user?.login_id || 'User';
     setText('user-name', name);
@@ -880,6 +939,8 @@
     const role = appState.user?.role || 'UNKNOWN';
     setText('control-user-role', `Logged in as: ${name} - ${role}`);
     applyAdminPanelVisibility();
+    populateRoleDropdown();
+    updateVendorFieldsVisibility();
   }
 
   function applySessionPayload(payload) {

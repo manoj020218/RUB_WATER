@@ -32,6 +32,7 @@ function sanitizeAdminUser(user, activeSessionCount = null) {
     department_id: user.department_id || null,
     assigned_location_ids: Array.isArray(user.assigned_location_ids) ? [...user.assigned_location_ids] : [],
     is_active: Boolean(user.is_active),
+    created_by: user.created_by || null,
     created_at: user.created_at || null,
     updated_at: user.updated_at || null
   };
@@ -74,7 +75,17 @@ function assertRoleCanAssign(authUser, targetRole) {
 function listManagedUsers(authContext) {
   assertPermission(authContext.user.role, 'MANAGE_USER_ACCESS');
 
-  const users = userRepository.listAll().filter((user) => canManageUser(authContext.user, user));
+  const actor = authContext.user;
+  let users;
+
+  if (actor.role === ROLE.VENDOR_SUPER_ADMIN) {
+    users = userRepository.listAll().filter((user) => canManageUser(actor, user));
+  } else if (actor.role === ROLE.DEPARTMENT_SUPER_ADMIN) {
+    users = userRepository.listAll().filter((user) => user.created_by === actor._id);
+  } else {
+    users = [];
+  }
+
   return users.map((user) => sanitizeAdminUser(user, sessionRepository.listActiveByUserId(user._id).length));
 }
 
@@ -137,6 +148,7 @@ async function createManagedUser({
     department_id: nextDepartmentId || null,
     assigned_location_ids: [...new Set(locations)],
     is_active: isActive !== false,
+    created_by: actor._id,
     created_at: timestamp,
     updated_at: timestamp
   };

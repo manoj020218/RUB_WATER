@@ -999,14 +999,16 @@ footer{background:#0f172a;color:#94a3b8;padding:52px 20px 24px}
   <div class="auth-modal">
     <h3>FloodGuard Login</h3>
     <p>Sign in to load live VPS data.</p>
-    <label class="auth-lbl">API Base URL</label>
-    <input class="auth-inp" id="auth-api-base" placeholder="https://api.floodguard.iotsoft.in" />
+    <div id="auth-vendor-fields">
+      <label class="auth-lbl">API Base URL</label>
+      <input class="auth-inp" id="auth-api-base" placeholder="https://api.floodguard.iotsoft.in" />
+      <label class="auth-lbl">Device API Key (optional)</label>
+      <input class="auth-inp" id="auth-api-key" placeholder="FG_LOCAL_DEV_KEY" />
+    </div>
     <label class="auth-lbl">Login ID</label>
-    <input class="auth-inp" id="auth-login-id" placeholder="operator_rub043" />
+    <input class="auth-inp" id="auth-login-id" placeholder="Enter your login ID" />
     <label class="auth-lbl">Password</label>
     <input class="auth-inp" id="auth-password" type="password" placeholder="Enter password" />
-    <label class="auth-lbl">Device API Key (optional)</label>
-    <input class="auth-inp" id="auth-api-key" placeholder="FG_LOCAL_DEV_KEY" />
     <div class="auth-row">
       <button class="auth-btn auth-btn-primary" onclick="loginToDashboard()">Connect</button>
       <button class="auth-btn auth-btn-secondary" onclick="logoutDashboard()">Reset Session</button>
