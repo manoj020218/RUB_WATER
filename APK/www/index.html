@@ -24,7 +24,7 @@
         </div>
       </div>
       <div class="top-menu-wrap">
-        <button class="ghost-btn menu-trigger" id="top-menu-btn" onclick="toggleHeaderMenuApp(event)" aria-haspopup="menu" aria-expanded="false" title="Menu">⋮</button>
+        <button class="ghost-btn menu-trigger" id="top-menu-btn" onclick="toggleHeaderMenuApp(event)" aria-haspopup="menu" aria-expanded="false" title="Menu" style="display:none">⋮</button>
         <div class="top-menu" id="top-menu" style="display:none">
           <div class="top-menu-list" id="top-menu-list"></div>
           <button class="top-menu-logout" onclick="logoutFromMenuApp()">Logout</button>
@@ -752,7 +752,7 @@
       </section>
     </main>
 
-    <nav class="bottom-nav" id="bottom-nav">
+    <nav class="bottom-nav" id="bottom-nav" style="display:none">
       <button class="nav-btn active" data-view="view-locations" onclick="openView('view-locations')">Locations</button>
       <button class="nav-btn" data-view="view-dashboard" onclick="openView('view-dashboard')">Live</button>
       <button class="nav-btn" data-view="view-controls" onclick="openView('view-controls')">Controls</button>
