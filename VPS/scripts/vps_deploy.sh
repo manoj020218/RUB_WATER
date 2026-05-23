@@ -6,7 +6,7 @@ set -e
 
 REPO_REMOTE="https://github.com/manoj020218/RUB_WATER.git"
 BRANCH="main"
-SERVICE_NAME="floodguard"
+SERVICE_NAME="floodguard-api"
 PWA_DIR="/var/www/floodguard-pwa"
 VENDOR_DIR_NAME="vendor-mgmt"
 
