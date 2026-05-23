@@ -46,6 +46,7 @@ button {
   align-items: center;
   justify-content: space-between;
   gap: 8px;
+  position: relative;
 }
 
 .brand-wrap {
@@ -55,9 +56,12 @@ button {
 }
 
 .app-logo {
-  width: 30px;
-  height: 30px;
+  width: 34px;
+  height: 34px;
   flex-shrink: 0;
+  display: block;
+  object-fit: contain;
+  border-radius: 8px;
 }
 
 .brand {
@@ -85,6 +89,72 @@ button {
 .ghost-btn:active {
   transform: translateY(1px) scale(0.99);
   filter: brightness(0.98);
+}
+
+.top-menu-wrap {
+  position: relative;
+  flex-shrink: 0;
+}
+
+.menu-trigger {
+  min-width: 42px;
+  padding: 8px 10px;
+  font-size: 21px;
+  font-weight: 900;
+  line-height: 1;
+}
+
+.top-menu {
+  position: absolute;
+  right: 0;
+  top: calc(100% + 8px);
+  width: min(220px, calc(100vw - 24px));
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  background: #ffffff;
+  box-shadow: 0 16px 32px rgba(15, 23, 42, 0.22);
+  z-index: 50;
+  overflow: hidden;
+}
+
+.top-menu-list {
+  max-height: 56vh;
+  overflow: auto;
+  padding: 6px;
+}
+
+.top-menu-item {
+  width: 100%;
+  border: 0;
+  border-radius: 8px;
+  background: #f8fafc;
+  color: #0f172a;
+  text-align: left;
+  padding: 9px 10px;
+  font-size: 12px;
+  font-weight: 700;
+  margin-bottom: 6px;
+}
+
+.top-menu-item:last-child {
+  margin-bottom: 0;
+}
+
+.top-menu-item.active {
+  background: #dbeafe;
+  color: #1d4ed8;
+}
+
+.top-menu-logout {
+  width: calc(100% - 12px);
+  margin: 0 6px 8px;
+  border: 1px solid #fecaca;
+  border-radius: 8px;
+  background: #fef2f2;
+  color: #b91c1c;
+  padding: 9px 10px;
+  font-size: 12px;
+  font-weight: 800;
 }
 
 .pressed-feedback {
@@ -383,6 +453,107 @@ button {
   color: #64748b;
 }
 
+/* ── Location item wrapper (card + bind panel) ── */
+.loc-item {
+  display: flex;
+  flex-direction: column;
+  gap: 0;
+}
+
+/* Unbound location card gets a subtle red left border */
+.loc-card--unbound {
+  border-left: 3px solid #ef4444;
+}
+
+/* When bind panel is open, flatten card's bottom corners */
+.loc-item--bind-open .loc-card {
+  border-bottom-left-radius: 0;
+  border-bottom-right-radius: 0;
+}
+
+/* Bind Device toggle button (inside card, styled as pill) */
+.loc-bind-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  font-size: 9px;
+  font-weight: 800;
+  padding: 3px 8px;
+  border-radius: 999px;
+  border: 1px solid #ef4444;
+  background: #fef2f2;
+  color: #dc2626;
+  cursor: pointer;
+  user-select: none;
+  transition: background 0.12s;
+}
+.loc-bind-btn:hover { background: #fee2e2; }
+
+/* Inline bind panel below the card */
+.loc-bind-panel {
+  background: #f0f9ff;
+  border: 1px solid #bae6fd;
+  border-top: none;
+  border-radius: 0 0 10px 10px;
+  padding: 10px 12px;
+}
+
+.loc-bind-panel-inner {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.loc-bind-panel-label {
+  font-size: 12px;
+  color: #0369a1;
+}
+
+.loc-bind-row {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  flex-wrap: wrap;
+}
+
+.loc-bind-select,
+.loc-bind-input {
+  flex: 1;
+  min-width: 100px;
+  font-size: 12px;
+  padding: 6px 8px;
+  height: 32px;
+}
+
+.loc-bind-or {
+  font-size: 11px;
+  color: #64748b;
+  flex-shrink: 0;
+}
+
+.loc-bind-apply-btn {
+  background: #0ea5e9;
+  color: #fff;
+  border: none;
+  border-radius: 7px;
+  padding: 6px 14px;
+  font-size: 12px;
+  font-weight: 700;
+  cursor: pointer;
+  flex-shrink: 0;
+  transition: background 0.12s;
+}
+.loc-bind-apply-btn:hover { background: #0284c7; }
+
+/* Clickable device ID link in install table */
+.install-dev-link {
+  cursor: pointer;
+  color: #1565c0;
+  text-decoration: underline;
+  text-underline-offset: 2px;
+}
+.install-dev-link:hover { color: #0d47a1; }
+
 .loc-complaint-pill {
   font-size: 9px;
   font-weight: 800;
@@ -623,6 +794,10 @@ button {
 .nav-btn.active {
   background: #eff6ff;
   color: #1e40af;
+}
+
+.nav-btn-overflow-hidden {
+  display: none !important;
 }
 
 .diag-grid {
