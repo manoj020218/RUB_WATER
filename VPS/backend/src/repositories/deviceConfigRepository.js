@@ -4,6 +4,10 @@ function getCurrentByDevice(deviceId) {
   return dataStore.deviceConfigs.find((item) => item.device_id === deviceId) || null;
 }
 
+function listAll() {
+  return [...dataStore.deviceConfigs];
+}
+
 function upsertCurrent(deviceId, record) {
   const idx = dataStore.deviceConfigs.findIndex((item) => item.device_id === deviceId);
   if (idx === -1) {
@@ -43,6 +47,7 @@ function updateHistoryEntry(entryId, patch) {
 
 module.exports = {
   getCurrentByDevice,
+  listAll,
   upsertCurrent,
   appendHistory,
   listHistoryByDevice,

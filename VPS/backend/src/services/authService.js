@@ -95,6 +95,40 @@ function authenticateToken(token) {
   };
 }
 
+function refresh(token) {
+  let claims;
+  try {
+    claims = jwt.verify(token, env.jwtSecret);
+  } catch (error) {
+    throw unauthorized('Invalid or expired token');
+  }
+  const user = userRepository.findById(claims.sub);
+  if (!user || !user.is_active) {
+    throw unauthorized('User not found or deactivated');
+  }
+  const sessionId = `session_${uuidv4().replace(/-/g, '').slice(0, 12)}`;
+  const issuedAt = new Date().toISOString();
+  const session = {
+    _id: sessionId,
+    user_id: user._id,
+    login_id: user.login_id,
+    device_name: 'Auto-refresh',
+    app_type: 'PWA',
+    fcm_token: null,
+    ip_address: null,
+    created_at: issuedAt,
+    last_seen: issuedAt,
+    is_active: true
+  };
+  sessionRepository.create(session);
+  const newToken = jwt.sign(
+    { sub: user._id, login_id: user.login_id, role: user.role, session_id: sessionId },
+    env.jwtSecret,
+    { expiresIn: env.jwtTtl }
+  );
+  return { token: newToken, token_type: 'Bearer', expires_in: env.jwtTtl, user: sanitizeUser(user), session };
+}
+
 function logout(sessionId) {
   if (!sessionId) {
     throw badRequest('session id is required');
@@ -207,6 +241,7 @@ async function resetUserPassword({ authContext, targetUserId, targetLoginId, new
 module.exports = {
   login,
   authenticateToken,
+  refresh,
   logout,
   changeOwnPassword,
   resetUserPassword

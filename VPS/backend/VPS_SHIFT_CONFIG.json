@@ -24,14 +24,17 @@
     "security":  {
                      "apiKey":  "FG_LOCAL_DEV_KEY",
                      "jwtSecret":  "CHANGE_THIS_IN_PRODUCTION",
+                     "jwtTtl":  "30d",
                      "deviceProvisionKey":  "FloodGuard@302020",
                      "requireDeviceProvisionKey":  true,
                      "allowDeviceIdAuth":  false,
                      "corsAllowedOrigins":  [
                                                 "http://localhost",
                                                 "http://localhost:3000",
+                                                "https://localhost",
                                                 "http://127.0.0.1",
                                                 "http://127.0.0.1:3000",
+                                                "https://127.0.0.1",
                                                 "capacitor://localhost",
                                                 "ionic://localhost",
                                                 "https://api.floodguard.iotsoft.in",

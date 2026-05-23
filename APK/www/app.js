@@ -7,6 +7,7 @@
   const BLE_CHARACTERISTIC_UUID = '0000ff01-0000-1000-8000-00805f9b34fb';
   const BLE_NAME_PREFIX = 'JNX-FG';
   const DEFAULT_VPS_HEALTH_URL = 'https://api.floodguard.iotsoft.in/health';
+  const MAX_BOTTOM_PRIMARY_TABS = 6;
 
   const state = {
     apiBase: '',
@@ -203,8 +204,18 @@
   }
 
   function setLoggedInUi(isLoggedIn) {
-    byId('logout-btn').style.display = isLoggedIn ? 'inline-block' : 'none';
-    byId('bottom-nav').style.display = isLoggedIn ? 'grid' : 'none';
+    const menuBtn = byId('top-menu-btn');
+    const bottomNav = byId('bottom-nav');
+    if (menuBtn) {
+      menuBtn.style.display = isLoggedIn ? 'inline-flex' : 'none';
+    }
+    if (bottomNav) {
+      bottomNav.style.display = isLoggedIn ? 'grid' : 'none';
+    }
+    if (!isLoggedIn) {
+      closeHeaderMenu();
+    }
+    renderHeaderMenu();
   }
 
   function openView(viewId) {
@@ -224,6 +235,7 @@
       showToast('Vendor management is only available for Vendor Super Admin.', true);
       return;
     }
+    closeHeaderMenu();
 
     document.querySelectorAll('.view').forEach((view) => {
       view.classList.toggle('active', view.id === viewId);
@@ -234,6 +246,7 @@
     });
 
     if (viewId === 'view-install') {
+      renderInstallDeviceTable();
       refreshVendorInstallStatus().catch(() => {
         // handled internally
       });
@@ -242,8 +255,10 @@
       refreshDeviceConfigApp().catch(() => {
         // handled internally
       });
+      if (isSuperAdmin()) refreshAllDeviceConfigsApp().catch(() => {});
     }
     if (viewId === 'view-complaints') {
+      populateComplaintLocationSelect();
       refreshComplaintsApp().catch(() => {});
     }
     if (viewId === 'view-reports') {
@@ -259,6 +274,76 @@
       populateVendorProjectSelects().catch(() => {});
       loadVendorsApp().catch(() => {});
     }
+    renderHeaderMenu();
+  }
+
+  function closeHeaderMenu() {
+    const menu = byId('top-menu');
+    const trigger = byId('top-menu-btn');
+    if (menu) {
+      menu.style.display = 'none';
+    }
+    if (trigger) {
+      trigger.setAttribute('aria-expanded', 'false');
+    }
+  }
+
+  function toggleHeaderMenuApp(event) {
+    if (event) {
+      event.stopPropagation();
+      event.preventDefault();
+    }
+    const menu = byId('top-menu');
+    const trigger = byId('top-menu-btn');
+    if (!menu || !trigger || !state.token || !state.user) {
+      return;
+    }
+    const open = menu.style.display !== 'none';
+    if (open) {
+      closeHeaderMenu();
+    } else {
+      renderHeaderMenu();
+      menu.style.display = 'block';
+      trigger.setAttribute('aria-expanded', 'true');
+    }
+  }
+
+  function openMenuViewApp(viewId) {
+    closeHeaderMenu();
+    openView(viewId);
+  }
+
+  function logoutFromMenuApp() {
+    closeHeaderMenu();
+    logoutApp();
+  }
+
+  function renderHeaderMenu() {
+    const list = byId('top-menu-list');
+    if (!list) {
+      return;
+    }
+    if (!state.token || !state.user) {
+      list.innerHTML = '';
+      return;
+    }
+
+    const nav = byId('bottom-nav');
+    if (!nav) {
+      list.innerHTML = '';
+      return;
+    }
+
+    const currentViewId = document.querySelector('.view.active')?.id || '';
+    const buttons = Array.from(nav.querySelectorAll('.nav-btn'))
+      .filter((btn) => btn.style.display !== 'none');
+
+    list.innerHTML = buttons.map((btn) => {
+      const viewId = String(btn.dataset.view || '');
+      const label = escapeHtml((btn.textContent || '').trim() || viewId);
+      const activeClass = currentViewId === viewId ? ' active' : '';
+      return `<button class="top-menu-item${activeClass}" onclick="openMenuViewApp('${escapeHtml(viewId)}')">${label}</button>`;
+    }).join('');
   }
 
   function formatTime(iso) {
@@ -524,6 +609,54 @@
     };
   }
 
+  function renderInstallDeviceTable() {
+    const section = byId('install-device-table-section');
+    if (!section) return;
+    if (!isSuperAdmin()) {
+      section.style.display = 'none';
+      return;
+    }
+    section.style.display = '';
+    const tbody = byId('install-device-table-body');
+    const countEl = byId('install-device-table-count');
+    if (!tbody) return;
+    const locs = state.locations || [];
+    if (countEl) countEl.textContent = `${locs.length} device${locs.length !== 1 ? 's' : ''}`;
+    if (locs.length === 0) {
+      tbody.innerHTML = '<tr><td colspan="5" style="padding:14px 10px;color:#9e9e9e;text-align:center">No devices registered yet.</td></tr>';
+      return;
+    }
+    tbody.innerHTML = locs.map((loc, idx) => {
+      const deviceId = loc.device_id || '';
+      const locationName = loc.location_name || loc.name || '—';
+      const isOnline = String(loc.device_status || '').toUpperCase() === 'ONLINE';
+      const statusBadge = isOnline
+        ? '<span style="color:#2e7d32;font-weight:600;background:#e8f5e9;padding:2px 8px;border-radius:10px;font-size:11px">UP</span>'
+        : '<span style="color:#c62828;font-weight:600;background:#ffebee;padding:2px 8px;border-radius:10px;font-size:11px">DOWN</span>';
+      const diagBtn = (!isOnline && deviceId)
+        ? `<button class="ghost-btn" style="padding:4px 10px;font-size:11px" onclick="diagDownDeviceApp('${deviceId}')">Check Health</button>`
+        : '';
+      const displayId = deviceId || '—';
+      const rowBg = !isOnline ? 'background:#fffde7' : '';
+      return `<tr style="border-bottom:1px solid #f5f5f5;${rowBg}">
+        <td style="padding:8px 10px;color:#9e9e9e">${idx + 1}</td>
+        <td style="padding:8px 10px;font-family:monospace;font-size:12px">${displayId}</td>
+        <td style="padding:8px 10px">${locationName}</td>
+        <td style="padding:8px 10px">${statusBadge}</td>
+        <td style="padding:8px 10px;text-align:right">${diagBtn}</td>
+      </tr>`;
+    }).join('');
+  }
+
+  function diagDownDeviceApp(deviceId) {
+    if (!deviceId) return;
+    const bleSection = byId('ble-content');
+    if (bleSection) bleSection.scrollIntoView({ behavior: 'smooth', block: 'start' });
+    const selectedEl = byId('ble-selected-device');
+    if (selectedEl) selectedEl.textContent = `Diagnosing: ${deviceId} — scan BLE, connect, then tap "Check Device Health + VPS"`;
+    showToast(`Scan BLE to connect to ${deviceId}, then tap "Check Device Health + VPS" to diagnose.`);
+  }
+
   function renderInstallCloudStatuses() {
     const cloud = evaluateDeviceCloudHealth();
     const localCloudHintUp = state.install.localReachable === true && state.install.deviceCloudReachable === true;
@@ -625,9 +758,39 @@
     return parsed.data;
   }
 
+  let _tokenRefreshInProgress = false;
+
+  async function silentRefreshTokenApp() {
+    if (!state.token || _tokenRefreshInProgress) return false;
+    _tokenRefreshInProgress = true;
+    try {
+      const base = state.apiBase || normalizeApiBase('');
+      const resp = await fetch(`${base}/auth/refresh`, {
+        method: 'POST',
+        headers: { 'content-type': 'application/json', authorization: `Bearer ${state.token}` }
+      });
+      if (!resp.ok) return false;
+      const body = await resp.json();
+      if (!body.ok || !body.data?.token) return false;
+      state.token = body.data.token;
+      if (body.data.user) state.user = body.data.user;
+      if (body.data.session) state.session = body.data.session;
+      saveSession();
+      return true;
+    } catch (error) {
+      return false;
+    } finally {
+      _tokenRefreshInProgress = false;
+    }
+  }
+
   function handleApiError(error, fallbackMessage) {
     if (error?.status === 401) {
-      logoutApp(true, 'Access revoked by super admin or session expired. Please login again.');
+      silentRefreshTokenApp().then((refreshed) => {
+        if (!refreshed) {
+          logoutApp(true, 'Access revoked or session expired. Please login again.');
+        }
+      });
       return;
     }
     if (/failed to fetch/i.test(String(error?.message || ''))) {
@@ -1044,6 +1207,10 @@
     setProvisionCloseEnabled(true);
     setProvisionModalNote(`Provisioning SSID "${ssid}"...`);
     setProvisionFinalStepTitle('pending');
+    const _s1 = byId('prov-step-1');
+    const _s2 = byId('prov-step-2');
+    if (_s1) _s1.style.display = '';
+    if (_s2) _s2.style.display = '';
     setProvisionStep(1, 'active', 'Sending Wi-Fi details to device...');
     setProvisionStep(2, '', 'Waiting...');
     setProvisionStep(3, '', 'Waiting...');
@@ -1751,12 +1918,14 @@
     setText('cfg-meta-ack', `Last ACK: ${ackStatus} at ${ackTime}${ackMsg}`);
 
     if (accessNote) {
+      const loc = state.locations.find((l) => l.location_id === state.selectedLocationId);
+      const locLabel = loc ? `${loc.location_name || loc.location_id} · ${deviceId}` : '';
       if (!deviceId) {
-        accessNote.textContent = `Access: ${state.user?.role || 'UNKNOWN'} · Select a location/device first.`;
+        accessNote.textContent = `Configuring: — · Select a location in the Locations tab first.`;
       } else if (canEdit) {
-        accessNote.textContent = `Access: ${state.user?.role || 'UNKNOWN'} · Editable`;
+        accessNote.textContent = `Configuring: ${locLabel} · Editable`;
       } else {
-        accessNote.textContent = `Access: ${state.user?.role || 'UNKNOWN'} · Read only`;
+        accessNote.textContent = `Configuring: ${locLabel} · Read only`;
       }
     }
 
@@ -1829,6 +1998,69 @@
       showToast(`Cloud health warning: ${health.reason}. Trying cloud push anyway.`, true);
     }
     return true;
+  }
+
+  async function refreshAllDeviceConfigsApp() {
+    const section = byId('all-device-configs-section');
+    if (!section) return;
+    if (!isSuperAdmin()) { section.style.display = 'none'; return; }
+    section.style.display = '';
+    const tbody = byId('all-device-configs-body');
+    if (tbody) tbody.innerHTML = '<tr><td colspan="6" style="padding:12px 8px;color:#9e9e9e;text-align:center">Loading...</td></tr>';
+    try {
+      const configs = await apiRequest('/admin/device-configs');
+      const list = Array.isArray(configs) ? configs : [];
+      if (!tbody) return;
+      if (list.length === 0) {
+        tbody.innerHTML = '<tr><td colspan="6" style="padding:12px 8px;color:#9e9e9e;text-align:center">No device configs found.</td></tr>';
+        return;
+      }
+      tbody.innerHTML = list.map((c) => {
+        const ackBadge = c.last_ack_status === 'ACK'
+          ? '<span style="color:#2e7d32;font-size:10px">ACK</span>'
+          : (c.last_ack_status ? `<span style="color:#c62828;font-size:10px">${c.last_ack_status}</span>` : '<span style="color:#9e9e9e;font-size:10px">—</span>');
+        return `<tr style="border-bottom:1px solid #f5f5f5">
+          <td style="padding:7px 8px;font-family:monospace;font-size:11px">${escapeHtml(c.device_id)}</td>
+          <td style="padding:7px 8px;font-size:11px">${escapeHtml(c.location_name || c.location_id || '—')}</td>
+          <td style="padding:7px 8px">${c.alert_level_mm ?? '—'} / ${c.danger_level_mm ?? '—'}</td>
+          <td style="padding:7px 8px;color:#555">v${c.config_version ?? '?'}</td>
+          <td style="padding:7px 8px">${ackBadge}</td>
+          <td style="padding:7px 8px;text-align:right;white-space:nowrap">
+            <button class="ghost-btn" style="padding:3px 8px;font-size:11px;margin-right:4px" onclick="selectDeviceConfigForEditingApp('${escapeHtml(c.device_id)}','${escapeHtml(c.location_id || '')}')">Select</button>
+            <button class="ghost-btn" style="padding:3px 8px;font-size:11px;color:#c62828;border-color:#c62828" onclick="resetDeviceConfigToDefaultApp('${escapeHtml(c.device_id)}')">Reset Default</button>
+          </td>
+        </tr>`;
+      }).join('');
+    } catch (error) {
+      if (tbody) tbody.innerHTML = '<tr><td colspan="6" style="padding:12px 8px;color:#c62828;text-align:center">Failed to load configs.</td></tr>';
+    }
+  }
+
+  function selectDeviceConfigForEditingApp(deviceId, locationId) {
+    const loc = state.locations.find((l) => l.location_id === locationId || l.device_id === deviceId);
+    if (loc) {
+      state.selectedLocationId = loc.location_id;
+      state.selectedDeviceId = loc.device_id || deviceId;
+      saveSession();
+    } else {
+      state.selectedDeviceId = deviceId;
+    }
+    refreshDeviceConfigApp().catch(() => {});
+    refreshDeviceConfigHistoryApp().catch(() => {});
+    byId('cfg-access-note')?.scrollIntoView({ behavior: 'smooth', block: 'start' });
+    showToast(`Config loaded for ${deviceId}.`);
+  }
+
+  async function resetDeviceConfigToDefaultApp(deviceId) {
+    if (!confirm(`Reset config for ${deviceId} to factory defaults? This cannot be undone.`)) return;
+    try {
+      await apiRequest(`/admin/devices/${encodeURIComponent(deviceId)}/config/reset`, { method: 'POST' });
+      showToast(`${deviceId} config reset to defaults.`);
+      refreshAllDeviceConfigsApp().catch(() => {});
+      if (state.selectedDeviceId === deviceId) refreshDeviceConfigApp().catch(() => {});
+    } catch (error) {
+      showToast(`Reset failed: ${error.message}`, true);
+    }
   }
 
   async function refreshDeviceConfigHistoryApp() {
@@ -2308,10 +2540,16 @@
     if (!nav) {
       return;
     }
-    const visibleCount = Array.from(nav.querySelectorAll('.nav-btn'))
-      .filter((btn) => btn.style.display !== 'none')
+    const visibleButtons = Array.from(nav.querySelectorAll('.nav-btn'))
+      .filter((btn) => btn.style.display !== 'none');
+    visibleButtons.forEach((btn, idx) => {
+      btn.classList.toggle('nav-btn-overflow-hidden', idx >= MAX_BOTTOM_PRIMARY_TABS);
+    });
+    const visibleCount = visibleButtons
+      .filter((btn) => !btn.classList.contains('nav-btn-overflow-hidden'))
       .length;
     nav.style.setProperty('--nav-count', String(Math.max(1, visibleCount)));
+    renderHeaderMenu();
   }
 
   function renderLocations() {
@@ -3079,7 +3317,12 @@
         if (alreadyConnected && sameSsid) {
           reusedWifiSession = true;
           wifiResponse = healthResponse;
-          setProvisionStep(2, 'active', `Wi-Fi already connected${currentWifiSsid ? ` (${currentWifiSsid})` : ''}. Reusing connection...`);
+          // WiFi already connected — hide steps 1 & 2 and go straight to cloud step
+          const s1 = byId('prov-step-1');
+          const s2 = byId('prov-step-2');
+          if (s1) s1.style.display = 'none';
+          if (s2) s2.style.display = 'none';
+          setProvisionModalNote(`Wi-Fi already connected${currentWifiSsid ? ` (${currentWifiSsid})` : ''}. Applying cloud profile...`);
         }
       } catch (error) {
         // Health pre-check is best effort; continue with explicit Wi-Fi command.
@@ -3413,6 +3656,7 @@
     try {
       await fetchLocations();
       renderLocations();
+      if (isSuperAdmin()) renderInstallDeviceTable();
 
       if (!state.selectedLocationId) {
         return;
@@ -3463,6 +3707,11 @@
         // handled inside refreshAppData
       });
     }, REFRESH_INTERVAL_MS);
+    // Proactively refresh JWT every 6 hours so PWA never goes stale
+    if (state._tokenRefreshTimer) clearInterval(state._tokenRefreshTimer);
+    state._tokenRefreshTimer = setInterval(() => {
+      if (state.token) silentRefreshTokenApp().catch(() => {});
+    }, 6 * 60 * 60 * 1000);
   }
 
   async function verifySession() {
@@ -3557,6 +3806,10 @@
       clearInterval(state.refreshTimer);
       state.refreshTimer = null;
     }
+    if (state._tokenRefreshTimer) {
+      clearInterval(state._tokenRefreshTimer);
+      state._tokenRefreshTimer = null;
+    }
     if (state.incidentTimer) {
       clearInterval(state.incidentTimer);
       state.incidentTimer = null;
@@ -3591,6 +3844,7 @@
       renderDeviceConfigHistory([]);
     }
     renderLocations();
+    openView('view-dashboard');
     refreshAppData().catch(() => {
       // handled
     });
@@ -3964,6 +4218,28 @@
     } catch (error) {
       setText('complaint-raise-status', `Failed: ${error.message}`);
     }
+  }
+
+  function populateComplaintLocationSelect() {
+    const sel = byId('complaint-location-select');
+    if (!sel) return;
+    const locs = state.locations || [];
+    sel.innerHTML = locs.length === 0
+      ? '<option value="">No locations available</option>'
+      : locs.map((l) => `<option value="${l.location_id}"${l.location_id === state.selectedLocationId ? ' selected' : ''}>${l.location_name || l.location_id}</option>`).join('');
+  }
+
+  function selectComplaintLocationApp() {
+    const sel = byId('complaint-location-select');
+    const locId = sel?.value;
+    if (!locId) return;
+    const loc = state.locations.find((l) => l.location_id === locId);
+    state.selectedLocationId = locId;
+    state.selectedDeviceId = loc?.device_id || null;
+    saveSession();
+    refreshComplaintsApp().catch(() => {});
+    const locName = loc?.location_name || locId;
+    setText('complaint-location-sub', `${locName} · ${locId}`);
   }
 
   async function refreshComplaintsApp() {
@@ -4601,12 +4877,21 @@
     }).join('');
   }
 
-  function exportAuditCsvApp() {
+  function buildExportFilename(prefix) {
+    const now = new Date();
+    const pad = (n) => String(n).padStart(2, '0');
+    const d = `${now.getFullYear()}${pad(now.getMonth() + 1)}${pad(now.getDate())}`;
+    const t = `${pad(now.getHours())}${pad(now.getMinutes())}${pad(now.getSeconds())}`;
+    return `${prefix}_${d}_${t}.csv`;
+  }
+
+  async function exportAuditCsvApp() {
     const rows = state.report?.rows;
     if (!Array.isArray(rows) || rows.length === 0) {
       showToast('No data loaded. Use "Load Preview" first.', true);
       return;
     }
+
     const headers = ['Time (IST)', 'Location ID', 'Event Type', 'Details', 'User', 'Device ID'];
     const csvRows = [headers.join(',')];
     rows.forEach((row) => {
@@ -4620,9 +4905,34 @@
     });
 
     const csvContent = csvRows.join('\n');
-    const filename = `floodguard-audit-${new Date().toISOString().slice(0, 10)}.csv`;
+    const filename = buildExportFilename('FloodGuard_Report');
+    const blob = new Blob(['﻿' + csvContent], { type: 'text/csv;charset=utf-8;' });
+    const statusEl = byId('report-export-status');
+
+    // Mobile (native app): use Web Share API with file — shows native share sheet
+    // User can save to Files, forward via WhatsApp, email, etc.
+    if (isNativeApp() && navigator.canShare) {
+      const shareFile = new File([blob], filename, { type: 'text/csv' });
+      if (navigator.canShare({ files: [shareFile] })) {
+        try {
+          await navigator.share({
+            files: [shareFile],
+            title: 'FloodGuard Audit Report',
+            text: `${rows.length} records — ${filename}`
+          });
+          showToast('Report shared successfully.');
+          if (statusEl) statusEl.textContent = `Shared: ${filename} (${rows.length} records)`;
+        } catch (err) {
+          if (err.name !== 'AbortError') {
+            showToast('Share cancelled.', true);
+          }
+        }
+        return;
+      }
+    }
+
+    // Browser / Desktop PWA: standard download → goes to Downloads folder automatically
     try {
-      const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
       const url = URL.createObjectURL(blob);
       const a = document.createElement('a');
       a.href = url;
@@ -4631,12 +4941,21 @@
       a.click();
       document.body.removeChild(a);
       URL.revokeObjectURL(url);
-      showToast(`CSV exported: ${rows.length} records`);
+
+      const savedMsg = isNativeApp()
+        ? `Saved: ${filename} — check your device Downloads folder`
+        : `Downloaded: ${filename} — saved to your Downloads folder`;
+      showToast(savedMsg);
+      if (statusEl) statusEl.textContent = `${savedMsg} (${rows.length} records)`;
     } catch (_) {
+      // Last resort: clipboard
       if (navigator.clipboard) {
         navigator.clipboard.writeText(csvContent)
-          .then(() => showToast('CSV copied to clipboard.'))
-          .catch(() => showToast('Export failed.', true));
+          .then(() => {
+            showToast('Download failed. CSV data copied to clipboard — paste into a text file and save as .csv');
+            if (statusEl) statusEl.textContent = 'Export copied to clipboard (download not available on this device).';
+          })
+          .catch(() => showToast('Export failed. No download method available.', true));
       } else {
         showToast('Export not supported on this device.', true);
       }
@@ -4681,8 +5000,28 @@
     }
   }
 
+  function bindHeaderMenuAutoClose() {
+    if (bindHeaderMenuAutoClose.bound) {
+      return;
+    }
+    bindHeaderMenuAutoClose.bound = true;
+    document.addEventListener('click', (event) => {
+      const menu = byId('top-menu');
+      const trigger = byId('top-menu-btn');
+      if (!menu || !trigger || menu.style.display === 'none') {
+        return;
+      }
+      const target = event.target;
+      if (target && (menu.contains(target) || trigger.contains(target))) {
+        return;
+      }
+      closeHeaderMenu();
+    });
+  }
+
   async function bootstrap() {
     installButtonPressFeedback();
+    bindHeaderMenuAutoClose();
     applyBrowserModeUi();
     setLoggedInUi(false);
     openView('view-login');
@@ -4816,6 +5155,9 @@
   }
 
   window.openView = openView;
+  window.toggleHeaderMenuApp = toggleHeaderMenuApp;
+  window.openMenuViewApp = openMenuViewApp;
+  window.logoutFromMenuApp = logoutFromMenuApp;
   window.loginApp = loginApp;
   window.logoutApp = logoutApp;
   window.selectLocation = selectLocation;
@@ -4835,11 +5177,15 @@
   window.bleScanDevicesApp = bleScanDevicesApp;
   window.bleDisconnectApp = bleDisconnectApp;
   window.bleReadHealthApp = bleReadHealthApp;
+  window.diagDownDeviceApp = diagDownDeviceApp;
   window.bleScanWifiApp = bleScanWifiApp;
   window.bleProvisionWifiApp = bleProvisionWifiApp;
   window.refreshLocalDeviceStatusApp = refreshLocalDeviceStatusApp;
   window.refreshDeviceConfigApp = refreshDeviceConfigApp;
   window.refreshDeviceConfigHistoryApp = refreshDeviceConfigHistoryApp;
+  window.refreshAllDeviceConfigsApp = refreshAllDeviceConfigsApp;
+  window.selectDeviceConfigForEditingApp = selectDeviceConfigForEditingApp;
+  window.resetDeviceConfigToDefaultApp = resetDeviceConfigToDefaultApp;
   window.saveDeviceConfigApp = saveDeviceConfigApp;
   window.saveDeviceConfigLocalLanApp = saveDeviceConfigLocalLanApp;
   window.pushDeviceConfigApp = pushDeviceConfigApp;
@@ -4849,6 +5195,7 @@
   window.recommissionDeviceApp = recommissionDeviceApp;
   window.refreshLifecycleHistoryApp = refreshLifecycleHistoryApp;
   window.raiseComplaintApp = raiseComplaintApp;
+  window.selectComplaintLocationApp = selectComplaintLocationApp;
   window.acknowledgeComplaintApp = acknowledgeComplaintApp;
   window.resolveComplaintApp = resolveComplaintApp;
   window.closeComplaintApp = closeComplaintApp;

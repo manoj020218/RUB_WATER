@@ -6,6 +6,7 @@ const locationRepo = require('../repositories/locationRepository');
 const deviceRepo = require('../repositories/deviceRepository');
 const userRepo = require('../repositories/userRepository');
 const { dataStore } = require('../db/datastore');
+const deviceConfigRepo = require('../repositories/deviceConfigRepository');
 
 function requireSuperAdmin(req) {
   const role = String(req.auth?.user?.role || '').toUpperCase();
@@ -201,6 +202,72 @@ function unbindDevice(req, res, next) {
   } catch (error) { next(error); }
 }
 
+// ── Device Configs overview ────────────────────────────────────────────────────
+function listAllDeviceConfigs(req, res, next) {
+  try {
+    requireSuperAdmin(req);
+    const configs = deviceConfigRepo.listAll().map((c) => {
+      const loc = locationRepo.findById(c.location_id);
+      return {
+        device_id: c.device_id,
+        location_id: c.location_id,
+        location_name: loc?.name || c.location_id,
+        config_version: c.config_version,
+        state: c.state,
+        alert_level_mm: c.alert_level_mm,
+        danger_level_mm: c.danger_level_mm,
+        clear_level_mm: c.clear_level_mm,
+        sensor_mount_height_mm: c.sensor_mount_height_mm,
+        last_ack_status: c.last_ack_status,
+        last_ack_at: c.last_ack_at,
+        last_applied_at: c.last_applied_at
+      };
+    });
+    res.json({ ok: true, data: configs });
+  } catch (error) { next(error); }
+}
+
+function resetDeviceConfigToDefault(req, res, next) {
+  try {
+    requireSuperAdmin(req);
+    const deviceId = String(req.params.deviceId || '').trim().toUpperCase();
+    const device = deviceRepo.findById(deviceId);
+    if (!device) { res.status(404).json({ ok: false, error: 'Device not found' }); return; }
+    const locationId = device.location_id;
+    if (!locationId) { res.status(400).json({ ok: false, error: 'Device is not bound to a location' }); return; }
+    const loc = locationRepo.findById(locationId);
+    const now = new Date().toISOString();
+    const defaults = {
+      alert_level_mm: loc?.alert_level_mm || 200,
+      danger_level_mm: loc?.danger_level_mm || 500,
+      clear_level_mm: loc?.danger_clear_level_mm || 450,
+      trigger_delay_seconds: 60,
+      clear_delay_seconds: 300,
+      rs485_sensor_enabled: true,
+      switch_sensor_enabled: true,
+      switch_level_1_mm: 300,
+      switch_level_2_mm: 500,
+      sensor_mount_height_mm: loc?.sensor_mount_height_mm || 1200,
+      mismatch_duration_seconds: 120
+    };
+    const existing = deviceConfigRepo.getCurrentByDevice(deviceId) || {};
+    const updated = deviceConfigRepo.upsertCurrent(deviceId, {
+      ...existing,
+      ...defaults,
+      device_id: deviceId,
+      location_id: locationId,
+      config_version: (existing.config_version || 0) + 1,
+      state: 'ACTIVE',
+      last_applied_at: now,
+      last_applied_by: req.auth?.user?._id || 'admin_reset',
+      last_ack_at: null,
+      last_ack_status: null,
+      last_ack_message: null
+    });
+    res.json({ ok: true, data: { device_id: deviceId, config_version: updated.config_version, ...defaults } });
+  } catch (error) { next(error); }
+}
+
 // ── Internal helpers ──────────────────────────────────────────────────────────
 function _ensureDefaultConfig(deviceId, locationId) {
   const existing = dataStore.deviceConfigs.find((c) => c.device_id === deviceId);
@@ -245,5 +312,7 @@ module.exports = {
   listAllDevices,
   createDevice,
   bindDevice,
-  unbindDevice
+  unbindDevice,
+  listAllDeviceConfigs,
+  resetDeviceConfigToDefault
 };

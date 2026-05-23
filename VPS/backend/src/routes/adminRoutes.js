@@ -25,4 +25,8 @@ router.delete('/locations/:locationId/bind-device', adminController.unbindDevice
 router.get('/devices', adminController.listAllDevices);
 router.post('/devices', adminController.createDevice);
 
+// Device configs overview
+router.get('/device-configs', adminController.listAllDeviceConfigs);
+router.post('/devices/:deviceId/config/reset', adminController.resetDeviceConfigToDefault);
+
 module.exports = router;

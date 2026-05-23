@@ -21,6 +21,21 @@ async function login(req, res, next) {
   }
 }
 
+function refresh(req, res, next) {
+  try {
+    const authHeader = String(req.headers.authorization || '');
+    const token = authHeader.startsWith('Bearer ') ? authHeader.slice(7) : '';
+    if (!token) {
+      res.status(401).json({ ok: false, error: 'No token provided' });
+      return;
+    }
+    const result = authService.refresh(token);
+    res.json({ ok: true, data: result });
+  } catch (error) {
+    next(error);
+  }
+}
+
 function logout(req, res, next) {
   try {
     const result = authService.logout(req.auth.session._id);
@@ -110,6 +125,7 @@ async function resetPassword(req, res, next) {
 
 module.exports = {
   login,
+  refresh,
   logout,
   me,
   changePassword,

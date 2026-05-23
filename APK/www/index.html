@@ -17,13 +17,19 @@
   <div class="app-shell">
     <header class="topbar">
       <div class="brand-wrap">
-        <img class="app-logo" src="./floodguard-logo.svg" alt="FloodGuard logo">
+        <img class="app-logo" src="./app-icon-192.png" alt="FloodGuard logo">
         <div>
         <div class="brand">FloodGuard by Jenix</div>
         <div class="subtitle">Real-time RUB flood monitoring</div>
         </div>
       </div>
-      <button class="ghost-btn" id="logout-btn" onclick="logoutApp()">Logout</button>
+      <div class="top-menu-wrap">
+        <button class="ghost-btn menu-trigger" id="top-menu-btn" onclick="toggleHeaderMenuApp(event)" aria-haspopup="menu" aria-expanded="false" title="Menu">⋮</button>
+        <div class="top-menu" id="top-menu" style="display:none">
+          <div class="top-menu-list" id="top-menu-list"></div>
+          <button class="top-menu-logout" onclick="logoutFromMenuApp()">Logout</button>
+        </div>
+      </div>
     </header>
 
     <main class="main">
@@ -284,6 +290,30 @@
           </div>
           <p class="view-subtitle">BLE provisioning for ESP32-S3 (JNX-FGXXXX) and site diagnostics.</p>
 
+          <!-- Registered Devices table — super admin only -->
+          <div id="install-device-table-section" style="display:none;margin-top:4px;margin-bottom:16px">
+            <div class="row between" style="margin-bottom:8px;align-items:center">
+              <h3 style="margin:0;font-size:14px;font-weight:600;color:#1a237e">Registered Devices</h3>
+              <span class="meta" id="install-device-table-count" style="font-size:12px"></span>
+            </div>
+            <div style="overflow-x:auto;border-radius:8px;border:1px solid #e8eaf6">
+              <table id="install-device-table" style="width:100%;border-collapse:collapse;font-size:13px">
+                <thead style="background:#f3f4ff">
+                  <tr>
+                    <th style="text-align:left;padding:8px 10px;font-weight:600;color:#3949ab;border-bottom:1px solid #e8eaf6">#</th>
+                    <th style="text-align:left;padding:8px 10px;font-weight:600;color:#3949ab;border-bottom:1px solid #e8eaf6">Device ID</th>
+                    <th style="text-align:left;padding:8px 10px;font-weight:600;color:#3949ab;border-bottom:1px solid #e8eaf6">Location</th>
+                    <th style="text-align:left;padding:8px 10px;font-weight:600;color:#3949ab;border-bottom:1px solid #e8eaf6">Status</th>
+                    <th style="padding:8px 10px;border-bottom:1px solid #e8eaf6"></th>
+                  </tr>
+                </thead>
+                <tbody id="install-device-table-body">
+                  <tr><td colspan="5" style="padding:14px 10px;color:#9e9e9e;text-align:center">Loading...</td></tr>
+                </tbody>
+              </table>
+            </div>
+          </div>
+
           <!-- PWA / browser notice — shown only when not running in native Capacitor app -->
           <div id="install-pwa-notice" class="pwa-notice" style="display:none">
             <div class="pwa-notice-icon">📱</div>
@@ -451,6 +481,31 @@
           <div class="timeline" id="cfg-history-list">
             <div class="empty">No config history loaded.</div>
           </div>
+
+          <!-- All Device Configs — super admin only -->
+          <div id="all-device-configs-section" style="display:none;margin-top:20px">
+            <div class="row between" style="margin-bottom:8px;align-items:center">
+              <h3 style="margin:0;font-size:14px;font-weight:600;color:#1a237e">All Device Configurations</h3>
+              <button class="ghost-btn" style="padding:5px 10px;font-size:11px" onclick="refreshAllDeviceConfigsApp()">Refresh</button>
+            </div>
+            <div style="overflow-x:auto;border-radius:8px;border:1px solid #e8eaf6">
+              <table id="all-device-configs-table" style="width:100%;border-collapse:collapse;font-size:12px">
+                <thead style="background:#f3f4ff">
+                  <tr>
+                    <th style="text-align:left;padding:7px 8px;font-weight:600;color:#3949ab;border-bottom:1px solid #e8eaf6">Device ID</th>
+                    <th style="text-align:left;padding:7px 8px;font-weight:600;color:#3949ab;border-bottom:1px solid #e8eaf6">Location</th>
+                    <th style="text-align:left;padding:7px 8px;font-weight:600;color:#3949ab;border-bottom:1px solid #e8eaf6">Alert/Danger mm</th>
+                    <th style="text-align:left;padding:7px 8px;font-weight:600;color:#3949ab;border-bottom:1px solid #e8eaf6">Ver</th>
+                    <th style="text-align:left;padding:7px 8px;font-weight:600;color:#3949ab;border-bottom:1px solid #e8eaf6">ACK</th>
+                    <th style="padding:7px 8px;border-bottom:1px solid #e8eaf6"></th>
+                  </tr>
+                </thead>
+                <tbody id="all-device-configs-body">
+                  <tr><td colspan="6" style="padding:12px 8px;color:#9e9e9e;text-align:center">Tap Refresh to load.</td></tr>
+                </tbody>
+              </table>
+            </div>
+          </div>
         </div>
       </section>
 
@@ -472,6 +527,11 @@
             </div>
             <span class="chip off" id="complaint-open-count">0 open</span>
           </div>
+
+          <label class="lbl" style="margin-top:8px">Select Location</label>
+          <select class="inp" id="complaint-location-select" onchange="selectComplaintLocationApp()">
+            <option value="">Select a location...</option>
+          </select>
 
           <p class="section-sep">Raise New Complaint</p>
           <label class="lbl">Complaint Type</label>
@@ -616,6 +676,7 @@
               <span id="report-count-label">0 records loaded</span>
               <button class="ghost-btn" style="padding:5px 10px;font-size:11px" onclick="exportAuditCsvApp()">Export CSV</button>
             </div>
+            <div class="meta" id="report-export-status" style="margin-top:4px;font-size:11px;color:#3949ab"></div>
             <div class="report-table-wrap">
               <table class="report-table">
                 <thead>
