@@ -93,7 +93,7 @@ echo "=== Restarting backend service ==="
 
 if pm2 list | grep -q "$SERVICE_NAME"; then
   echo "Restarting existing PM2 process '$SERVICE_NAME'..."
-  pm2 restart "$SERVICE_NAME"
+  pm2 restart "$SERVICE_NAME" --update-env
 else
   echo "No PM2 process named '$SERVICE_NAME' found — starting fresh..."
   pm2 start "$BACKEND_DIR/src/server.js" --name "$SERVICE_NAME" --cwd "$BACKEND_DIR"
