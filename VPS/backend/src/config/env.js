@@ -74,7 +74,9 @@ const defaultCorsOrigins = [
   'ionic://localhost',
   'https://floodguard.jenix.in'
 ];
-const corsAllowedOrigins = configuredCorsOrigins.length ? configuredCorsOrigins : defaultCorsOrigins;
+const corsAllowedOrigins = configuredCorsOrigins.length
+  ? [...new Set([...configuredCorsOrigins, ...defaultCorsOrigins])]
+  : defaultCorsOrigins;
 const corsAllowAll = corsAllowedOrigins.includes('*');
 
 module.exports = {
