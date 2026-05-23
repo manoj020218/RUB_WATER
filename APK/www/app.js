@@ -247,6 +247,7 @@
 
     if (viewId === 'view-install') {
       renderInstallDeviceTable();
+      if (isSuperAdmin()) refreshAdminDevicesApp().catch(() => {});
       refreshVendorInstallStatus().catch(() => {
         // handled internally
       });
@@ -269,6 +270,7 @@
     }
     if (viewId === 'view-locations' && isSuperAdmin()) {
       populateDeviceLocationSelect();
+      refreshAdminDevicesApp().catch(() => {});
     }
     if (viewId === 'view-vendors') {
       populateVendorProjectSelects().catch(() => {});
@@ -620,13 +622,56 @@
     const tbody = byId('install-device-table-body');
     const countEl = byId('install-device-table-count');
     if (!tbody) return;
+
+    const adminDevices = state.adminDevices || [];
     const locs = state.locations || [];
-    if (countEl) countEl.textContent = `${locs.length} device${locs.length !== 1 ? 's' : ''}`;
-    if (locs.length === 0) {
+
+    // Build a map of locationId → location for quick lookup
+    const locMap = {};
+    locs.forEach((l) => { locMap[l.location_id] = l; });
+
+    // Unbound VPS devices: registered but no location assigned
+    const unbound = adminDevices.filter((d) => !d.location_id);
+    // Bound: all locations (which implies a device is bound)
+    const bound = locs.filter((l) => l.device_id);
+
+    const totalCount = unbound.length + bound.length;
+    if (countEl) countEl.textContent = `${totalCount} device${totalCount !== 1 ? 's' : ''}`;
+
+    if (totalCount === 0 && adminDevices.length === 0) {
       tbody.innerHTML = '<tr><td colspan="5" style="padding:14px 10px;color:#9e9e9e;text-align:center">No devices registered yet.</td></tr>';
       return;
     }
-    tbody.innerHTML = locs.map((loc, idx) => {
+
+    let rows = [];
+    let idx = 1;
+
+    // --- UNBOUND DEVICES (top, highlighted) ---
+    unbound.forEach((dev) => {
+      const deviceId = dev.device_id || '';
+      const isOnline = String(dev.status || '').toUpperCase() === 'ONLINE';
+      const statusBadge = isOnline
+        ? '<span style="color:#2e7d32;font-weight:600;background:#e8f5e9;padding:2px 8px;border-radius:10px;font-size:11px">UP</span>'
+        : '<span style="color:#c62828;font-weight:600;background:#ffebee;padding:2px 8px;border-radius:10px;font-size:11px">DOWN</span>';
+      const diagBtn = (!isOnline && deviceId)
+        ? `<button class="ghost-btn" style="padding:4px 10px;font-size:11px" onclick="diagDownDeviceApp('${escapeHtml(deviceId)}')">Check Health</button>`
+        : '';
+      rows.push(`<tr style="border-bottom:1px solid #e3f2fd;background:#e8f4fd">
+        <td style="padding:8px 10px;color:#9e9e9e">${idx++}</td>
+        <td style="padding:8px 10px;font-family:monospace;font-size:12px">
+          <span class="install-dev-link" onclick="openView('view-locations')" title="Go to Locations to bind this device">${escapeHtml(deviceId)}</span>
+          <span style="font-size:10px;color:#1565c0;margin-left:4px">↑ not bound</span>
+        </td>
+        <td style="padding:8px 10px">
+          <span class="install-dev-link" onclick="openView('view-locations')" style="color:#1565c0;font-size:12px">Assign location →</span>
+        </td>
+        <td style="padding:8px 10px">${statusBadge}</td>
+        <td style="padding:8px 10px;text-align:right">${diagBtn}</td>
+      </tr>`);
+    });
+
+    // --- BOUND DEVICES ---
+    bound.forEach((loc) => {
       const deviceId = loc.device_id || '';
       const locationName = loc.location_name || loc.name || '—';
       const isOnline = String(loc.device_status || '').toUpperCase() === 'ONLINE';
@@ -634,18 +679,23 @@
         ? '<span style="color:#2e7d32;font-weight:600;background:#e8f5e9;padding:2px 8px;border-radius:10px;font-size:11px">UP</span>'
         : '<span style="color:#c62828;font-weight:600;background:#ffebee;padding:2px 8px;border-radius:10px;font-size:11px">DOWN</span>';
       const diagBtn = (!isOnline && deviceId)
-        ? `<button class="ghost-btn" style="padding:4px 10px;font-size:11px" onclick="diagDownDeviceApp('${deviceId}')">Check Health</button>`
+        ? `<button class="ghost-btn" style="padding:4px 10px;font-size:11px" onclick="diagDownDeviceApp('${escapeHtml(deviceId)}')">Check Health</button>`
         : '';
-      const displayId = deviceId || '—';
       const rowBg = !isOnline ? 'background:#fffde7' : '';
-      return `<tr style="border-bottom:1px solid #f5f5f5;${rowBg}">
-        <td style="padding:8px 10px;color:#9e9e9e">${idx + 1}</td>
-        <td style="padding:8px 10px;font-family:monospace;font-size:12px">${displayId}</td>
-        <td style="padding:8px 10px">${locationName}</td>
+      rows.push(`<tr style="border-bottom:1px solid #f5f5f5;${rowBg}">
+        <td style="padding:8px 10px;color:#9e9e9e">${idx++}</td>
+        <td style="padding:8px 10px;font-family:monospace;font-size:12px">${escapeHtml(deviceId)}</td>
+        <td style="padding:8px 10px">${escapeHtml(locationName)}</td>
         <td style="padding:8px 10px">${statusBadge}</td>
         <td style="padding:8px 10px;text-align:right">${diagBtn}</td>
-      </tr>`;
-    }).join('');
+      </tr>`);
+    });
+
+    if (rows.length === 0) {
+      tbody.innerHTML = '<tr><td colspan="5" style="padding:14px 10px;color:#9e9e9e;text-align:center">No devices registered yet.</td></tr>';
+    } else {
+      tbody.innerHTML = rows.join('');
+    }
   }
 
   function diagDownDeviceApp(deviceId) {
@@ -2458,6 +2508,40 @@
     });
   }
 
+  function applyVendorLoginFieldsVisibility() {
+    const row = byId('login-vendor-fields');
+    if (!row) return;
+    const role = String(state.user?.role || '').toUpperCase();
+    const isVendor = !role || role === 'VENDOR_SUPER_ADMIN' || role === 'VENDOR_MONITORING_USER';
+    row.style.display = isVendor ? '' : 'none';
+  }
+
+  function populateRoleDropdown() {
+    const select = byId('ua-role');
+    if (!select) return;
+    const role = userRole();
+    const vendorOptions = [
+      { value: 'DEPARTMENT_SUPER_ADMIN', label: 'Dept Super Admin' },
+      { value: 'DEPARTMENT_ADMIN', label: 'Department Admin' },
+      { value: 'LOCATION_ADMIN', label: 'Location Admin' },
+      { value: 'OPERATOR', label: 'Operator' },
+      { value: 'VIEWER', label: 'Viewer' },
+      { value: 'AUDITOR', label: 'Auditor' },
+      { value: 'VENDOR_MONITORING_USER', label: 'Vendor Monitoring' }
+    ];
+    const deptOptions = [
+      { value: 'DEPARTMENT_ADMIN', label: 'Department Admin' },
+      { value: 'LOCATION_ADMIN', label: 'Location Admin' },
+      { value: 'OPERATOR', label: 'Operator' },
+      { value: 'VIEWER', label: 'Viewer' },
+      { value: 'AUDITOR', label: 'Auditor' }
+    ];
+    const options = role === 'VENDOR_SUPER_ADMIN' ? vendorOptions : deptOptions;
+    select.innerHTML = options
+      .map((opt) => `<option value="${escapeHtml(opt.value)}">${escapeHtml(opt.label)}</option>`)
+      .join('');
+  }
+
   function applyVendorInstallVisibility() {
     const tab = byId('vendor-install-tab');
     const installView = byId('view-install');
@@ -2572,10 +2656,11 @@
       const levelStr = levelRaw !== null ? String(levelRaw) : '--';
 
       // Online dot
+      const deviceId = loc.device_id || '';
       const devStatus = String(loc.device_status || 'UNKNOWN').toUpperCase();
       const isOnline = devStatus === 'ONLINE';
       const isWarn = !isOnline && devStatus !== 'OFFLINE' && devStatus !== 'UNKNOWN';
-      const dotCls = isOnline ? 'online' : (isWarn ? 'warn' : 'offline');
+      const dotCls = deviceId ? (isOnline ? 'online' : (isWarn ? 'warn' : 'offline')) : 'offline';
 
       // Mini vessel fill
       const mountRef = Number(loc.sensor_mount_height_mm || 1000);
@@ -2591,8 +2676,16 @@
       // Status chip class
       const chipCls = meta.cls === 'danger' ? ' danger' : meta.cls === 'warn' ? ' warn' : meta.cls === 'off' ? ' off' : '';
 
-      // Device pill class
+      // Device pill — show device ID + status if bound, or bind button if unbound (super admin)
       const devPillCls = isOnline ? 'loc-dev-pill--online' : 'loc-dev-pill--offline';
+      let deviceSection = '';
+      if (deviceId) {
+        deviceSection = `<span class="loc-dev-pill ${devPillCls}" title="Device ID: ${escapeHtml(deviceId)}">${escapeHtml(deviceId)} · ${escapeHtml(devStatus)}</span>`;
+      } else if (isSuperAdmin()) {
+        deviceSection = `<span class="loc-bind-btn" onclick="event.stopPropagation();toggleInlineBindApp('${escapeHtml(loc.location_id)}')" title="Bind a device to this location">Bind Device</span>`;
+      } else {
+        deviceSection = `<span class="loc-dev-pill loc-dev-pill--offline">NO DEVICE</span>`;
+      }
 
       // Complaint badge
       const complaintCount = Number(loc.open_complaint_count || 0);
@@ -2606,36 +2699,56 @@
         ? `<span class="loc-lifecycle-pill loc-lifecycle-pill--${escapeHtml(opStatus.toLowerCase())}">${opStatus === 'UNDER_REPLACEMENT' ? 'UNDER REPAIR' : escapeHtml(opStatus)}</span>`
         : '';
 
+      // Inline bind panel (only for unbound locations, super admin)
+      const bindPanel = (!deviceId && isSuperAdmin()) ? `
+        <div class="loc-bind-panel" id="bind-panel-${escapeHtml(loc.location_id)}" style="display:none">
+          <div class="loc-bind-panel-inner">
+            <span class="loc-bind-panel-label">Bind device to <strong>${escapeHtml(loc.location_name || loc.location_id)}</strong></span>
+            <div class="loc-bind-row">
+              <select class="inp loc-bind-select" id="bind-sel-${escapeHtml(loc.location_id)}">
+                <option value="">Select free device…</option>
+                ${(state.adminDevices || []).filter((d) => !d.location_id).map((d) => `<option value="${escapeHtml(d.device_id)}">${escapeHtml(d.device_id)}${d.status ? ' (' + String(d.status).toUpperCase() + ')' : ''}</option>`).join('')}
+              </select>
+              <span class="loc-bind-or">or</span>
+              <input class="inp loc-bind-input" id="bind-inp-${escapeHtml(loc.location_id)}" placeholder="Type Device ID…" oninput="document.getElementById('bind-sel-${escapeHtml(loc.location_id)}').value=''">
+              <button class="loc-bind-apply-btn" onclick="applyBindFromCardApp('${escapeHtml(loc.location_id)}')">Apply</button>
+            </div>
+          </div>
+        </div>` : '';
+
       return `
-        <button class="loc-card${selected ? ' sel' : ''}" onclick="selectLocation('${escapeHtml(loc.location_id)}')">
-          <div class="loc-card-top">
-            <div class="loc-name-row">
-              <span class="loc-dot loc-dot--${dotCls}"></span>
-              <div>
-                <div class="loc-name">${escapeHtml(loc.location_name || loc.location_id)}</div>
-                <div class="loc-id">${escapeHtml(loc.location_id)}</div>
+        <div class="loc-item">
+          <button class="loc-card${selected ? ' sel' : ''}${!deviceId ? ' loc-card--unbound' : ''}" onclick="selectLocation('${escapeHtml(loc.location_id)}')">
+            <div class="loc-card-top">
+              <div class="loc-name-row">
+                <span class="loc-dot loc-dot--${dotCls}"></span>
+                <div>
+                  <div class="loc-name">${escapeHtml(loc.location_name || loc.location_id)}</div>
+                  <div class="loc-id">${escapeHtml(loc.location_id)}</div>
+                </div>
+              </div>
+              <span class="chip${chipCls}">${escapeHtml(meta.label)}</span>
+            </div>
+            <div class="loc-card-body">
+              <div class="loc-vessel-mini">
+                <div class="loc-vessel-fill-mini" style="height:${fillPct}%;background:${fillColor}"></div>
+              </div>
+              <div class="loc-stats">
+                <div class="loc-level-row">
+                  <span class="loc-level-num">${escapeHtml(levelStr)}</span>
+                  <span class="loc-level-unit">mm</span>
+                </div>
+                <div class="loc-pill-row">
+                  ${deviceSection}
+                  ${complaintBadge}
+                  ${lifecycleBadge}
+                </div>
+                <div class="loc-meta">Updated ${escapeHtml(formatTime(loc.last_update))}</div>
               </div>
             </div>
-            <span class="chip${chipCls}">${escapeHtml(meta.label)}</span>
-          </div>
-          <div class="loc-card-body">
-            <div class="loc-vessel-mini">
-              <div class="loc-vessel-fill-mini" style="height:${fillPct}%;background:${fillColor}"></div>
-            </div>
-            <div class="loc-stats">
-              <div class="loc-level-row">
-                <span class="loc-level-num">${escapeHtml(levelStr)}</span>
-                <span class="loc-level-unit">mm</span>
-              </div>
-              <div class="loc-pill-row">
-                <span class="loc-dev-pill ${devPillCls}">${escapeHtml(devStatus)}</span>
-                ${complaintBadge}
-                ${lifecycleBadge}
-              </div>
-              <div class="loc-meta">Updated ${escapeHtml(formatTime(loc.last_update))}</div>
-            </div>
-          </div>
-        </button>
+          </button>
+          ${bindPanel}
+        </div>
       `;
     }).join('');
   }
@@ -2809,15 +2922,16 @@
 
     list.innerHTML = logs.slice(0, 20).map((log) => {
       const details = [];
-      if (log.details?.reason) {
-        details.push(`Reason: ${log.details.reason}`);
-      }
-      if (log.details?.command_id) {
-        details.push(`Command: ${log.details.command_id}`);
-      }
+      if (log.details?.reason) details.push(`Reason: ${log.details.reason}`);
+      if (log.details?.command_id) details.push(`Cmd: ${log.details.command_id}`);
+      if (log.details?.level) details.push(`Level: ${log.details.level}`);
+      if (log.details?.water_level_mm != null) details.push(`Water: ${Math.round(log.details.water_level_mm)}mm`);
+      const deviceId = log.details?.device_id || null;
+      const locationLine = [log.location_id, deviceId].filter(Boolean).join(' · ');
       return `
         <div class="audit-item">
           <div class="audit-event">${escapeHtml(String(log.event_type || 'EVENT').toUpperCase())}</div>
+          ${locationLine ? `<div class="audit-detail" style="color:#3949ab;font-size:12px">${escapeHtml(locationLine)}</div>` : ''}
           <div class="audit-detail">${escapeHtml(details.join(' | ') || 'Action logged')}</div>
           <div class="audit-time">${escapeHtml(formatDateTime(log.timestamp))} IST · ${escapeHtml(log.login_id || 'System')}</div>
         </div>
@@ -3763,6 +3877,8 @@
       setLoggedInUi(true);
       openView('view-locations');
       applyAdminPanelVisibility();
+      applyVendorLoginFieldsVisibility();
+      populateRoleDropdown();
       applyVendorInstallVisibility();
       applyConfigVisibility();
       applySettingsVisibility();
@@ -3819,6 +3935,7 @@
     setLoggedInUi(false);
     openView('view-login');
     applyAdminPanelVisibility();
+    applyVendorLoginFieldsVisibility();
     applyVendorInstallVisibility();
     applyConfigVisibility();
     applySettingsVisibility();
@@ -4397,7 +4514,9 @@
     try {
       const result = await apiRequest('/admin/devices');
       const devices = Array.isArray(result?.data) ? result.data : (Array.isArray(result) ? result : []);
+      state.adminDevices = devices;
       renderAdminDeviceList(devices);
+      if (isSuperAdmin()) renderInstallDeviceTable();
     } catch (error) {
       showToast(`Failed to load devices: ${error.message}`, true);
     }
@@ -4466,6 +4585,44 @@
       await refreshAppData();
     } catch (error) {
       showToast(`Unbind failed: ${error.message}`, true);
+    }
+  }
+
+  function toggleInlineBindApp(locationId) {
+    const panel = byId(`bind-panel-${locationId}`);
+    if (!panel) return;
+    const isOpen = panel.style.display !== 'none';
+    panel.style.display = isOpen ? 'none' : '';
+    // Adjust card bottom radius so it flows into the panel
+    const locItem = panel.parentElement;
+    if (locItem) locItem.classList.toggle('loc-item--bind-open', !isOpen);
+    if (!isOpen) {
+      const sel = byId(`bind-sel-${locationId}`);
+      if (sel) {
+        const free = (state.adminDevices || []).filter((d) => !d.location_id);
+        sel.innerHTML = '<option value="">Select free device…</option>' +
+          free.map((d) => `<option value="${escapeHtml(d.device_id)}">${escapeHtml(d.device_id)}${d.status ? ' (' + String(d.status).toUpperCase() + ')' : ''}</option>`).join('');
+      }
+    }
+  }
+
+  async function applyBindFromCardApp(locationId) {
+    const sel = byId(`bind-sel-${locationId}`);
+    const inp = byId(`bind-inp-${locationId}`);
+    const deviceId = (String(inp?.value || '').trim().toUpperCase() || String(sel?.value || '').trim().toUpperCase());
+    if (!deviceId) { showToast('Enter or select a Device ID.', true); return; }
+    try {
+      await apiRequest(`/admin/locations/${encodeURIComponent(locationId)}/bind-device`, {
+        method: 'POST',
+        body: { device_id: deviceId }
+      });
+      showToast(`${deviceId} bound to location.`);
+      const panel = byId(`bind-panel-${locationId}`);
+      if (panel) panel.style.display = 'none';
+      await refreshAdminDevicesApp();
+      await refreshAppData();
+    } catch (error) {
+      showToast(`Bind failed: ${error.message}`, true);
     }
   }
 
@@ -5074,6 +5231,8 @@
     setLoggedInUi(true);
     openView('view-locations');
     applyAdminPanelVisibility();
+    applyVendorLoginFieldsVisibility();
+    populateRoleDropdown();
     applyVendorInstallVisibility();
     applyConfigVisibility();
     applySettingsVisibility();
@@ -5207,6 +5366,8 @@
   window.refreshAdminDevicesApp = refreshAdminDevicesApp;
   window.quickBindDeviceApp = quickBindDeviceApp;
   window.quickUnbindDeviceApp = quickUnbindDeviceApp;
+  window.toggleInlineBindApp = toggleInlineBindApp;
+  window.applyBindFromCardApp = applyBindFromCardApp;
   window.bindDeviceToLocationApp = bindDeviceToLocationApp;
   window.unbindDeviceFromLocationApp = unbindDeviceFromLocationApp;
   window.filterUserListApp = filterUserListApp;
