@@ -1,4 +1,4 @@
-const CACHE_NAME = 'floodguard-v1';
+const CACHE_NAME = 'floodguard-v3';
 const STATIC_ASSETS = [
   './',
   './index.html',
@@ -25,19 +25,17 @@ self.addEventListener('activate', (e) => {
   );
 });
 
-// Static app shell: cache-first. All other requests (API calls to VPS): network only.
+// Network-first for app shell so deploys are always reflected immediately.
+// Falls back to cache when offline. API calls (cross-origin) pass through unmodified.
 self.addEventListener('fetch', (e) => {
-  if (!e.request.url.startsWith(self.location.origin)) return; // let API calls pass through
+  if (!e.request.url.startsWith(self.location.origin)) return;
   e.respondWith(
-    caches.match(e.request).then((cached) => {
-      const networkFetch = fetch(e.request).then((response) => {
-        if (response.ok) {
-          const clone = response.clone();
-          caches.open(CACHE_NAME).then((cache) => cache.put(e.request, clone));
-        }
-        return response;
-      });
-      return cached || networkFetch;
-    })
+    fetch(e.request).then((response) => {
+      if (response.ok) {
+        const clone = response.clone();
+        caches.open(CACHE_NAME).then((cache) => cache.put(e.request, clone));
+      }
+      return response;
+    }).catch(() => caches.match(e.request))
   );
 });
