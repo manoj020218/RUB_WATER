@@ -1,0 +1,655 @@
+
+Yes, this is a good update. The customer’s idea means the **second sensor will behave like the earlier switch-type backup**, but internally it will use **ESP32-C3 + ultrasonic TTL sensor + 2 relay/contact outputs**.
+
+So main S3 firmware/app/backend can remain almost same:
+
+```text
+Primary Sensor:
+RS485 / UART-to-RS485 ultrasonic level sensor → level reading
+
+Secondary Sensor:
+ESP32-C3 + ultrasonic TTL sensor
+Output 1 relay/contact = Level 1 / Alert confirmation
+Output 2 relay/contact = Level 2 / Danger confirmation
+```
+
+Below is the proper Codex prompt/spec for the **ESP32-C3 secondary level-switch sensor module**.
+
+````markdown
+# Codex Task: ESP32-C3 Ultrasonic Level Switch Sensor Module
+
+## Objective
+
+Build firmware for an ESP32-C3 based secondary water-level confirmation sensor.
+
+This device will use a TTL ultrasonic distance sensor and provide two relay/contact outputs:
+
+1. Level 1 Alert Output
+2. Level 2 Danger Output
+
+The goal is to make this ESP32-C3 module behave like a configurable two-level switch sensor, so the existing ESP32-S3 main controller, VPS backend, mobile app, PWA dashboard, and alarm logic can remain compatible with the earlier switch-type sensor design.
+
+---
+
+## 1. Hardware
+
+### Controller
+
+```text
+ESP32-C3
+````
+
+### Sensor
+
+```text
+TTL ultrasonic distance sensor
+```
+
+Sensor wiring:
+
+```text
+Sensor VCC  → 5V or 3.3V as per sensor model
+Sensor GND  → GND
+Sensor TX   → ESP32-C3 UART RX
+Sensor RX   → optional, only if sensor needs command input
+```
+
+If sensor TX is 5V TTL, protect ESP32-C3 RX using voltage divider.
+
+Example:
+
+```text
+Sensor TX → 1k resistor → ESP32-C3 RX
+ESP32-C3 RX → 2k resistor → GND
+```
+
+### Outputs
+
+Two relay/contact outputs:
+
+```text
+Relay Output 1 = Low Level / Alert trigger
+Relay Output 2 = Danger Level trigger
+```
+
+Recommended output behavior:
+
+```text
+Relay 1 ON when water level >= level1_threshold_mm
+Relay 2 ON when water level >= level2_threshold_mm
+```
+
+Relay outputs should be usable as NO/COM dry contact input to the ESP32-S3 main MCU panel.
+
+---
+
+## 2. Default Thresholds
+
+Default values:
+
+```json
+{
+  "level1_threshold_mm": 200,
+  "level2_threshold_mm": 400
+}
+```
+
+Meaning:
+
+```text
+Water level >= 200mm → Relay 1 ON
+Water level >= 400mm → Relay 2 ON
+```
+
+Both values must be configurable from the local HTTP configuration page.
+
+---
+
+## 3. Zero Level Calibration
+
+The ESP32-C3 module must support zero-level calibration.
+
+### Concept
+
+The ultrasonic sensor measures distance from sensor face to ground/water surface.
+
+During installation, user will open local web page, see the current sensing value, and click:
+
+```text
+Set Current Value as Zero Level
+```
+
+After this, the current measured distance becomes the reference zero.
+
+Store this value:
+
+```json
+{
+  "zero_distance_mm": 1234
+}
+```
+
+Water level calculation:
+
+```text
+water_level_mm = zero_distance_mm - current_distance_mm
+```
+
+Example:
+
+```text
+zero_distance_mm = 1200
+current_distance_mm = 1000
+water_level_mm = 200
+```
+
+If water level calculation becomes negative, clamp to zero:
+
+```text
+if water_level_mm < 0:
+    water_level_mm = 0
+```
+
+---
+
+## 4. Wi-Fi Access Point Mode
+
+The ESP32-C3 must create its own Wi-Fi access point for local configuration.
+
+### SSID format
+
+```text
+FgSensXXXXXX
+```
+
+Where `XXXXXX` should be derived from chip MAC last 6 hex characters.
+
+Example:
+
+```text
+FgSensA1B2C3
+```
+
+### BLE ID
+
+BLE device name should be the same as Wi-Fi SSID:
+
+```text
+FgSensXXXXXX
+```
+
+For now BLE can be advertisement-only if configuration is HTTP-first.
+
+---
+
+## 5. Local HTTP Configuration Server
+
+The first priority is Wi-Fi AP + HTTP configuration page.
+
+User flow:
+
+```text
+1. User connects mobile/laptop to Wi-Fi SSID: FgSensXXXXXX
+2. User opens browser
+3. Device shows login page
+4. User enters password
+5. After login, user sees current sensor reading
+6. User can set current reading as zero
+7. User can set Level 1 and Level 2 thresholds
+8. User clicks Save/Apply
+9. Settings are stored permanently
+```
+
+### Default password
+
+```text
+Hanuman#2026
+```
+
+Login page must include password visibility eye icon.
+
+### Suggested local URL
+
+```text
+http://192.168.4.1
+```
+
+or captive DNS if available:
+
+```text
+http://fgsens.local
+```
+
+---
+
+## 6. Login Page
+
+Create simple login page.
+
+Fields:
+
+```text
+Password input
+Eye icon to show/hide password
+Login button
+```
+
+Password:
+
+```text
+Hanuman#2026
+```
+
+For now password can be fixed in firmware, but keep code structured so later it can be changed and stored in NVS.
+
+If wrong password:
+
+```text
+Show: Invalid password
+```
+
+After login, create simple session cookie/token with timeout.
+
+---
+
+## 7. Configuration Page UI
+
+After login, show:
+
+```text
+Device Name / SSID: FgSensXXXXXX
+BLE ID: FgSensXXXXXX
+
+Current Raw Distance: xxxx mm
+Zero Distance: xxxx mm
+Calculated Water Level: xxxx mm
+
+Relay 1 / Level 1 Threshold: 200 mm
+Relay 2 / Level 2 Threshold: 400 mm
+
+Relay 1 Current Status: ON/OFF
+Relay 2 Current Status: ON/OFF
+
+Buttons:
+- Set Current Value as Zero
+- Save Thresholds
+- Reboot Device
+```
+
+User must be able to edit:
+
+```text
+Level 1 threshold mm
+Level 2 threshold mm
+```
+
+Validation:
+
+```text
+level1_threshold_mm > 0
+level2_threshold_mm > level1_threshold_mm
+level2_threshold_mm <= reasonable max, e.g. 2000mm
+zero_distance_mm must be valid sensor reading
+```
+
+---
+
+## 8. Persistent Storage
+
+Use ESP32-C3 NVS / Preferences storage.
+
+Store:
+
+```json
+{
+  "zero_distance_mm": 1200,
+  "level1_threshold_mm": 200,
+  "level2_threshold_mm": 400,
+  "trigger_delay_seconds": 60,
+  "clear_delay_seconds": 300,
+  "device_name": "FgSensA1B2C3",
+  "config_version": 1
+}
+```
+
+Critical requirement:
+
+```text
+If power cut happens and device reboots, all settings must remain saved.
+```
+
+On boot:
+
+```text
+Load config from NVS
+If config missing, use defaults
+Start AP mode
+Start HTTP server
+Start sensor reading
+Start relay control logic
+```
+
+---
+
+## 9. Relay Trigger Logic
+
+Do not trigger immediately. Use stable delayed logic.
+
+Default delay:
+
+```text
+Trigger delay: 60 seconds
+Clear delay: 300 seconds
+```
+
+### Level 1 relay
+
+```text
+If water_level_mm >= level1_threshold_mm continuously for trigger_delay_seconds:
+    Relay 1 ON
+```
+
+Clear:
+
+```text
+If water_level_mm < level1_threshold_mm continuously for clear_delay_seconds:
+    Relay 1 OFF
+```
+
+### Level 2 relay
+
+```text
+If water_level_mm >= level2_threshold_mm continuously for trigger_delay_seconds:
+    Relay 2 ON
+```
+
+Clear:
+
+```text
+If water_level_mm < level2_threshold_mm continuously for clear_delay_seconds:
+    Relay 2 OFF
+```
+
+Optional hysteresis:
+
+```text
+Relay 1 clear below level1_threshold_mm - 30mm
+Relay 2 clear below level2_threshold_mm - 50mm
+```
+
+Make hysteresis configurable later, but use sane defaults.
+
+---
+
+## 10. Sensor Reading Filter
+
+Implement sensor filtering to avoid false triggers due to splash, vehicle movement, or temporary obstruction.
+
+Sensor read interval:
+
+```text
+1 second or 2 seconds
+```
+
+Filtering:
+
+```text
+Take last 5 valid readings
+Remove highest and lowest
+Average remaining 3
+```
+
+Reject invalid readings:
+
+```text
+0
+negative
+out of range
+timeout
+CRC/frame error if applicable
+```
+
+If sensor reading invalid continuously for configured time:
+
+```text
+sensor_status = FAULT
+Relay outputs should not newly trigger based on invalid data
+Existing relay state should remain until valid clear or manual reboot/config
+```
+
+For demo, show sensor fault on local page.
+
+---
+
+## 11. Output Mode
+
+Relay output can be active HIGH or active LOW depending relay board.
+
+Make this configurable in code:
+
+```cpp
+#define RELAY_ACTIVE_LOW true
+```
+
+Or store in config later.
+
+Default:
+
+```text
+Most relay boards are active LOW.
+```
+
+So firmware should support both.
+
+---
+
+## 12. Status Endpoint
+
+Create local JSON API:
+
+```text
+GET /api/status
+```
+
+Response:
+
+```json
+{
+  "device_name": "FgSensA1B2C3",
+  "ble_id": "FgSensA1B2C3",
+  "raw_distance_mm": 1000,
+  "zero_distance_mm": 1200,
+  "water_level_mm": 200,
+  "level1_threshold_mm": 200,
+  "level2_threshold_mm": 400,
+  "relay1": true,
+  "relay2": false,
+  "sensor_status": "OK",
+  "uptime_seconds": 12345,
+  "config_version": 2
+}
+```
+
+Configuration endpoint:
+
+```text
+POST /api/config
+```
+
+Payload:
+
+```json
+{
+  "level1_threshold_mm": 200,
+  "level2_threshold_mm": 400
+}
+```
+
+Zero calibration endpoint:
+
+```text
+POST /api/set-zero
+```
+
+Behavior:
+
+```text
+Take current filtered distance
+Store as zero_distance_mm
+Increment config_version
+Save to NVS
+Return success
+```
+
+---
+
+## 13. Optional BLE
+
+Set BLE advertised name same as Wi-Fi SSID:
+
+```text
+FgSensXXXXXX
+```
+
+For now BLE can just advertise device identity.
+
+Future BLE config can be added later.
+
+---
+
+## 14. Integration With Main ESP32-S3
+
+This ESP32-C3 module behaves like a two-level switch sensor.
+
+Main ESP32-S3 sees:
+
+```text
+C3 Relay 1 contact → S3 Level 1 input
+C3 Relay 2 contact → S3 Level 2 input
+```
+
+So existing S3 logic remains same:
+
+```text
+Level 1 input closed → Alert verification
+Level 2 input closed → Danger verification
+```
+
+No change required in main S3 app/backend logic except updating description:
+
+```text
+Secondary sensor type = Smart Ultrasonic Level Switch Module
+```
+
+---
+
+## 15. Safety Requirements
+
+* Never lose threshold config after power cut.
+* Do not trigger relay instantly; use delay.
+* Do not clear relay instantly; use clear delay.
+* Clamp negative water level to zero.
+* Show current value clearly on local page.
+* Require password before config.
+* Password input should have view/hide eye.
+* Settings must be saved in NVS.
+* Device should start local AP even if no internet exists.
+
+---
+
+## 16. Suggested Pin Mapping
+
+Developer may adjust pins as per board.
+
+Example:
+
+```cpp
+#define SENSOR_UART_RX_PIN 20
+#define SENSOR_UART_TX_PIN 21
+
+#define RELAY_LEVEL1_PIN 4
+#define RELAY_LEVEL2_PIN 5
+
+#define STATUS_LED_PIN 8
+```
+
+Keep pin mapping centralized in `config.h`.
+
+---
+
+## 17. Deliverables
+
+Firmware should include:
+
+```text
+1. ESP32-C3 Arduino/PlatformIO project
+2. UART sensor reader
+3. Filtering logic
+4. Zero calibration
+5. Relay trigger logic
+6. NVS config persistence
+7. Wi-Fi AP mode
+8. HTTP login page
+9. HTTP config page
+10. JSON status/config APIs
+11. BLE advertised name same as Wi-Fi SSID
+12. README with wiring
+```
+
+---
+
+## 18. Acceptance Test
+
+Test cases:
+
+```text
+Boot device → AP SSID appears as FgSensXXXXXX
+BLE name appears same as FgSensXXXXXX
+Connect to Wi-Fi → open 192.168.4.1
+Login with Hanuman#2026
+Eye icon toggles password visibility
+Current raw sensor value visible
+Click Set Current Value as Zero
+Power cycle device
+Zero value remains saved
+Set Level 1 = 200mm
+Set Level 2 = 400mm
+Power cycle device
+Threshold values remain saved
+Simulate water level >=200mm for 60 sec → Relay 1 ON
+Simulate water level below 200mm for 300 sec → Relay 1 OFF
+Simulate water level >=400mm for 60 sec → Relay 2 ON
+Simulate water level below 400mm for 300 sec → Relay 2 OFF
+Invalid sensor reading does not trigger false relay
+```
+
+---
+
+## 19. Important Note
+
+This ESP32-C3 device is not the main cloud-connected controller.
+
+It is a local smart secondary level-switch module.
+
+Its purpose is to convert a TTL ultrasonic sensor into two reliable, configurable, delayed relay/contact outputs:
+
+```text
+Level 1 Alert Output
+Level 2 Danger Output
+```
+
+This allows the main ESP32-S3 FloodGuard controller and app/backend logic to remain unchanged.
+
+````
+
+For proposal wording, call this:
+
+```text
+Smart Ultrasonic Dual-Level Switch Module
+````
+
+or:
+
+```text
+ESP32-C3 Based Configurable Water Level Switch Sensor
+```
