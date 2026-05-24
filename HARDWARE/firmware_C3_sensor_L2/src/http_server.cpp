@@ -145,8 +145,12 @@ a.logout{float:right;font-size:12px;color:#dc3545;text-decoration:none}
 
 <div class="card">
 <h3>Calibration</h3>
-<p class="hint">Point sensor at dry ground and click Set Zero. The current raw distance becomes the reference (water level = 0).</p>
-<button class="btn-outline" onclick="setZero()">Set Current Value as Zero</button>
+<p class="hint">Point sensor at dry ground. Confirm the reading below is stable, then click Set Zero.</p>
+<div class="row" style="background:#f8f9fa;border-radius:8px;padding:10px 12px;margin-bottom:12px">
+<span class="lbl" style="font-size:13px;color:#444">Current Sensor Reading</span>
+<span class="val" style="font-size:20px;color:#0d6e56"><span id="cal-rd">--</span> <span style="font-size:13px;color:#888">mm</span>&nbsp;&nbsp;<span class="badge" id="cal-ss" style="font-size:11px">--</span></span>
+</div>
+<button class="btn-outline" onclick="setZero()">Set Current Value as Zero Reference</button>
 <div id="zero-msg" class="msg"></div>
 </div>
 
@@ -187,6 +191,10 @@ function poll(){
     document.getElementById('dev-name').textContent=d.device_name;
     document.getElementById('ble-id').textContent=d.ble_id;
     document.getElementById('rd').textContent=d.raw_distance_mm;
+    document.getElementById('cal-rd').textContent=d.raw_distance_mm;
+    var cs=document.getElementById('cal-ss');
+    cs.textContent=d.sensor_status;
+    cs.className='badge '+(d.sensor_status==='OK'?'ok':'fault');
     document.getElementById('zd').textContent=d.zero_distance_mm;
     document.getElementById('wl').textContent=d.water_level_mm;
     document.getElementById('th1').textContent=d.level1_threshold_mm;
