@@ -151,6 +151,14 @@ ln -sf "$NGINX_API_CONF" /etc/nginx/sites-enabled/floodguard-api 2>/dev/null || 
 cp "$PROJECT_ROOT/VPS/infra/nginx-floodguard-jenix.conf" "$NGINX_JENIX_CONF"
 ln -sf "$NGINX_JENIX_CONF" /etc/nginx/sites-enabled/floodguard.jenix.in 2>/dev/null || true
 
+# ── Re-apply SSL (certbot) ────────────────────────────────────────────────────
+# The nginx config above is HTTP-only; certbot adds the SSL blocks.
+# Running it every deploy is safe — it's a no-op when cert isn't due for renewal.
+echo ""
+echo "=== Re-applying SSL certificates ==="
+certbot --nginx -d api.floodguard.iotsoft.in --non-interactive --agree-tos \
+  -m admin@iotsoft.in --redirect 2>&1 | grep -E "(Congratulations|error|warning|Keeping|Deploying|failed)" || true
+
 # Test and reload nginx
 echo "Testing nginx config..."
 if nginx -t 2>&1; then
@@ -165,18 +173,12 @@ fi
 echo ""
 echo "=== Health check (waiting 3s for service start) ==="
 sleep 3
-curl -s --max-time 10 http://127.0.0.1:4080/health && echo "" || echo "WARNING: health check failed"
+curl -s --max-time 10 https://api.floodguard.iotsoft.in/health && echo "" || \
+  curl -s --max-time 10 http://127.0.0.1:4080/health && echo "" || echo "WARNING: health check failed"
 
 echo ""
 echo "=== Deploy complete ==="
-echo "API:     http://154.61.69.200/api"
-echo "Health:  http://154.61.69.200/health"
-echo "Vendors: http://154.61.69.200/vendors  (login: ebonx / ebnox_123)"
-echo ""
-echo "To enable HTTPS (run once):"
-echo "  certbot --nginx -d api.floodguard.iotsoft.in --non-interactive --agree-tos -m admin@iotsoft.in --redirect || true"
-echo ""
-echo "For floodguard.jenix.in PWA (only if DNS points to this server):"
-echo "  ln -sf $NGINX_JENIX_CONF /etc/nginx/sites-enabled/floodguard.jenix.in"
-echo "  certbot --nginx -d floodguard.jenix.in --non-interactive --agree-tos -m admin@jenix.in --redirect"
-echo "  nginx -t && systemctl reload nginx"
+echo "API:     https://api.floodguard.iotsoft.in/api"
+echo "Health:  https://api.floodguard.iotsoft.in/health"
+echo "Vendors: https://api.floodguard.iotsoft.in/vendors  (login: ebonx / ebnox_123)"
+echo "PWA:     https://floodguard.jenix.in/app"
