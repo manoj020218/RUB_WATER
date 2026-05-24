@@ -19,15 +19,29 @@ static void build_device_name(char *name, size_t maxlen) {
 }
 
 void setup() {
-    // WiFi AP must be up before reading MAC
+    Serial.begin(115200);
+    delay(500);
+
+    // Startup blink: 3 fast flashes confirm firmware is running
+    pinMode(STATUS_LED_PIN, OUTPUT);
+    for (int i = 0; i < 3; i++) {
+        digitalWrite(STATUS_LED_PIN, HIGH); delay(120);
+        digitalWrite(STATUS_LED_PIN, LOW);  delay(120);
+    }
+
+    // WiFi AP must be started before reading MAC address
     WiFi.mode(WIFI_AP);
 
-    // Load persisted config, then fix device name from MAC (never stored in NVS)
     storage_init();
     storage_load(g_cfg);
     build_device_name(g_cfg.device_name, sizeof(g_cfg.device_name));
 
-    WiFi.softAP(g_cfg.device_name, nullptr, AP_CHANNEL, 0, AP_MAX_CONNECTIONS);
+    // Open network (no password) — auth is on the HTTP login page
+    bool apOk = WiFi.softAP(g_cfg.device_name, "", AP_CHANNEL, 0, AP_MAX_CONNECTIONS);
+    Serial.printf("[WiFi] softAP '%s' %s  IP: %s\n",
+        g_cfg.device_name,
+        apOk ? "OK" : "FAILED",
+        WiFi.softAPIP().toString().c_str());
 
     sensor_init();
     relay_init();
@@ -40,6 +54,9 @@ void setup() {
     pAdv->setName(g_cfg.device_name);
     pAdv->setScanResponse(false);
     pAdv->start();
+
+    Serial.printf("[FgSens] Ready.  Level1=%umm  Level2=%umm  Zero=%umm\n",
+        g_cfg.level1_threshold_mm, g_cfg.level2_threshold_mm, g_cfg.zero_distance_mm);
 }
 
 void loop() {
