@@ -5228,18 +5228,23 @@
       return;
     }
 
-    setLoggedInUi(true);
-    openView('view-locations');
-    applyAdminPanelVisibility();
-    applyVendorLoginFieldsVisibility();
-    populateRoleDropdown();
-    applyVendorInstallVisibility();
-    applyConfigVisibility();
-    applySettingsVisibility();
-    applyComplaintsVisibility();
-    applyReportsVisibility();
-    applyUsersTabVisibility();
-    applyVendorsTabVisibility();
+    const steps = [
+      ['setLoggedInUi', () => setLoggedInUi(true)],
+      ['openView(locations)', () => openView('view-locations')],
+      ['applyAdminPanelVisibility', () => applyAdminPanelVisibility()],
+      ['applyVendorLoginFieldsVisibility', () => applyVendorLoginFieldsVisibility()],
+      ['populateRoleDropdown', () => populateRoleDropdown()],
+      ['applyVendorInstallVisibility', () => applyVendorInstallVisibility()],
+      ['applyConfigVisibility', () => applyConfigVisibility()],
+      ['applySettingsVisibility', () => applySettingsVisibility()],
+      ['applyComplaintsVisibility', () => applyComplaintsVisibility()],
+      ['applyReportsVisibility', () => applyReportsVisibility()],
+      ['applyUsersTabVisibility', () => applyUsersTabVisibility()],
+      ['applyVendorsTabVisibility', () => applyVendorsTabVisibility()],
+    ];
+    for (const [name, fn] of steps) {
+      try { fn(); } catch (e) { throw new Error(`[${name}] ${e.message}`); }
+    }
     await refreshAppData();
     startPolling();
   }
@@ -5377,6 +5382,7 @@
 
   window.addEventListener('load', () => {
     bootstrap().catch((error) => {
+      console.error('[FloodGuard] Initialization error:', error);
       showToast(`Initialization error: ${error.message}`, true);
     });
   });
