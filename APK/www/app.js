@@ -4248,6 +4248,7 @@
     const role = userRole();
     const canAcknowledge = ['VENDOR_SUPER_ADMIN', 'VENDOR_MONITORING_USER', 'DEPARTMENT_SUPER_ADMIN', 'DEPARTMENT_ADMIN'].includes(role);
     const canResolve = ['VENDOR_SUPER_ADMIN', 'DEPARTMENT_SUPER_ADMIN', 'DEPARTMENT_ADMIN'].includes(role);
+    const canForwardWa = ['DEPARTMENT_SUPER_ADMIN', 'DEPARTMENT_ADMIN'].includes(role);
 
     list.innerHTML = complaints.map((c) => {
       const id = escapeHtml(String(c._id || c.complaint_id || ''));
@@ -4270,8 +4271,16 @@
       const closeBtn = canResolve && status === 'RESOLVED'
         ? `<button class="ghost-btn" style="padding:5px 10px;font-size:11px" onclick="closeComplaintApp('${id}')">Close</button>`
         : '';
-      const actionRow = (ackBtn || resolveBtn || closeBtn)
-        ? `<div class="row" style="margin-top:8px;justify-content:flex-end;gap:6px">${ackBtn}${resolveBtn}${closeBtn}</div>`
+
+      const waText = canForwardWa
+        ? buildComplaintWaText(c, locName)
+        : '';
+      const waBtn = canForwardWa
+        ? `<a class="ghost-btn wa-forward-btn" style="padding:5px 10px;font-size:11px;text-decoration:none" href="https://wa.me/?text=${encodeURIComponent(waText)}" target="_blank" rel="noopener">📲 WhatsApp</a>`
+        : '';
+
+      const actionRow = (ackBtn || resolveBtn || closeBtn || waBtn)
+        ? `<div class="row" style="margin-top:8px;justify-content:flex-end;gap:6px">${ackBtn}${resolveBtn}${closeBtn}${waBtn}</div>`
         : '';
 
       return `
@@ -4291,6 +4300,29 @@
         </div>
       `;
     }).join('');
+  }
+
+  function buildComplaintWaText(c, locName) {
+    const no = String(c.complaint_no || c._id?.slice(-6) || '--');
+    const type = complaintTypeLabel(c.type || c.complaint_type);
+    const priority = String(c.priority || 'LOW').toUpperCase();
+    const status = String(c.status || 'OPEN').toUpperCase();
+    const desc = String(c.description || '').trim();
+    const raisedBy = c.raised_by_login_id || c.raisedByLoginId || '--';
+    const raisedAt = formatDateTime(c.created_at || c.createdAt);
+    const lines = [
+      `*FloodGuard Complaint — ${locName}*`,
+      `Complaint No: #${no}`,
+      `Type: ${type}`,
+      `Priority: ${priority}`,
+      `Status: ${status}`,
+      `Description: ${desc || 'No details provided'}`,
+      `Raised by: ${raisedBy} on ${raisedAt} IST`,
+      ``,
+      `Please look into this at the earliest.`,
+      `— FloodGuard Monitoring System`
+    ];
+    return lines.join('\n');
   }
 
   async function raiseComplaintApp() {
