@@ -4213,7 +4213,7 @@
   async function fetchComplaints(locationId) {
     if (!locationId) return [];
     try {
-      const result = await apiRequest(`/locations/${encodeURIComponent(locationId)}/complaints`);
+      const result = await apiRequest(`/complaints?location_id=${encodeURIComponent(locationId)}`);
       return Array.isArray(result?.data) ? result.data : (Array.isArray(result) ? result : []);
     } catch (error) {
       return [];
@@ -4369,7 +4369,7 @@
 
   async function acknowledgeComplaintApp(complaintId) {
     try {
-      await apiRequest(`/complaints/${encodeURIComponent(complaintId)}/acknowledge`, { method: 'POST' });
+      await apiRequest(`/complaints/${encodeURIComponent(complaintId)}/acknowledge`, { method: 'PATCH' });
       showToast('Complaint acknowledged.');
       await refreshComplaintsApp();
     } catch (error) {
@@ -4380,7 +4380,7 @@
   async function resolveComplaintApp(complaintId) {
     try {
       await apiRequest(`/complaints/${encodeURIComponent(complaintId)}/resolve`, {
-        method: 'POST',
+        method: 'PATCH',
         body: { note: 'Marked resolved via mobile app' }
       });
       showToast('Complaint resolved.');
@@ -4393,7 +4393,7 @@
   async function closeComplaintApp(complaintId) {
     try {
       await apiRequest(`/complaints/${encodeURIComponent(complaintId)}/close`, {
-        method: 'POST',
+        method: 'PATCH',
         body: { note: 'Closed via mobile app' }
       });
       showToast('Complaint closed.');
