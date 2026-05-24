@@ -1,4 +1,4 @@
-#include "webserver.h"
+#include "http_server.h"
 #include "config.h"
 #include "storage.h"
 #include "led.h"
@@ -408,23 +408,17 @@ void webserver_init(DeviceConfig *cfg, AppState *state) {
             if (!session_valid()) { Update.abort(); return; }
             HTTPUpload &upload = server.upload();
             if (upload.status == UPLOAD_FILE_START) {
-                Serial.printf("[OTA] Start: %s\n", upload.filename.c_str());
-                if (!Update.begin(UPDATE_SIZE_UNKNOWN)) Update.printError(Serial);
+                Update.begin(UPDATE_SIZE_UNKNOWN);
             } else if (upload.status == UPLOAD_FILE_WRITE) {
-                if (Update.write(upload.buf, upload.currentSize) != upload.currentSize)
-                    Update.printError(Serial);
+                Update.write(upload.buf, upload.currentSize);
             } else if (upload.status == UPLOAD_FILE_END) {
-                if (Update.end(true))
-                    Serial.printf("[OTA] Done: %u bytes\n", upload.totalSize);
-                else
-                    Update.printError(Serial);
+                Update.end(true);
             }
         }
     );
 
     server.onNotFound(handle_not_found);
     server.begin();
-    Serial.printf("[HTTP] Server started on port %d\n", HTTP_PORT);
 }
 
 void webserver_handle() {

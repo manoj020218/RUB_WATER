@@ -6,7 +6,7 @@
 #include "sensor.h"
 #include "relay.h"
 #include "led.h"
-#include "webserver.h"
+#include "http_server.h"
 
 static DeviceConfig g_cfg;
 static AppState     g_state = {};
@@ -19,10 +19,6 @@ static void build_device_name(char *name, size_t maxlen) {
 }
 
 void setup() {
-    Serial.begin(115200);
-    delay(500);
-    Serial.println("\n[FgSens] Booting...");
-
     // WiFi AP must be up before reading MAC
     WiFi.mode(WIFI_AP);
 
@@ -32,7 +28,6 @@ void setup() {
     build_device_name(g_cfg.device_name, sizeof(g_cfg.device_name));
 
     WiFi.softAP(g_cfg.device_name, nullptr, AP_CHANNEL, 0, AP_MAX_CONNECTIONS);
-    Serial.printf("[WiFi] AP SSID: %s  IP: %s\n", g_cfg.device_name, WiFi.softAPIP().toString().c_str());
 
     sensor_init();
     relay_init();
@@ -45,12 +40,6 @@ void setup() {
     pAdv->setName(g_cfg.device_name);
     pAdv->setScanResponse(false);
     pAdv->start();
-    Serial.printf("[BLE]  Advertising as: %s\n", g_cfg.device_name);
-
-    Serial.printf("[FgSens] Ready.  Level1=%u mm  Level2=%u mm  Zero=%u mm\n",
-        g_cfg.level1_threshold_mm,
-        g_cfg.level2_threshold_mm,
-        g_cfg.zero_distance_mm);
 }
 
 void loop() {
