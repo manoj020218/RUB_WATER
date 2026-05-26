@@ -18,6 +18,7 @@ router.post('/users/:userId/reset-password', adminController.resetUserPassword);
 router.get('/locations', adminController.listAllLocations);
 router.post('/locations', adminController.createLocation);
 router.patch('/locations/:locationId', adminController.updateLocation);
+router.delete('/locations/:locationId', adminController.deleteLocation);
 router.post('/locations/:locationId/bind-device', adminController.bindDevice);
 router.delete('/locations/:locationId/bind-device', adminController.unbindDevice);
 

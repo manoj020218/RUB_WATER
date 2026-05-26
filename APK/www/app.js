@@ -2755,6 +2755,14 @@
           </div>
         </div>` : '';
 
+      const deleteBtn = isSuperAdmin() ? `
+        <div style="text-align:right;padding:4px 0 2px">
+          <button class="ghost-btn" style="padding:4px 10px;font-size:11px;color:#b91c1c;border-color:#fca5a5"
+            onclick="event.stopPropagation();deleteLocationApp('${escapeHtml(loc.location_id)}','${escapeHtml(loc.location_name || loc.location_id)}',${deviceId ? `'${escapeHtml(deviceId)}'` : 'null'})">
+            Delete Location
+          </button>
+        </div>` : '';
+
       return `
         <div class="loc-item">
           <button class="loc-card${selected ? ' sel' : ''}${!deviceId ? ' loc-card--unbound' : ''}" onclick="selectLocation('${escapeHtml(loc.location_id)}')">
@@ -2787,6 +2795,7 @@
             </div>
           </button>
           ${bindPanel}
+          ${deleteBtn}
         </div>
       `;
     }).join('');
@@ -3430,6 +3439,10 @@
         state.install.tokenExpiresAt = '';
         setProvisionStep(1, 'done', 'Provision key ready. Device will fetch x-device-key from VPS.');
       } else {
+        const targetLocId = String(byId('ble-target-location-select')?.value || '').trim();
+        if (targetLocId) {
+          throw new Error('Provision Key is required to register a new device. Enter it in the "Provision Key" field.');
+        }
         setProvisionStep(1, 'active', 'Provision key missing. Falling back to cloud token profile...');
         provisionProfile = await requestDeviceProvisionProfile();
         const cloud = provisionProfile?.cloud || {};
@@ -4831,6 +4844,23 @@
     }
   }
 
+  async function deleteLocationApp(locationId, locationName, boundDeviceId) {
+    const warning = boundDeviceId
+      ? `Delete "${locationName}"?\n\nDevice ${boundDeviceId} will become unbound (it remains registered on the cloud).\n\nThis cannot be undone.`
+      : `Delete "${locationName}"?\n\nThis location has no device. It will be permanently removed.\n\nThis cannot be undone.`;
+    if (!confirm(warning)) return;
+    try {
+      await apiRequest(`/admin/locations/${encodeURIComponent(locationId)}`, { method: 'DELETE' });
+      showToast(`Location "${locationName}" deleted.`);
+      if (state.selectedLocationId === locationId) state.selectedLocationId = '';
+      await refreshAppData();
+      await refreshAdminDevicesApp().catch(() => {});
+      populateBleTargetLocationSection();
+    } catch (error) {
+      showToast(`Delete failed: ${error.message}`, true);
+    }
+  }
+
   function populateBleTargetLocationSection() {
     const section = byId('ble-target-location-section');
     if (!section) return;
@@ -5652,6 +5682,7 @@
   window.bleProvisionWifiApp = bleProvisionWifiApp;
   window.showBleNewLocationFormApp = showBleNewLocationFormApp;
   window.createAndSelectBleLocationApp = createAndSelectBleLocationApp;
+  window.deleteLocationApp = deleteLocationApp;
   window.refreshLocalDeviceStatusApp = refreshLocalDeviceStatusApp;
   window.refreshDeviceConfigApp = refreshDeviceConfigApp;
   window.refreshDeviceConfigHistoryApp = refreshDeviceConfigHistoryApp;

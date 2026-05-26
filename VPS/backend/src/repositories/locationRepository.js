@@ -49,10 +49,18 @@ function update(locationId, patch) {
   return target;
 }
 
+function remove(locationId) {
+  const idx = dataStore.locations.findIndex((l) => l._id === locationId);
+  if (idx === -1) return false;
+  dataStore.locations.splice(idx, 1);
+  return true;
+}
+
 module.exports = {
   listAll,
   listByIds,
   findById,
   update,
-  create
+  create,
+  remove
 };

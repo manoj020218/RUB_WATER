@@ -125,6 +125,21 @@ function updateLocation(req, res, next) {
   } catch (error) { next(error); }
 }
 
+function deleteLocation(req, res, next) {
+  try {
+    requireSuperAdmin(req);
+    const locationId = req.params.locationId;
+    const loc = locationRepo.findById(locationId);
+    if (!loc) { res.status(404).json({ ok: false, error: 'Location not found' }); return; }
+    const boundDevice = deviceRepo.findByLocation(locationId);
+    if (boundDevice) {
+      deviceRepo.unbindFromLocation(boundDevice._id);
+    }
+    locationRepo.remove(locationId);
+    res.json({ ok: true, data: { deleted_location_id: locationId, unbound_device_id: boundDevice?._id || null } });
+  } catch (error) { next(error); }
+}
+
 // ── Devices ───────────────────────────────────────────────────────────────────
 function listAllDevices(req, res, next) {
   try {
@@ -309,6 +324,7 @@ module.exports = {
   listAllLocations,
   createLocation,
   updateLocation,
+  deleteLocation,
   listAllDevices,
   createDevice,
   bindDevice,
