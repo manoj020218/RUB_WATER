@@ -12,6 +12,7 @@
 #include "config_manager.h"
 #include "http_fallback.h"
 #include "mqtt_client.h"
+#include "voltage_monitor.h"
 
 namespace {
 WebServer gServer(80);
@@ -367,7 +368,7 @@ void LocalConfigServer::ensureServerStarted() {
   <div class="card">
     <h2>FloodGuard MCU Local</h2>
     <div class="hint">Open this page using <code>http://floodguard-mcu.local</code> or device IP.</div>
-    <div class="hint">Endpoints: <code>/status</code> <code>/config</code> <code>/save-config</code> <code>/cloud</code> <code>/reboot</code></div>
+    <div class="hint">Endpoints: <code>/status</code> <code>/config</code> <code>/save-config</code> <code>/cloud</code> <code>/api/set-zero</code> <code>/api/set-voltage-ref</code> <code>/reboot</code></div>
   </div>
 
   <div class="card">
@@ -389,6 +390,27 @@ void LocalConfigServer::ensureServerStarted() {
     <pre id="out">Ready</pre>
   </div>
 
+  <div class="card">
+    <h3>Sensor Calibration</h3>
+    <div class="hint">Values are saved to device flash and survive power cuts. Only change when re-installing or adjusting hardware.</div>
+    <label>Local PIN</label>
+    <input id="calPin" type="password" placeholder="Enter local PIN" />
+    <button onclick="loadCalibStatus()">Refresh Readings</button>
+    <pre id="calStatus">Press Refresh Readings to see live values</pre>
+
+    <h3 style="margin-top:14px">RS485 Level Sensor — Zero Level</h3>
+    <div class="hint">Install sensor at site. When sensor reads correctly (no water / dry channel), press the button to capture the current distance as the zero reference.</div>
+    <button onclick="setZero()">Set Current Reading as Zero Level</button>
+    <pre id="zeroOut"></pre>
+
+    <h3 style="margin-top:14px">Battery Voltage — ADC Reference (G10)</h3>
+    <div class="hint">Measure actual battery voltage with a multimeter. Enter the reading below — firmware computes the divider ratio automatically and saves it.</div>
+    <label>Actual Battery Voltage (V)</label>
+    <input id="actualVoltage" type="number" step="0.01" min="1" max="30" placeholder="e.g. 13.26" style="width:160px" />
+    <button onclick="setVoltageRef()">Set Voltage Reference</button>
+    <pre id="voltOut"></pre>
+  </div>
+
   <script>
     function text(v) { return (v === undefined || v === null) ? '' : String(v); }
     function out(msg) { document.getElementById('out').textContent = text(msg); }
@@ -407,6 +429,49 @@ void LocalConfigServer::ensureServerStarted() {
       } catch (e) {
         out('Read failed: ' + e.message);
       }
+    }
+
+    async function loadCalibStatus() {
+      try {
+        const res = await fetch('/status');
+        const d = await res.json();
+        const lines = [
+          'RS485 distance   : ' + (d.distance_mm != null ? d.distance_mm + ' mm' : 'n/a'),
+          'RS485 zero ref   : ' + (d.rs485_zero_mm != null ? d.rs485_zero_mm + ' mm' : 'n/a'),
+          'Water level      : ' + (d.water_level_mm != null ? d.water_level_mm + ' mm' : 'n/a'),
+          'ADC raw voltage  : ' + (d.adc_raw_volts != null ? d.adc_raw_volts.toFixed(3) + ' V' : 'n/a'),
+          'Battery voltage  : ' + (d.battery_voltage != null ? d.battery_voltage.toFixed(2) + ' V' : 'n/a'),
+        ];
+        document.getElementById('calStatus').textContent = lines.join('\n');
+      } catch(e) { document.getElementById('calStatus').textContent = 'Error: ' + e.message; }
+    }
+
+    async function setZero() {
+      const pin = text(document.getElementById('calPin').value).trim();
+      if (!pin) { document.getElementById('zeroOut').textContent = 'PIN required'; return; }
+      try {
+        const res = await fetch('/api/set-zero?pin=' + encodeURIComponent(pin), { method: 'POST' });
+        const d = await res.json();
+        document.getElementById('zeroOut').textContent = JSON.stringify(d, null, 2);
+        if (d.ok) loadCalibStatus();
+      } catch(e) { document.getElementById('zeroOut').textContent = 'Error: ' + e.message; }
+    }
+
+    async function setVoltageRef() {
+      const pin = text(document.getElementById('calPin').value).trim();
+      const v = parseFloat(document.getElementById('actualVoltage').value);
+      if (!pin) { document.getElementById('voltOut').textContent = 'PIN required'; return; }
+      if (isNaN(v) || v < 1 || v > 30) { document.getElementById('voltOut').textContent = 'Enter valid voltage (1 – 30 V)'; return; }
+      try {
+        const res = await fetch('/api/set-voltage-ref?pin=' + encodeURIComponent(pin), {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ actual_voltage: v })
+        });
+        const d = await res.json();
+        document.getElementById('voltOut').textContent = JSON.stringify(d, null, 2);
+        if (d.ok) loadCalibStatus();
+      } catch(e) { document.getElementById('voltOut').textContent = 'Error: ' + e.message; }
     }
 
     async function applyCloud() {
@@ -626,6 +691,9 @@ void LocalConfigServer::ensureServerStarted() {
         doc["clear_delay_seconds"] = cfg.clearDelaySeconds;
         doc["config_version"] = cfg.configVersion;
         doc["last_saved_epoch"] = cfg.lastSavedEpoch;
+        doc["rs485_zero_mm"] = SensorRs485::getInstance().zeroDistanceMm();
+        doc["battery_voltage"] = VoltageMonitor::getInstance().readSupplyVoltage();
+        doc["adc_raw_volts"] = VoltageMonitor::getInstance().lastAdcVolts();
         doc["mqtt_connected"] = gInstance->_mqttConnected;
         doc["ip"] = WiFi.localIP().toString();
 
@@ -676,6 +744,71 @@ void LocalConfigServer::ensureServerStarted() {
         doc["message"] = "Configuration saved to NVS";
         doc["config_json"] = updated;
         char out[900]{};
+        serializeJson(doc, out, sizeof(out));
+        gServer.send(200, "application/json", out);
+    });
+
+    gServer.on("/api/set-zero", HTTP_POST, []() {
+        if (!gInstance || !gInstance->isAuthorized()) {
+            gServer.send(401, "application/json", "{\"ok\":false,\"error\":\"PIN required\"}");
+            return;
+        }
+        String reason;
+        if (!SensorRs485::getInstance().setZeroFromCurrentReading(reason)) {
+            StaticJsonDocument<256> doc;
+            doc["ok"] = false;
+            doc["error"] = reason;
+            char out[256]{};
+            serializeJson(doc, out, sizeof(out));
+            gServer.send(400, "application/json", out);
+            return;
+        }
+        StaticJsonDocument<128> doc;
+        doc["ok"] = true;
+        doc["zero_mm"] = SensorRs485::getInstance().zeroDistanceMm();
+        doc["message"] = "Zero level saved to flash";
+        char out[128]{};
+        serializeJson(doc, out, sizeof(out));
+        gServer.send(200, "application/json", out);
+    });
+
+    gServer.on("/api/set-voltage-ref", HTTP_POST, []() {
+        if (!gInstance || !gInstance->isAuthorized()) {
+            gServer.send(401, "application/json", "{\"ok\":false,\"error\":\"PIN required\"}");
+            return;
+        }
+        String payload = gServer.arg("plain");
+        if (payload.length() == 0) {
+            gServer.send(400, "application/json", "{\"ok\":false,\"error\":\"body_required\"}");
+            return;
+        }
+        DynamicJsonDocument req(128);
+        if (deserializeJson(req, payload) != DeserializationError::Ok) {
+            gServer.send(400, "application/json", "{\"ok\":false,\"error\":\"invalid_json\"}");
+            return;
+        }
+        const float actualVoltage = req["actual_voltage"] | -1.0f;
+        if (actualVoltage < 0.0f) {
+            gServer.send(400, "application/json", "{\"ok\":false,\"error\":\"actual_voltage field required\"}");
+            return;
+        }
+        String reason;
+        if (!VoltageMonitor::getInstance().setActualVoltage(actualVoltage, reason)) {
+            StaticJsonDocument<256> doc;
+            doc["ok"] = false;
+            doc["error"] = reason;
+            char out[256]{};
+            serializeJson(doc, out, sizeof(out));
+            gServer.send(400, "application/json", out);
+            return;
+        }
+        StaticJsonDocument<192> doc;
+        doc["ok"] = true;
+        doc["battery_voltage"] = VoltageMonitor::getInstance().readSupplyVoltage();
+        doc["adc_raw_volts"] = VoltageMonitor::getInstance().lastAdcVolts();
+        doc["divider_ratio"] = VoltageMonitor::getInstance().dividerRatio();
+        doc["message"] = "Voltage reference saved to flash";
+        char out[192]{};
         serializeJson(doc, out, sizeof(out));
         gServer.send(200, "application/json", out);
     });

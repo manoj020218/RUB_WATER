@@ -33,7 +33,7 @@ static const int RELAY_SIREN_PIN = 6;
 static const int RELAY_BEACON_PIN = 7;
 static const int RELAY_VOICE_PIN = 8;
 static const int RELAY_BARRIER_PIN = 9;
-static const int RELAY_SPARE_PIN = 10;
+static const int RELAY_SPARE_PIN = -1;   // not populated on this board
 
 static const int SIM800_TX_PIN = 11;
 static const int SIM800_RX_PIN = 12;

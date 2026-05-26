@@ -52,6 +52,7 @@ float VoltageMonitor::readSupplyVoltage() {
     }
 
     const float adcVolts = static_cast<float>(sumMilliVolts) / static_cast<float>(sampleCount) / 1000.0f;
+    _lastAdcVolts = adcVolts;
     float supplyVolts = adcVolts * _dividerRatio * _calibrationFactor;
     if (!std::isfinite(supplyVolts) || supplyVolts < 0.0f) {
         supplyVolts = 0.0f;
@@ -138,4 +139,46 @@ void VoltageMonitor::persistCalibrationToNvs() {
     prefs.putFloat(kPrefsDividerKey, _dividerRatio);
     prefs.putFloat(kPrefsCalibrationKey, _calibrationFactor);
     prefs.end();
+}
+
+float VoltageMonitor::lastAdcVolts() const {
+    return _lastAdcVolts;
+}
+
+bool VoltageMonitor::setActualVoltage(float actualVoltage, String& reason) {
+    if (!_adcConfigured) {
+        reason = "ADC not ready";
+        return false;
+    }
+    if (actualVoltage < 1.0f || actualVoltage > 30.0f) {
+        reason = "actual_voltage must be between 1.0 and 30.0 V";
+        return false;
+    }
+
+    const uint8_t sampleCount = (DeviceProfile::BATTERY_ADC_SAMPLES == 0)
+        ? 1 : DeviceProfile::BATTERY_ADC_SAMPLES;
+    uint32_t sumMilliVolts = 0;
+    for (uint8_t i = 0; i < sampleCount; ++i) {
+        sumMilliVolts += static_cast<uint32_t>(analogReadMilliVolts(DeviceProfile::BATTERY_ADC_PIN));
+    }
+    const float adcVolts = static_cast<float>(sumMilliVolts) / static_cast<float>(sampleCount) / 1000.0f;
+
+    if (adcVolts < 0.05f) {
+        reason = "ADC reading too low — check wiring at G10";
+        return false;
+    }
+
+    const float newRatio = actualVoltage / adcVolts;
+    if (!isDividerValid(newRatio)) {
+        reason = "computed ratio out of range (1.0–25.0) — verify wiring or entered voltage";
+        return false;
+    }
+
+    _dividerRatio = newRatio;
+    _calibrationFactor = 1.0f;
+    _lastVoltage = 0.0f;
+    _lastAdcVolts = adcVolts;
+    persistCalibrationToNvs();
+    reason = "";
+    return true;
 }

@@ -9,9 +9,11 @@ public:
     void begin();
     float readSupplyVoltage();
     bool updateCalibration(float dividerRatio, float calibrationFactor, bool persistToNvs, String& reason);
+    bool setActualVoltage(float actualVoltage, String& reason);
 
     float dividerRatio() const;
     float calibrationFactor() const;
+    float lastAdcVolts() const;
     bool isAdcReady() const;
 
 private:
@@ -26,4 +28,5 @@ private:
     float _dividerRatio = 1.0f;
     float _calibrationFactor = 1.0f;
     float _lastVoltage = 0.0f;
+    float _lastAdcVolts = 0.0f;
 };

@@ -17,7 +17,7 @@ void RelayController::begin(const GpioConfig& gpio) {
     pinMode(_gpio.relayBeaconPin, OUTPUT);
     pinMode(_gpio.relayVoicePin, OUTPUT);
     pinMode(_gpio.relayBarrierPin, OUTPUT);
-    pinMode(_gpio.relaySparePin, OUTPUT);
+    if (_gpio.relaySparePin >= 0) { pinMode(_gpio.relaySparePin, OUTPUT); }
     pinMode(_gpio.rfTriggerEntryPin, OUTPUT);
     pinMode(_gpio.rfTriggerExitPin, OUTPUT);
 
@@ -90,5 +90,6 @@ const RelaySnapshot& RelayController::getSnapshot() const {
 }
 
 void RelayController::setRelayPin(int pin, bool on) {
+    if (pin < 0) return;
     digitalWrite(pin, on ? DeviceProfile::RELAY_ON_LEVEL : DeviceProfile::RELAY_OFF_LEVEL);
 }
