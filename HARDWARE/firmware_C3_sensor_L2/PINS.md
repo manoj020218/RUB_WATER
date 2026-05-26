@@ -9,7 +9,7 @@ Board: ESP32-C3-DevKitM-1
 
 | GPIO | Direction | Connected To | Purpose |
 |------|-----------|--------------|---------|
-| 20 | INPUT | DYP-A01CNYUB-2.1 **TX** | Sensor UART RX — receives distance frames (9600 baud, 3.3 V TTL) |
+| 20 | INPUT | DYP-A01CNYUB-2.1 **TX** | Sensor UART RX — receives distance frames (9600 baud, 3.3 V TTL) Yellow → 1k → GPIO20
 | 21 | OUTPUT | DYP-A01CNYUB-2.1 **RX** | Sensor UART TX — optional in auto-trigger mode |
 | 4 | OUTPUT | Relay module **IN1** | Level 1 / Alert relay control (active-LOW) |
 | 5 | OUTPUT | Relay module **IN2** | Level 2 / Danger relay control (active-LOW) |
