@@ -3,10 +3,13 @@
 
   // ── Firebase / FCM ──────────────────────────────────────────────
   const FCM_CONFIG = {
-    apiKey: 'AIzaSyBHp7W9ucgDW4_u3MGvplLuqZFUE6-yJVI',
+    apiKey: 'AIzaSyDNLaSUaBiC52mFrHsOIwkmahJbAtK2E-U',
+    authDomain: 'floodguard-f84ac.firebaseapp.com',
     projectId: 'floodguard-f84ac',
+    storageBucket: 'floodguard-f84ac.firebasestorage.app',
     messagingSenderId: '488469166284',
-    appId: '1:488469166284:web:bd34ad115167061f17aa69'
+    appId: '1:488469166284:web:bd34ad115167061f17aa69',
+    measurementId: 'G-7JVD25ZNN5'
   };
   const FCM_VAPID_KEY = 'BEKxuTUJtugFJheypzEVBZhs1HSs7FXDoC0NcHLCEvo98g0e9qKOL0695JHebudeoovV1b5_yOSTb9obkIcRoqU';
   // ────────────────────────────────────────────────────────────────

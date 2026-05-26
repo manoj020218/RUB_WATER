@@ -2,10 +2,13 @@ importScripts('https://www.gstatic.com/firebasejs/9.23.0/firebase-app-compat.js'
 importScripts('https://www.gstatic.com/firebasejs/9.23.0/firebase-messaging-compat.js');
 
 firebase.initializeApp({
-  apiKey: 'AIzaSyBHp7W9ucgDW4_u3MGvplLuqZFUE6-yJVI',
+  apiKey: 'AIzaSyDNLaSUaBiC52mFrHsOIwkmahJbAtK2E-U',
+  authDomain: 'floodguard-f84ac.firebaseapp.com',
   projectId: 'floodguard-f84ac',
+  storageBucket: 'floodguard-f84ac.firebasestorage.app',
   messagingSenderId: '488469166284',
-  appId: '1:488469166284:web:bd34ad115167061f17aa69'
+  appId: '1:488469166284:web:bd34ad115167061f17aa69',
+  measurementId: 'G-7JVD25ZNN5'
 });
 
 const messaging = firebase.messaging();
