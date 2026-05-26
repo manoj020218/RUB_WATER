@@ -3271,6 +3271,7 @@
           ? 'Selected: tap a BLE device to continue'
           : 'Selected: --'
       );
+      setBleScanProgress(false);
       updateBleStatusLabel();
       renderBleDeviceList();
       updateBleProvisionSectionVisibility();
