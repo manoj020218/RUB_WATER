@@ -6,6 +6,7 @@ struct SensorSnapshot {
     bool valid;
     bool fault;
     bool enabled;
+    bool detected;   // true once the physical sensor has confirmed its presence
     int32_t distanceMm;
     int32_t waterLevelMm;
     uint32_t lastValidMs;
@@ -29,9 +30,9 @@ private:
     int32_t _mountHeightMm = 1200;
     int32_t _zeroDistanceMm = 1200;
     bool _enabled = true;
+    bool _detected = false;
     unsigned long _lastReadMs = 0;
-    float _simulatedDistanceMm = 930.0f;
-    int8_t _simDirection = 1;
+    unsigned long _graceStartMs = 0;   // detection grace period start (ms)
 
     void loadZeroFromNvs();
     void persistZeroToNvs();

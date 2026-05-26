@@ -51,9 +51,14 @@ void TelemetryManager::loop(
     doc["status"] = stateToString(state);
     doc["status_color"] = statusColor ? statusColor : "NORMAL";
     doc["status_note"] = statusNote ? statusNote : "";
-    doc["primary_sensor_status"] = sensor.fault ? "FAULT" : (sensor.enabled ? "OK" : "DISABLED");
-    doc["rs485_status"] = sensor.fault ? "FAULT" : (sensor.enabled ? "OK" : "DISABLED");
-    doc["rs485_last_valid_ms"] = sensor.lastValidMs;
+    const char* rs485Status = !sensor.enabled   ? "DISABLED"
+                            : !sensor.detected  ? "NOT_DETECTED"
+                            : sensor.fault      ? "FAULT"
+                            :                     "OK";
+    doc["primary_sensor_status"] = rs485Status;
+    doc["rs485_status"]          = rs485Status;
+    doc["rs485_detected"]        = sensor.detected;
+    doc["rs485_last_valid_ms"]   = sensor.lastValidMs;
     doc["switch_300mm"] = switches.switch300Closed;
     doc["switch_500mm"] = switches.switch500Closed;
     doc["switch_level_1_closed"] = switches.switch300Closed;

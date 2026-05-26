@@ -5,6 +5,8 @@
 namespace {
 constexpr const char* kNvsNamespace = "fgcfg";
 constexpr const char* kNvsZeroKey   = "rs485_zero_mm";
+// Give the sensor 20 s to respond after boot before marking it absent.
+constexpr unsigned long kDetectionGraceMs = 20000UL;
 }
 
 SensorRs485& SensorRs485::getInstance() {
@@ -13,26 +15,33 @@ SensorRs485& SensorRs485::getInstance() {
 }
 
 void SensorRs485::begin(int32_t sensorMountHeightMm, bool enabled) {
-    _mountHeightMm = sensorMountHeightMm;
-    _zeroDistanceMm = sensorMountHeightMm;  // use config value until NVS overrides
+    _mountHeightMm   = sensorMountHeightMm;
+    _zeroDistanceMm  = sensorMountHeightMm;
     loadZeroFromNvs();
-    _enabled = enabled;
-    _snapshot.enabled = enabled;
-    _snapshot.valid = enabled;
-    _snapshot.fault = false;
-    _snapshot.distanceMm = 932;
-    const int32_t initLevel = _zeroDistanceMm - _snapshot.distanceMm;
-    _snapshot.waterLevelMm = initLevel > 0 ? initLevel : 0;
-    _snapshot.lastValidMs = millis();
-    _lastReadMs = 0;
+    _enabled         = enabled;
+    _detected        = false;
+    _graceStartMs    = millis();
+    _lastReadMs      = 0;
+
+    _snapshot        = {};
+    _snapshot.enabled  = enabled;
+    _snapshot.detected = false;
+    _snapshot.valid    = false;
+    _snapshot.fault    = false;
+    _snapshot.distanceMm    = 0;
+    _snapshot.waterLevelMm  = 0;
+    _snapshot.lastValidMs   = 0;
 }
 
 void SensorRs485::loop() {
-    _snapshot.enabled = _enabled;
+    _snapshot.enabled  = _enabled;
+    _snapshot.detected = _detected;
+
     if (!_enabled) {
-        _snapshot.valid = false;
-        _snapshot.fault = false;
-        _snapshot.distanceMm = 0;
+        _snapshot.valid        = false;
+        _snapshot.fault        = false;
+        _snapshot.detected     = false;
+        _snapshot.distanceMm   = 0;
         _snapshot.waterLevelMm = 0;
         return;
     }
@@ -43,27 +52,52 @@ void SensorRs485::loop() {
     }
     _lastReadMs = now;
 
-    // Placeholder simulated value until RS485 Modbus integration is added.
-    _simulatedDistanceMm += static_cast<float>(_simDirection) * 4.0f;
-    if (_simulatedDistanceMm > 980.0f) {
-        _simDirection = -1;
-    } else if (_simulatedDistanceMm < 650.0f) {
-        _simDirection = 1;
-    }
+    // ── Real Modbus read will go here in a future firmware revision ──
+    // bool gotReading = modbusRead(&rawDistanceMm);
+    // For now: no physical sensor wired → always no reading.
+    constexpr bool gotReading = false;
 
-    _snapshot.distanceMm = static_cast<int32_t>(_simulatedDistanceMm);
-    const int32_t rawLevel = _zeroDistanceMm - _snapshot.distanceMm;
-    _snapshot.waterLevelMm = rawLevel > 0 ? rawLevel : 0;
-    _snapshot.valid = _snapshot.distanceMm > 0 && _snapshot.distanceMm <= _zeroDistanceMm;
-    _snapshot.fault = !_snapshot.valid;
-    if (_snapshot.valid) {
-        _snapshot.lastValidMs = now;
+    if (gotReading) {
+        // Process real Modbus distance reading (placeholder).
+        // int32_t rawDistanceMm = ...;
+        // _snapshot.distanceMm   = rawDistanceMm;
+        // const int32_t rawLevel = _zeroDistanceMm - rawDistanceMm;
+        // _snapshot.waterLevelMm = rawLevel > 0 ? rawLevel : 0;
+        // _snapshot.valid        = rawDistanceMm > 0 && rawDistanceMm <= _zeroDistanceMm;
+        // _snapshot.fault        = !_snapshot.valid;
+        // if (_snapshot.valid) {
+        //     _detected = true;
+        //     _snapshot.detected    = true;
+        //     _snapshot.lastValidMs = now;
+        // }
+    } else {
+        // No response from the RS485 bus.
+        _snapshot.distanceMm   = 0;
+        _snapshot.waterLevelMm = 0;
+
+        const bool inGrace = (now - _graceStartMs < kDetectionGraceMs);
+        if (inGrace) {
+            // Still within the startup grace window — stay neutral so the
+            // alarm state machine doesn't react while the bus is initialising.
+            _snapshot.valid = false;
+            _snapshot.fault = false;
+        } else {
+            // Grace period expired with no sensor response: sensor is absent.
+            // fault stays false — "absent" is different from "broken".
+            _snapshot.valid    = false;
+            _snapshot.fault    = false;
+            _snapshot.detected = false;
+        }
     }
 }
 
 void SensorRs485::setEnabled(bool enabled) {
-    _enabled = enabled;
-    _snapshot.enabled = enabled;
+    _enabled           = enabled;
+    _snapshot.enabled  = enabled;
+    if (!enabled) {
+        _detected          = false;
+        _snapshot.detected = false;
+    }
 }
 
 void SensorRs485::setMountHeightMm(int32_t sensorMountHeightMm) {
@@ -79,8 +113,8 @@ bool SensorRs485::setZeroFromCurrentReading(String& reason) {
         reason = "RS485 sensor not enabled";
         return false;
     }
-    if (_snapshot.fault) {
-        reason = "Sensor fault — cannot set zero";
+    if (!_detected || _snapshot.fault) {
+        reason = "No valid sensor reading available";
         return false;
     }
     if (_snapshot.distanceMm <= 0) {

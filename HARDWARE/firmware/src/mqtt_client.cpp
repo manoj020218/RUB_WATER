@@ -36,7 +36,7 @@ void MqttClientService::begin(const char* host, uint16_t port, const char* user,
     _instance = this;
     _client.setServer(_host, _port);
     _client.setKeepAlive(60);
-    _client.setBufferSize(512);
+    _client.setBufferSize(2048);
     _client.setCallback(MqttClientService::onMessageBridge);
 }
 
@@ -231,7 +231,7 @@ void MqttClientService::onMessageBridge(char* topic, uint8_t* payload, unsigned 
 }
 
 void MqttClientService::onMessage(char* topic, uint8_t* payload, unsigned int length) {
-    char message[512]{};
+    char message[2048]{};
     const unsigned int copyLen = (length < sizeof(message) - 1) ? length : (sizeof(message) - 1);
     std::memcpy(message, payload, copyLen);
     message[copyLen] = '\0';
@@ -244,7 +244,7 @@ void MqttClientService::onMessage(char* topic, uint8_t* payload, unsigned int le
         return;
     }
 
-    StaticJsonDocument<256> doc;
+    StaticJsonDocument<512> doc;
     if (deserializeJson(doc, message) != DeserializationError::Ok) {
         return;
     }

@@ -46,8 +46,13 @@ void AlarmStateMachine::update(
     const bool switchEnabled = runtimeConfig.switchSensorEnabled;
     const bool switchL1 = switchEnabled && switches.switch300Closed;
     const bool switchL2 = switchEnabled && switches.switch500Closed;
-    const bool rs485Fault = rs485Enabled && (!sensor.enabled || sensor.fault || !sensor.valid);
-    const bool rs485Valid = rs485Enabled && !rs485Fault;
+
+    // sensor.detected = physical sensor has ever responded since boot.
+    // When enabled but not detected: absent (no fault, just not wired).
+    // When enabled, detected, but fault: sensor was present but is now broken.
+    const bool rs485Absent = rs485Enabled && !sensor.detected;
+    const bool rs485Fault  = rs485Enabled && sensor.detected && (!sensor.enabled || sensor.fault || !sensor.valid);
+    const bool rs485Valid  = rs485Enabled && sensor.detected && !rs485Fault;
 
     const int32_t waterLevel = sensor.waterLevelMm;
     const bool alertCross = rs485Valid && waterLevel >= runtimeConfig.alertLevelMm;
@@ -89,6 +94,12 @@ void AlarmStateMachine::update(
     }
 
     if (rs485Enabled && !switchEnabled) {
+        if (rs485Absent) {
+            setState(AlarmState::SENSOR_FAULT,
+                "RS485 sensor not detected. Connect sensor or enable switch mode in config.",
+                "FAULT");
+            return;
+        }
         if (rs485Fault) {
             setState(AlarmState::SENSOR_FAULT, "RS485 water level sensor not sending valid data.", "FAULT");
             return;
@@ -142,6 +153,38 @@ void AlarmStateMachine::update(
     }
 
     // Dual-sensor mode (both enabled).
+    // RS485 not wired at all — fall back silently to switch-only logic.
+    if (rs485Absent) {
+        if (switchL2) {
+            if (delaySatisfied(true, _dangerStartMs, triggerDelayMs, now)) {
+                setState(AlarmState::DANGER_CONFIRMED,
+                    "Danger triggered by Level 2 switch. RS485 not detected.",
+                    "DANGER");
+            } else {
+                setState(AlarmState::DANGER_PENDING,
+                    "Level 2 switch closed. Waiting trigger delay. RS485 not detected.",
+                    "DANGER");
+            }
+            return;
+        }
+        _dangerStartMs = 0;
+        if (switchL1) {
+            if (delaySatisfied(true, _alertStartMs, triggerDelayMs, now)) {
+                setState(AlarmState::ALERT_ORANGE,
+                    "Alert triggered by Level 1 switch. RS485 not detected.",
+                    "ORANGE");
+            } else {
+                setState(AlarmState::ALERT_PENDING_VERIFICATION,
+                    "Level 1 switch closed. Waiting trigger delay. RS485 not detected.",
+                    "ORANGE");
+            }
+            return;
+        }
+        _alertStartMs = 0;
+        setState(AlarmState::NORMAL, "Switch inputs normal. RS485 sensor not detected.", "NORMAL");
+        return;
+    }
+
     if (rs485Fault) {
         if (switchL2) {
             if (delaySatisfied(true, _dangerStartMs, triggerDelayMs, now)) {
