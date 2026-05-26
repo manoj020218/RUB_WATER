@@ -676,8 +676,8 @@
       const deviceId = dev.device_id || '';
       const isOnline = String(dev.status || '').toUpperCase() === 'ONLINE';
       const statusBadge = isOnline
-        ? '<span style="color:#2e7d32;font-weight:600;background:#e8f5e9;padding:2px 8px;border-radius:10px;font-size:11px">UP</span>'
-        : '<span style="color:#c62828;font-weight:600;background:#ffebee;padding:2px 8px;border-radius:10px;font-size:11px">DOWN</span>';
+        ? '<span style="color:#2e7d32;font-weight:600;background:#e8f5e9;padding:2px 8px;border-radius:10px;font-size:11px">UP / Stray</span>'
+        : '<span style="color:#c62828;font-weight:600;background:#ffebee;padding:2px 8px;border-radius:10px;font-size:11px">DOWN / Stray</span>';
       const diagBtn = (!isOnline && deviceId)
         ? `<button class="ghost-btn" style="padding:4px 10px;font-size:11px" onclick="diagDownDeviceApp('${escapeHtml(deviceId)}')">Check Health</button>`
         : '';
@@ -701,8 +701,8 @@
       const locationName = loc.location_name || loc.name || '—';
       const isOnline = String(loc.device_status || '').toUpperCase() === 'ONLINE';
       const statusBadge = isOnline
-        ? '<span style="color:#2e7d32;font-weight:600;background:#e8f5e9;padding:2px 8px;border-radius:10px;font-size:11px">UP</span>'
-        : '<span style="color:#c62828;font-weight:600;background:#ffebee;padding:2px 8px;border-radius:10px;font-size:11px">DOWN</span>';
+        ? '<span style="color:#2e7d32;font-weight:600;background:#e8f5e9;padding:2px 8px;border-radius:10px;font-size:11px">UP / Bound</span>'
+        : '<span style="color:#c62828;font-weight:600;background:#ffebee;padding:2px 8px;border-radius:10px;font-size:11px">DOWN / Bound</span>';
       const diagBtn = (!isOnline && deviceId)
         ? `<button class="ghost-btn" style="padding:4px 10px;font-size:11px" onclick="diagDownDeviceApp('${escapeHtml(deviceId)}')">Check Health</button>`
         : '';
@@ -3808,7 +3808,6 @@
         if (!targetLocId || !isSuperAdmin()) {
           setProvisionStep(4, 'done', 'Provision success. Device is cloud-ready.');
         }
-        setProvisionModalNote('All steps completed successfully. Press X to close.');
         setProvisionCloseEnabled(true);
         state.ble.provisioningComplete = true;
         updateBleProvisionSectionVisibility();
@@ -3818,6 +3817,24 @@
         }
         showToast('Provisioning completed successfully.');
         refreshAdminDevicesApp().catch(() => {});
+
+        // Fetch device ID from local HTTP status and show it in the modal
+        try {
+          const localUrlFinal = state.install.localUrl || localUrlAfterCloud;
+          if (localUrlFinal) {
+            const finalStatus = await fetchLocalDeviceStatus(localUrlFinal);
+            const devId = String(finalStatus?.device_id || '').trim();
+            if (devId) {
+              setProvisionModalNote(`Done. Device ID: ${devId}. Press X to close.`);
+            } else {
+              setProvisionModalNote('All steps completed. Press X to close.');
+            }
+          } else {
+            setProvisionModalNote('All steps completed. Press X to close.');
+          }
+        } catch (e) {
+          setProvisionModalNote('All steps completed. Press X to close.');
+        }
       }
 
       await checkAppVpsHealth();

@@ -68,6 +68,14 @@ function handleIncomingMqttMessage(topic, payload, options = {}) {
   }
 
   const deviceId = message.device_id || parsedTopic.deviceId;
+
+  // Auto-create device if missing — handles reconnects after VPS restarts clear the in-memory DB
+  if (deviceId && !deviceRepository.findById(deviceId)) {
+    try {
+      deviceRepository.createDevice({ device_id: deviceId, location_id: null });
+    } catch (e) { /* already exists — race condition */ }
+  }
+
   const locationId = resolveLocationId(message, parsedTopic.deviceId);
   const enriched = {
     ...message,
