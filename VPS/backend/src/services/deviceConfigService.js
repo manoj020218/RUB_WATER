@@ -4,6 +4,7 @@ const deviceRepository = require('../repositories/deviceRepository');
 const locationRepository = require('../repositories/locationRepository');
 const commandRepository = require('../repositories/commandRepository');
 const deviceConfigRepository = require('../repositories/deviceConfigRepository');
+const telemetryRepository = require('../repositories/telemetryRepository');
 const { badRequest, forbidden, notFound } = require('../utils/errors');
 const { assertPermission } = require('./rbacService');
 const auditService = require('./auditService');
@@ -128,7 +129,17 @@ function getDeviceConfig({ deviceId, authContext }) {
   if (authContext?.user) {
     assertUserLocationAccess(authContext.user, device.location_id);
   }
-  return current;
+
+  const allTelemetry = telemetryRepository.listByDevice(deviceId);
+  const latestTelemetry = allTelemetry.length > 0 ? allTelemetry[allTelemetry.length - 1] : null;
+  const deviceReported = latestTelemetry?.config ?? null;
+  const deviceReportedAt = deviceReported ? (latestTelemetry.timestamp || null) : null;
+
+  return {
+    ...current,
+    device_reported: deviceReported,
+    device_reported_at: deviceReportedAt
+  };
 }
 
 function queueConfigPush({ device, current, config, requestedBy }) {

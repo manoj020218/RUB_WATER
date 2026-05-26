@@ -462,53 +462,61 @@
           </div>
           <p class="view-subtitle" id="cfg-access-note">Access: --</p>
 
-          <label class="lbl">Alert Threshold (mm)</label>
-          <input class="inp" id="cfg-alert-level" type="number" min="1" step="1">
-          <label class="lbl">Danger Threshold (mm)</label>
-          <input class="inp" id="cfg-danger-level" type="number" min="1" step="1">
-          <label class="lbl">Clear Threshold (mm)</label>
-          <input class="inp" id="cfg-clear-level" type="number" min="1" step="1">
-          <label class="lbl">Trigger Delay (seconds)</label>
-          <input class="inp" id="cfg-trigger-delay" type="number" min="10" max="600" step="1">
-          <label class="lbl">Clear Delay (seconds)</label>
-          <input class="inp" id="cfg-clear-delay" type="number" min="30" max="1800" step="1">
-          <label class="lbl">US Sensor Mount Height (mm)</label>
-          <input class="inp" id="cfg-sensor-mount-height" type="number" min="1" step="1">
-          <label class="lbl">RS485 Sensor Connected</label>
-          <select class="inp" id="cfg-rs485-enabled">
-            <option value="true">Yes</option>
-            <option value="false">No</option>
-          </select>
-          <label class="lbl">Switch Sensor Connected</label>
-          <select class="inp" id="cfg-switch-enabled">
-            <option value="true">Yes</option>
-            <option value="false">No</option>
-          </select>
-          <label class="lbl">Level 1 Switch Height (mm)</label>
-          <input class="inp" id="cfg-switch-level-1-mm" type="number" min="1" step="1">
-          <label class="lbl">Level 2 Switch Height (mm)</label>
-          <input class="inp" id="cfg-switch-level-2-mm" type="number" min="1" step="1">
-
-          <div class="row" style="margin-top:10px">
-            <button class="control-btn info" style="margin-top:0" id="cfg-save-btn" onclick="saveDeviceConfigApp()">Save via Cloud</button>
-            <button class="ghost-btn" id="cfg-push-btn" onclick="pushDeviceConfigApp()">Push Again (Cloud)</button>
+          <div id="cfg-no-device-msg" style="padding:20px 0 8px;text-align:center;color:#757575;font-size:13px">
+            Select a device from the <strong>Locations</strong> tab to view and configure it.
           </div>
-          <div class="meta" id="cfg-cloud-status">Cloud push status: --</div>
-          <label class="lbl">Local Admin PIN (for Local LAN)</label>
-          <input class="inp" id="cfg-local-pin" type="password" placeholder="Enter local PIN (default 654321)">
-          <button class="control-btn warn" id="cfg-local-save-btn" onclick="saveDeviceConfigLocalLanApp()">Save Direct in Local LAN</button>
-          <div class="meta" id="cfg-local-status">Local LAN status: --</div>
 
-          <div class="meta" id="cfg-meta-version">Version: --</div>
-          <div class="meta" id="cfg-meta-ack">Last ACK: --</div>
-          <div class="meta">Changing thresholds affects alarm behavior. Changes are saved to device memory and audited.</div>
+          <div id="cfg-form-body" style="display:none">
+            <div id="cfg-device-reported-note" style="display:none;margin:8px 0 12px;padding:8px 12px;border-radius:8px;background:#e8f5e9;border-left:3px solid #43a047;font-size:12px;color:#2e7d32"></div>
 
-          <div class="row between" style="margin-top:16px">
-            <h3 style="margin:0;font-size:14px">Config History</h3>
-            <button class="ghost-btn" style="padding:6px 10px" onclick="refreshDeviceConfigHistoryApp()">Refresh</button>
-          </div>
-          <div class="timeline" id="cfg-history-list">
-            <div class="empty">No config history loaded.</div>
+            <label class="lbl">Alert Threshold (mm)</label>
+            <input class="inp" id="cfg-alert-level" type="number" min="1" step="1">
+            <label class="lbl">Danger Threshold (mm)</label>
+            <input class="inp" id="cfg-danger-level" type="number" min="1" step="1">
+            <label class="lbl">Clear Threshold (mm)</label>
+            <input class="inp" id="cfg-clear-level" type="number" min="1" step="1">
+            <label class="lbl">Trigger Delay (seconds)</label>
+            <input class="inp" id="cfg-trigger-delay" type="number" min="10" max="600" step="1">
+            <label class="lbl">Clear Delay (seconds)</label>
+            <input class="inp" id="cfg-clear-delay" type="number" min="30" max="1800" step="1">
+            <label class="lbl">US Sensor Mount Height (mm)</label>
+            <input class="inp" id="cfg-sensor-mount-height" type="number" min="1" step="1">
+            <label class="lbl">RS485 Sensor Connected</label>
+            <select class="inp" id="cfg-rs485-enabled">
+              <option value="true">Yes</option>
+              <option value="false">No</option>
+            </select>
+            <label class="lbl">Switch Sensor Connected</label>
+            <select class="inp" id="cfg-switch-enabled">
+              <option value="true">Yes</option>
+              <option value="false">No</option>
+            </select>
+            <label class="lbl">Level 1 Switch Height (mm)</label>
+            <input class="inp" id="cfg-switch-level-1-mm" type="number" min="1" step="1">
+            <label class="lbl">Level 2 Switch Height (mm)</label>
+            <input class="inp" id="cfg-switch-level-2-mm" type="number" min="1" step="1">
+
+            <div class="row" style="margin-top:10px">
+              <button class="control-btn info" style="margin-top:0" id="cfg-save-btn" onclick="saveDeviceConfigApp()">Save via Cloud</button>
+              <button class="ghost-btn" id="cfg-push-btn" onclick="pushDeviceConfigApp()">Push Again (Cloud)</button>
+            </div>
+            <div class="meta" id="cfg-cloud-status">Cloud push status: --</div>
+            <label class="lbl">Local Admin PIN (for Local LAN)</label>
+            <input class="inp" id="cfg-local-pin" type="password" placeholder="Enter local PIN (default 654321)">
+            <button class="control-btn warn" id="cfg-local-save-btn" onclick="saveDeviceConfigLocalLanApp()">Save Direct in Local LAN</button>
+            <div class="meta" id="cfg-local-status">Local LAN status: --</div>
+
+            <div class="meta" id="cfg-meta-version">Version: --</div>
+            <div class="meta" id="cfg-meta-ack">Last ACK: --</div>
+            <div class="meta">Changing thresholds affects alarm behavior. Changes are saved to device memory and audited.</div>
+
+            <div class="row between" style="margin-top:16px">
+              <h3 style="margin:0;font-size:14px">Config History</h3>
+              <button class="ghost-btn" style="padding:6px 10px" onclick="refreshDeviceConfigHistoryApp()">Refresh</button>
+            </div>
+            <div class="timeline" id="cfg-history-list">
+              <div class="empty">No config history loaded.</div>
+            </div>
           </div>
 
           <!-- All Device Configs — super admin only -->

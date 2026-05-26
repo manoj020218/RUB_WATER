@@ -39,7 +39,7 @@ void TelemetryManager::loop(
     }
     _lastTelemetryMs = now;
 
-    StaticJsonDocument<1024> doc;
+    StaticJsonDocument<2048> doc;
     doc["device_id"] = _config.deviceId;
     doc["location_id"] = _config.locationId;
     doc["product_pid"] = _config.productPid;
@@ -89,6 +89,17 @@ void TelemetryManager::loop(
     configObj["trigger_delay_seconds"] = runtimeConfig.triggerDelaySeconds;
     configObj["clear_delay_seconds"] = runtimeConfig.clearDelaySeconds;
     configObj["sensor_mount_height_mm"] = runtimeConfig.sensorMountHeightMm;
+    configObj["rs485_sensor_enabled"] = runtimeConfig.rs485SensorEnabled;
+    configObj["switch_sensor_enabled"] = runtimeConfig.switchSensorEnabled;
+    configObj["switch_level_1_mm"] = runtimeConfig.switchLevel1Mm;
+    configObj["switch_level_2_mm"] = runtimeConfig.switchLevel2Mm;
+    configObj["mismatch_duration_seconds"] = runtimeConfig.mismatchDurationSeconds;
+    configObj["config_version"] = runtimeConfig.configVersion;
+    configObj["daily_reboot_enabled"] = runtimeConfig.dailyRebootEnabled;
+    char dailyRebootTime[6]{};
+    std::snprintf(dailyRebootTime, sizeof(dailyRebootTime), "%02u:%02u",
+        runtimeConfig.dailyRebootHour, runtimeConfig.dailyRebootMinute);
+    configObj["daily_reboot_time"] = dailyRebootTime;
 
     JsonObject relayStatus = doc.createNestedObject("relay_status");
     relayStatus["siren"] = relays.siren;
@@ -96,7 +107,7 @@ void TelemetryManager::loop(
     relayStatus["voice"] = relays.voice;
     relayStatus["barrier"] = relays.barrier;
 
-    char payload[1024]{};
+    char payload[2048]{};
     serializeJson(doc, payload, sizeof(payload));
 
     bool published = false;

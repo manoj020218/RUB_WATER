@@ -1969,10 +1969,15 @@
     const deviceId = selectedConfigDeviceId();
     const accessNote = byId('cfg-access-note');
 
+    const formBody = byId('cfg-form-body');
+    const noDeviceMsg = byId('cfg-no-device-msg');
+
     if (!canView) {
       if (accessNote) {
         accessNote.textContent = 'Access: Viewer role cannot access device configuration.';
       }
+      if (formBody) formBody.style.display = 'none';
+      if (noDeviceMsg) noDeviceMsg.style.display = '';
       setConfigInputsDisabled(true);
       setConfigButtonDisabled(true);
       setConfigActionStatus('cloud', 'Locked for current role.', 'bad');
@@ -1980,18 +1985,56 @@
       return;
     }
 
+    if (!deviceId) {
+      if (formBody) formBody.style.display = 'none';
+      if (noDeviceMsg) noDeviceMsg.style.display = '';
+      if (accessNote) {
+        accessNote.textContent = 'Select a device to configure.';
+      }
+      return;
+    }
+
+    if (formBody) formBody.style.display = '';
+    if (noDeviceMsg) noDeviceMsg.style.display = 'none';
+
     const config = configLike || defaultConfigForView();
-    setConfigInputValue('cfg-alert-level', config.alert_level_mm);
-    setConfigInputValue('cfg-danger-level', config.danger_level_mm);
-    setConfigInputValue('cfg-clear-level', config.clear_level_mm);
-    setConfigInputValue('cfg-trigger-delay', config.trigger_delay_seconds);
-    setConfigInputValue('cfg-clear-delay', config.clear_delay_seconds);
-    setConfigInputValue('cfg-sensor-mount-height', config.sensor_mount_height_mm);
-    setConfigInputValue('cfg-rs485-enabled', config.rs485_sensor_enabled ? 'true' : 'false');
-    setConfigInputValue('cfg-switch-enabled', config.switch_sensor_enabled ? 'true' : 'false');
-    setConfigInputValue('cfg-switch-level-1-mm', config.switch_level_1_mm);
-    setConfigInputValue('cfg-switch-level-2-mm', config.switch_level_2_mm);
-    setText('cfg-meta-version', `Version: ${config.config_version ?? '--'} · State: ${config.state || '--'}`);
+
+    // Prefer device_reported values (live from device telemetry) when available.
+    const dr = config.device_reported;
+    const src = dr || config;
+    const reportedNote = byId('cfg-device-reported-note');
+    if (reportedNote) {
+      if (!deviceId) {
+        reportedNote.style.display = 'none';
+      } else if (dr) {
+        const reportedAt = config.device_reported_at ? formatDateTime(config.device_reported_at) : 'unknown time';
+        reportedNote.textContent = `Values reported by device as of ${reportedAt}. Edit fields and save to push changes.`;
+        reportedNote.style.background = '#e8f5e9';
+        reportedNote.style.borderLeftColor = '#43a047';
+        reportedNote.style.color = '#2e7d32';
+        reportedNote.style.display = '';
+      } else {
+        reportedNote.textContent = 'No report from device yet — showing last VPS-stored config. Values update after device connects and sends telemetry.';
+        reportedNote.style.background = '#fff3e0';
+        reportedNote.style.borderLeftColor = '#f57c00';
+        reportedNote.style.color = '#e65100';
+        reportedNote.style.display = '';
+      }
+    }
+
+    setConfigInputValue('cfg-alert-level', src.alert_level_mm);
+    setConfigInputValue('cfg-danger-level', src.danger_level_mm);
+    setConfigInputValue('cfg-clear-level', src.clear_level_mm);
+    setConfigInputValue('cfg-trigger-delay', src.trigger_delay_seconds);
+    setConfigInputValue('cfg-clear-delay', src.clear_delay_seconds);
+    setConfigInputValue('cfg-sensor-mount-height', src.sensor_mount_height_mm);
+    setConfigInputValue('cfg-rs485-enabled', src.rs485_sensor_enabled ? 'true' : 'false');
+    setConfigInputValue('cfg-switch-enabled', src.switch_sensor_enabled ? 'true' : 'false');
+    setConfigInputValue('cfg-switch-level-1-mm', src.switch_level_1_mm);
+    setConfigInputValue('cfg-switch-level-2-mm', src.switch_level_2_mm);
+
+    const displayVersion = dr?.config_version ?? config.config_version ?? '--';
+    setText('cfg-meta-version', `Version: ${displayVersion} · State: ${config.state || '--'}`);
     const ackStatus = config.last_ack_status || '--';
     const ackTime = config.last_ack_at ? formatDateTime(config.last_ack_at) : '--';
     const ackMsg = config.last_ack_message ? ` · ${config.last_ack_message}` : '';
@@ -1999,23 +2042,18 @@
 
     if (accessNote) {
       const loc = state.locations.find((l) => l.location_id === state.selectedLocationId);
-      const locLabel = loc ? `${loc.location_name || loc.location_id} · ${deviceId}` : '';
-      if (!deviceId) {
-        accessNote.textContent = `Configuring: — · Select a location in the Locations tab first.`;
-      } else if (canEdit) {
+      const locLabel = loc ? `${loc.location_name || loc.location_id} · ${deviceId}` : deviceId;
+      if (canEdit) {
         accessNote.textContent = `Configuring: ${locLabel} · Editable`;
       } else {
         accessNote.textContent = `Configuring: ${locLabel} · Read only`;
       }
     }
 
-    const shouldDisableInputs = !canEdit || !deviceId;
+    const shouldDisableInputs = !canEdit;
     setConfigInputsDisabled(shouldDisableInputs);
     setConfigButtonDisabled(shouldDisableInputs);
-    if (!deviceId) {
-      setConfigActionStatus('cloud', 'Select a location/device first.', 'warn');
-      setConfigActionStatus('local', 'Select a location/device first.', 'warn');
-    } else if (!canEdit) {
+    if (!canEdit) {
       setConfigActionStatus('cloud', 'Read-only access for this role.', 'warn');
       setConfigActionStatus('local', 'Read-only access for this role.', 'warn');
     }

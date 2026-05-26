@@ -53,7 +53,8 @@ function createTelemetryRecord(payload) {
       barrier: false
     },
     water_detected: (Number.isFinite(waterLevel) && waterLevel > 0) || switch300 || switch500,
-    source: payload.source || 'device'
+    source: payload.source || 'device',
+    config: (payload.config && typeof payload.config === 'object') ? payload.config : null
   };
 }
 
