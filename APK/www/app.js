@@ -55,7 +55,8 @@
       provisionKey: '',
       lastDeviceBatteryVoltage: null,
       adcDividerRatio: 5.0,
-      adcCalibrationFactor: 1.0
+      adcCalibrationFactor: 1.0,
+      pendingBindDeviceId: ''
     },
     alarm: {
       enabled: false,
@@ -650,8 +651,10 @@
     const locMap = {};
     locs.forEach((l) => { locMap[l.location_id] = l; });
 
-    // Unbound VPS devices: registered but no location assigned
-    const unbound = adminDevices.filter((d) => !d.location_id);
+    // Unbound VPS devices: registered but no location assigned — newest first
+    const unbound = adminDevices
+      .filter((d) => !d.location_id)
+      .sort((a, b) => new Date(b.created_at || 0) - new Date(a.created_at || 0));
     // Bound: all locations (which implies a device is bound)
     const bound = locs.filter((l) => l.device_id);
 
@@ -679,11 +682,11 @@
       rows.push(`<tr style="border-bottom:1px solid #e3f2fd;background:#e8f4fd">
         <td style="padding:8px 10px;color:#9e9e9e">${idx++}</td>
         <td style="padding:8px 10px;font-family:monospace;font-size:12px">
-          <span class="install-dev-link" onclick="openView('view-locations')" title="Go to Locations to bind this device">${escapeHtml(deviceId)}</span>
+          <span class="install-dev-link" onclick="openLocationViewWithDevice('${escapeHtml(deviceId)}')" title="Go to Locations to bind this device">${escapeHtml(deviceId)}</span>
           <span style="font-size:10px;color:#1565c0;margin-left:4px">↑ not bound</span>
         </td>
         <td style="padding:8px 10px">
-          <span class="install-dev-link" onclick="openView('view-locations')" style="color:#1565c0;font-size:12px">Assign location →</span>
+          <span class="install-dev-link" onclick="openLocationViewWithDevice('${escapeHtml(deviceId)}')" style="color:#1565c0;font-size:12px">Connect to Location →</span>
         </td>
         <td style="padding:8px 10px">${statusBadge}</td>
         <td style="padding:8px 10px;text-align:right">${diagBtn}</td>
@@ -2662,6 +2665,18 @@
       return;
     }
 
+    // Pending bind banner
+    const pendingDeviceId = String(state.install?.pendingBindDeviceId || '').trim();
+    const banner = byId('pending-bind-banner');
+    if (banner) {
+      if (pendingDeviceId) {
+        setText('pending-bind-device-label', pendingDeviceId);
+        banner.style.display = 'flex';
+      } else {
+        banner.style.display = 'none';
+      }
+    }
+
     setText('location-count', `${state.locations.length} sites`);
 
     if (state.locations.length === 0) {
@@ -2720,17 +2735,19 @@
         : '';
 
       // Inline bind panel (only for unbound locations, super admin)
+      const pendingId = String(state.install?.pendingBindDeviceId || '').trim();
+      const panelOpenByDefault = !deviceId && isSuperAdmin() && Boolean(pendingId);
       const bindPanel = (!deviceId && isSuperAdmin()) ? `
-        <div class="loc-bind-panel" id="bind-panel-${escapeHtml(loc.location_id)}" style="display:none">
+        <div class="loc-bind-panel" id="bind-panel-${escapeHtml(loc.location_id)}" style="${panelOpenByDefault ? '' : 'display:none'}">
           <div class="loc-bind-panel-inner">
             <span class="loc-bind-panel-label">Bind device to <strong>${escapeHtml(loc.location_name || loc.location_id)}</strong></span>
             <div class="loc-bind-row">
               <select class="inp loc-bind-select" id="bind-sel-${escapeHtml(loc.location_id)}">
                 <option value="">Select free device…</option>
-                ${(state.adminDevices || []).filter((d) => !d.location_id).map((d) => `<option value="${escapeHtml(d.device_id)}">${escapeHtml(d.device_id)}${d.status ? ' (' + String(d.status).toUpperCase() + ')' : ''}</option>`).join('')}
+                ${(state.adminDevices || []).filter((d) => !d.location_id).map((d) => `<option value="${escapeHtml(d.device_id)}"${pendingId && d.device_id === pendingId ? ' selected' : ''}>${escapeHtml(d.device_id)}${d.status ? ' (' + String(d.status).toUpperCase() + ')' : ''}</option>`).join('')}
               </select>
               <span class="loc-bind-or">or</span>
-              <input class="inp loc-bind-input" id="bind-inp-${escapeHtml(loc.location_id)}" placeholder="Type Device ID…" oninput="document.getElementById('bind-sel-${escapeHtml(loc.location_id)}').value=''">
+              <input class="inp loc-bind-input" id="bind-inp-${escapeHtml(loc.location_id)}" placeholder="Type Device ID…" value="${escapeHtml(pendingId)}" oninput="document.getElementById('bind-sel-${escapeHtml(loc.location_id)}').value=''">
               <button class="loc-bind-apply-btn" onclick="applyBindFromCardApp('${escapeHtml(loc.location_id)}')">Apply</button>
             </div>
           </div>
@@ -3471,7 +3488,7 @@
         };
         wifiResponse = await bleSendCommand(commandPayload, {
           expectCmd: 'w',
-          maxWaitMs: 45000,
+          maxWaitMs: 50000,
           readTimeoutMs: 6000,
           initialDelayMs: 500,
           pollIntervalMs: 700
@@ -3515,6 +3532,10 @@
       }
 
       activeStep = 3;
+      // Brief settling delay after WiFi radio activity before next BLE command
+      if (!reusedWifiSession) {
+        await delay(1500);
+      }
       setProvisionStep(3, 'active', 'Applying cloud profile...');
 
       const cloudCommandPayload = {
@@ -3729,6 +3750,8 @@
           byId('ble-wifi-password').value = '';
         }
         showToast('Wi-Fi provision command completed.');
+        // Refresh device list so the newly registered device appears immediately
+        refreshAdminDevicesApp().catch(() => {});
       }
 
       await checkAppVpsHealth();
@@ -4716,29 +4739,33 @@
       list.innerHTML = '<div class="empty">No devices registered yet.</div>';
       return;
     }
-    list.innerHTML = devices.map((d) => {
+    // Sort: unbound first, then newest-first within each group
+    const sorted = [...devices].sort((a, b) => {
+      const aUnbound = !a.location_id ? 0 : 1;
+      const bUnbound = !b.location_id ? 0 : 1;
+      if (aUnbound !== bUnbound) return aUnbound - bUnbound;
+      return new Date(b.created_at || 0) - new Date(a.created_at || 0);
+    });
+    list.innerHTML = sorted.map((d) => {
       const deviceId = escapeHtml(d.device_id);
       const locId = escapeHtml(d.location_id || '');
       const locName = d.location_id
         ? escapeHtml(state.locations.find((l) => l.location_id === d.location_id)?.location_name || d.location_id)
-        : '<span style="color:#94a3b8">Unbound</span>';
+        : 'Unbound';
       const statusCls = d.status === 'ONLINE' ? 'ok' : 'off';
+      const unboundCls = !d.location_id ? ' admin-device-row--unbound' : '';
       return `
-        <div class="admin-device-row">
+        <div class="admin-device-row${unboundCls}">
           <div class="admin-device-head">
             <div>
               <div class="admin-device-id">${deviceId}</div>
-              <div class="admin-device-loc">Location: ${locName}</div>
+              <div class="admin-device-loc">Location: <span style="color:${d.location_id ? '#0f172a' : '#94a3b8'}">${locName}</span></div>
             </div>
             <span class="chip ${statusCls}" style="font-size:10px">${escapeHtml(d.status || 'OFFLINE')}</span>
           </div>
           ${!d.location_id ? `
-          <div class="admin-device-bind-row">
-            <select class="inp" id="quick-bind-loc-${deviceId}" style="font-size:12px;flex:1">
-              <option value="">Select location to bind...</option>
-              ${state.locations.map((l) => `<option value="${escapeHtml(l.location_id)}">${escapeHtml(l.location_name || l.location_id)}</option>`).join('')}
-            </select>
-            <button class="ghost-btn" style="padding:5px 10px;font-size:11px" onclick="quickBindDeviceApp('${deviceId}')">Bind</button>
+          <div style="margin-top:8px;display:flex;gap:6px;align-items:center">
+            <button class="control-btn info" style="flex:1;padding:7px 10px;font-size:12px;font-weight:600" onclick="openLocationViewWithDevice('${deviceId}')">📍 Connect to Location →</button>
           </div>` : `
           <div style="margin-top:6px;text-align:right">
             <button class="ghost-btn" style="padding:5px 10px;font-size:11px" onclick="quickUnbindDeviceApp('${deviceId}', '${locId}')">Unbind</button>
@@ -4775,6 +4802,18 @@
     }
   }
 
+  function openLocationViewWithDevice(deviceId) {
+    state.install.pendingBindDeviceId = String(deviceId || '').trim().toUpperCase();
+    openView('view-locations');
+  }
+
+  function clearPendingBindApp() {
+    state.install.pendingBindDeviceId = '';
+    const banner = byId('pending-bind-banner');
+    if (banner) banner.style.display = 'none';
+    renderLocations();
+  }
+
   function toggleInlineBindApp(locationId) {
     const panel = byId(`bind-panel-${locationId}`);
     if (!panel) return;
@@ -4804,6 +4843,7 @@
         body: { device_id: deviceId }
       });
       showToast(`${deviceId} bound to location.`);
+      state.install.pendingBindDeviceId = '';
       const panel = byId(`bind-panel-${locationId}`);
       if (panel) panel.style.display = 'none';
       await refreshAdminDevicesApp();

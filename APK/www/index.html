@@ -58,6 +58,13 @@
             <h2 class="view-title">Locations</h2>
             <span class="chip" id="location-count">0 sites</span>
           </div>
+          <div id="pending-bind-banner" style="display:none;background:linear-gradient(135deg,#1e40af,#2563eb);color:#fff;border-radius:10px;padding:12px 14px;margin-bottom:10px;display:none;align-items:center;justify-content:space-between;gap:8px">
+            <div style="font-size:13px;line-height:1.4">
+              <span style="font-weight:700">📡 Device <span id="pending-bind-device-label" style="font-family:monospace;font-size:13px"></span> is ready</span><br>
+              <span style="font-size:12px;opacity:0.9">Select a location below to bind it, or add a new location.</span>
+            </div>
+            <button onclick="clearPendingBindApp()" style="background:rgba(255,255,255,0.2);border:0;color:#fff;border-radius:6px;padding:4px 10px;font-size:12px;cursor:pointer;white-space:nowrap">✕ Dismiss</button>
+          </div>
           <div class="list" id="location-list">
             <div class="empty">Loading locations...</div>
           </div>

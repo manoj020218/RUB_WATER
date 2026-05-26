@@ -747,7 +747,7 @@ String BleProvisioningService::handleCommand(const String& request, const Device
         }
 
         WifiManager::getInstance().setCredentials(ssid.c_str(), password.c_str(), true);
-        const bool connected = WifiManager::getInstance().connectNow(22000UL);
+        const bool connected = WifiManager::getInstance().connectNow(30000UL);
         const int wifiStatus = WifiManager::getInstance().currentStatus();
         // Keep BLE response compact to avoid MTU truncation on phone reads.
         resDoc.remove("device_name");
