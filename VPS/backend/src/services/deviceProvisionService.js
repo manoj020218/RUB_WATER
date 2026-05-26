@@ -183,9 +183,10 @@ function registerDeviceWithProvisionKey({ deviceId, provisionKey, ipAddress }) {
     throw notFound('Device not found');
   }
 
-  const device = deviceRepository.findById(normalizedDeviceId);
+  let device = deviceRepository.findById(normalizedDeviceId);
   if (!device) {
-    throw notFound('Device not found');
+    // Provision key is valid — auto-register this new device
+    device = deviceRepository.createDevice({ device_id: normalizedDeviceId, location_id: null });
   }
 
   const ttlHours = Number.isFinite(Number(env.deviceTokenTtlHours))
