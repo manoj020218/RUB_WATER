@@ -1398,8 +1398,8 @@ button {
   0%, 100% { box-shadow: 0 0 0 0 rgba(59,130,246,0.0); border-color: #3b82f6; }
   50%       { box-shadow: 0 0 0 4px rgba(59,130,246,0.25); border-color: #1d4ed8; }
 }
-/* Pulse for unbound <tr> rows (box-shadow doesn't work on tr — use bg animation) */
-.install-row-unbound {
+/* Pulse for unbound <tr> rows — animate td cells since tr bg doesn't render in WebView */
+.install-row-unbound td {
   animation: installRowPulse 2s ease-in-out infinite;
 }
 @keyframes installRowPulse {
