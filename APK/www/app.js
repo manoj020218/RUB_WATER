@@ -679,7 +679,7 @@
       const diagBtn = (!isOnline && deviceId)
         ? `<button class="ghost-btn" style="padding:4px 10px;font-size:11px" onclick="diagDownDeviceApp('${escapeHtml(deviceId)}')">Check Health</button>`
         : '';
-      rows.push(`<tr style="border-bottom:1px solid #e3f2fd;background:#e8f4fd">
+      rows.push(`<tr class="install-row-unbound" style="border-bottom:1px solid #e3f2fd">
         <td style="padding:8px 10px;color:#9e9e9e">${idx++}</td>
         <td style="padding:8px 10px;font-family:monospace;font-size:12px">
           <span class="install-dev-link" onclick="openLocationViewWithDevice('${escapeHtml(deviceId)}')" title="Go to Locations to bind this device">${escapeHtml(deviceId)}</span>
