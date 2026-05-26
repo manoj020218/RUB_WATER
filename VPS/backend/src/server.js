@@ -1,11 +1,19 @@
 const http = require('http');
 const env = require('./config/env');
+const { dataStore } = require('./db/datastore');
+const { loadFromDisk, flushSync, startAutoSave, stopAutoSave } = require('./db/persistence');
 const { createApp } = require('./app');
 const { startMqttBridge } = require('./mqtt/mqttBridge');
 const { createLiveSocketServer } = require('./services/liveSocketService');
 const { startWebhookDispatcher } = require('./services/headOfficeIntegrationService');
 
+// Load persisted data before createApp() so seedIfEmpty() sees existing records
+loadFromDisk(dataStore);
+
 const app = createApp();
+
+// Persist state every 5 seconds — at most 5s data loss on hard kill
+startAutoSave(dataStore, 5000);
 const httpServer = http.createServer(app);
 const mqttClient = startMqttBridge();
 const liveSocket = createLiveSocketServer(httpServer);
@@ -23,6 +31,9 @@ httpServer.listen(env.port, () => {
 function shutdown(signalName) {
   // eslint-disable-next-line no-console
   console.log(`[FloodGuard VPS] shutting down on ${signalName}`);
+
+  stopAutoSave();
+  flushSync(dataStore); // Final save before exit
 
   if (mqttClient && typeof mqttClient.end === 'function') {
     mqttClient.end(true);
