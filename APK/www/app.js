@@ -1505,7 +1505,9 @@
       || text.includes('disconnected')
       || text.includes('device was disconnected')
       || text.includes('gatt')
-      || text.includes('status 133');
+      || text.includes('status 133')
+      || text.includes('writing characteristic')
+      || text.includes('write characteristic');
   }
 
   function isBleNoResponseError(error) {
@@ -3549,9 +3551,9 @@
       }
 
       activeStep = 3;
-      // Brief settling delay after WiFi radio activity before next BLE command
+      // ESP32 BLE radio needs time to re-stabilize after WiFi connects (shared antenna)
       if (!reusedWifiSession) {
-        await delay(1500);
+        await delay(3000);
       }
       setProvisionStep(3, 'active', 'Applying cloud profile...');
 
