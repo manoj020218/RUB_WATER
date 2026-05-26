@@ -132,7 +132,7 @@ bool ConfigManager::buildRuntimeConfigJson(char* out, size_t outSize) const {
         return false;
     }
 
-    StaticJsonDocument<768> doc;
+    StaticJsonDocument<896> doc;
     doc["alert_level_mm"] = _runtimeConfig.alertLevelMm;
     doc["danger_level_mm"] = _runtimeConfig.dangerLevelMm;
     doc["clear_level_mm"] = _runtimeConfig.clearLevelMm;
@@ -149,6 +149,13 @@ bool ConfigManager::buildRuntimeConfigJson(char* out, size_t outSize) const {
     doc["local_admin_pin_hash"] = _runtimeConfig.localAdminPinHash;
     doc["config_version"] = _runtimeConfig.configVersion;
     doc["last_saved_epoch"] = _runtimeConfig.lastSavedEpoch;
+
+    doc["daily_reboot_enabled"] = _runtimeConfig.dailyRebootEnabled;
+    char rebootTimeBuf[8]{};
+    std::snprintf(rebootTimeBuf, sizeof(rebootTimeBuf), "%02u:%02u",
+                  static_cast<unsigned>(_runtimeConfig.dailyRebootHour),
+                  static_cast<unsigned>(_runtimeConfig.dailyRebootMinute));
+    doc["daily_reboot_time"] = rebootTimeBuf;
 
     const size_t written = serializeJson(doc, out, outSize);
     return written > 0 && written < outSize;
@@ -222,6 +229,10 @@ void ConfigManager::loadRuntimeDefaults() {
     _runtimeConfig.sensorMountHeightMm = 1200;
     _runtimeConfig.mismatchDurationSeconds = 120;
     _runtimeConfig.configVersion = 1;
+
+    _runtimeConfig.dailyRebootEnabled = true;
+    _runtimeConfig.dailyRebootHour = 3;
+    _runtimeConfig.dailyRebootMinute = 30;
 
     copyCString(_runtimeConfig.deviceId, sizeof(_runtimeConfig.deviceId), _config.deviceId);
     copyCString(_runtimeConfig.locationId, sizeof(_runtimeConfig.locationId), _config.locationId);
@@ -341,6 +352,16 @@ bool ConfigManager::parseRuntimeConfigJson(
     const char* locationId = firstString(obj, "location_id", "locationId");
     if (locationId[0] != '\0') {
         copyCString(outConfig.locationId, sizeof(outConfig.locationId), locationId);
+    }
+
+    copyIfPresent<bool>(obj, "daily_reboot_enabled", "dailyRebootEnabled", outConfig.dailyRebootEnabled);
+    const char* rebootTime = firstString(obj, "daily_reboot_time", "dailyRebootTime");
+    if (rebootTime[0] != '\0') {
+        unsigned h = 0, m = 0;
+        if (std::sscanf(rebootTime, "%u:%u", &h, &m) == 2 && h < 24 && m < 60) {
+            outConfig.dailyRebootHour   = static_cast<uint8_t>(h);
+            outConfig.dailyRebootMinute = static_cast<uint8_t>(m);
+        }
     }
 
     const char* pin = firstString(obj, "local_admin_pin", nullptr);

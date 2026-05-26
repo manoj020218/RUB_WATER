@@ -40,6 +40,10 @@ struct FloodGuardRuntimeConfig {
 
     uint32_t configVersion;
     uint32_t lastSavedEpoch;
+
+    bool dailyRebootEnabled;
+    uint8_t dailyRebootHour;    // 0–23, IST
+    uint8_t dailyRebootMinute;  // 0–59
 };
 
 struct ReportingProfile {

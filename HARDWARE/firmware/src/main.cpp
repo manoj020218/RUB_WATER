@@ -27,6 +27,9 @@ AlarmState gPreviousState = AlarmState::NORMAL;
 unsigned long gLastHeartbeatMs = 0;
 bool gSwitchFaultEventPublished = false;
 bool gObstructionEventPublished = false;
+// Daily reboot: armed after 3 min uptime so a boot at the exact reboot minute
+// doesn't immediately reboot again in a loop.
+bool gDailyRebootArmed = false;
 
 const char* stateToString(AlarmState state) {
     switch (state) {
@@ -380,5 +383,22 @@ void loop() {
 
     WatchdogService::getInstance().feed();
     WatchdogService::getInstance().loop();
+
+    // Arm daily reboot check only after 3 minutes of uptime.
+    if (!gDailyRebootArmed && millis() > 180000UL) {
+        gDailyRebootArmed = true;
+    }
+    if (gDailyRebootArmed && runtimeConfig.dailyRebootEnabled && TimeSyncService::getInstance().isTimeSynced()) {
+        time_t nowEpoch = time(nullptr);
+        struct tm ti{};
+        localtime_r(&nowEpoch, &ti);
+        if (ti.tm_hour == runtimeConfig.dailyRebootHour &&
+            ti.tm_min  == runtimeConfig.dailyRebootMinute) {
+            publishGenericEvent(config, "DAILY_REBOOT", "Scheduled daily reboot");
+            delay(300);
+            ESP.restart();
+        }
+    }
+
     delay(10);
 }
