@@ -1398,13 +1398,18 @@ button {
   0%, 100% { box-shadow: 0 0 0 0 rgba(59,130,246,0.0); border-color: #3b82f6; }
   50%       { box-shadow: 0 0 0 4px rgba(59,130,246,0.25); border-color: #1d4ed8; }
 }
-/* Pulse for unbound <tr> rows — animate td cells since tr bg doesn't render in WebView */
+/* Pulse for unbound <tr> rows — animate td cells; tr bg is unreliable in WebView */
 .install-row-unbound td {
-  animation: installRowPulse 2s ease-in-out infinite;
+  -webkit-animation: installRowPulse 1.2s ease-in-out infinite alternate;
+  animation: installRowPulse 1.2s ease-in-out infinite alternate;
+}
+@-webkit-keyframes installRowPulse {
+  from { background-color: #ffffff; }
+  to   { background-color: #1565c0; color: #fff; }
 }
 @keyframes installRowPulse {
-  0%, 100% { background-color: #e8f4fd; }
-  50%       { background-color: #bbdefb; }
+  from { background-color: #ffffff; }
+  to   { background-color: #1565c0; color: #fff; }
 }
 
 /* --- PWA Install Notice --- */

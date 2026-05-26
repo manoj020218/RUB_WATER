@@ -56,7 +56,8 @@
       lastDeviceBatteryVoltage: null,
       adcDividerRatio: 5.0,
       adcCalibrationFactor: 1.0,
-      pendingBindDeviceId: ''
+      pendingBindDeviceId: '',
+      bleTargetLocationId: ''
     },
     alarm: {
       enabled: false,
@@ -268,6 +269,7 @@
 
     if (viewId === 'view-install') {
       renderInstallDeviceTable();
+      populateBleTargetLocationSection();
       if (isSuperAdmin()) refreshAdminDevicesApp().catch(() => {});
       refreshVendorInstallStatus().catch(() => {
         // handled internally
@@ -3138,6 +3140,7 @@
     renderBleDeviceList();
     updateBleStatusLabel();
     updateBleProvisionSectionVisibility();
+    populateBleTargetLocationSection();
 
     const section = byId('ble-wifi-provision-section');
     if (section && section.style.display !== 'none') {
@@ -3752,6 +3755,32 @@
         showToast('Wi-Fi provision command completed.');
         // Refresh device list so the newly registered device appears immediately
         refreshAdminDevicesApp().catch(() => {});
+
+        // Auto-bind to pre-selected target location if chosen
+        const targetLocId = String(byId('ble-target-location-select')?.value || '').trim();
+        if (targetLocId && isSuperAdmin()) {
+          try {
+            setProvisionStep(4, 'active', 'Auto-binding device to location...');
+            await delay(2000);
+            await refreshAdminDevicesApp().catch(() => {});
+            const newest = (state.adminDevices || [])
+              .filter((d) => !d.location_id)
+              .sort((a, b) => new Date(b.created_at || 0) - new Date(a.created_at || 0))[0];
+            if (newest?.device_id) {
+              await apiRequest(`/admin/locations/${encodeURIComponent(targetLocId)}/bind-device`, {
+                method: 'POST',
+                body: { device_id: newest.device_id }
+              });
+              showToast(`Device ${newest.device_id} bound to location.`);
+              setProvisionStep(4, 'done', `Done. Device ${newest.device_id} bound to ${targetLocId}.`);
+              await refreshAppData();
+              await refreshAdminDevicesApp().catch(() => {});
+              populateBleTargetLocationSection();
+            }
+          } catch (bindError) {
+            showToast(`Auto-bind failed: ${bindError.message}`, true);
+          }
+        }
       }
 
       await checkAppVpsHealth();
@@ -4802,6 +4831,56 @@
     }
   }
 
+  function populateBleTargetLocationSection() {
+    const section = byId('ble-target-location-section');
+    if (!section) return;
+    if (!isSuperAdmin() || !state.ble.selectedDeviceId) {
+      section.style.display = 'none';
+      return;
+    }
+    const sel = byId('ble-target-location-select');
+    if (!sel) return;
+    const unbound = (state.locations || []).filter((l) => !l.device_id);
+    const prev = sel.value;
+    sel.innerHTML = '<option value="">— Skip (bind manually later) —</option>';
+    unbound.forEach((l) => {
+      const opt = document.createElement('option');
+      opt.value = l.location_id;
+      opt.textContent = l.location_name || l.location_id;
+      if (l.location_id === prev) opt.selected = true;
+      sel.appendChild(opt);
+    });
+    section.style.display = '';
+  }
+
+  function showBleNewLocationFormApp() {
+    const form = byId('ble-new-location-form');
+    if (form) form.style.display = '';
+    byId('ble-new-location-name')?.focus();
+  }
+
+  async function createAndSelectBleLocationApp() {
+    const name = String(byId('ble-new-location-name')?.value || '').trim();
+    if (!name) { showToast('Enter a location name.', true); return; }
+    try {
+      const result = await apiRequest('/admin/locations', { method: 'POST', body: { location_name: name } });
+      showToast(`Location "${name}" created.`);
+      await refreshAppData();
+      populateBleTargetLocationSection();
+      const newId = result?.location_id || result?.id || '';
+      if (newId) {
+        const sel = byId('ble-target-location-select');
+        if (sel) sel.value = newId;
+      }
+      const form = byId('ble-new-location-form');
+      if (form) form.style.display = 'none';
+      const inp = byId('ble-new-location-name');
+      if (inp) inp.value = '';
+    } catch (error) {
+      showToast(`Failed to create location: ${error.message}`, true);
+    }
+  }
+
   function openLocationViewWithDevice(deviceId) {
     state.install.pendingBindDeviceId = String(deviceId || '').trim().toUpperCase();
     openView('view-locations');
@@ -5571,6 +5650,8 @@
   window.diagDownDeviceApp = diagDownDeviceApp;
   window.bleScanWifiApp = bleScanWifiApp;
   window.bleProvisionWifiApp = bleProvisionWifiApp;
+  window.showBleNewLocationFormApp = showBleNewLocationFormApp;
+  window.createAndSelectBleLocationApp = createAndSelectBleLocationApp;
   window.refreshLocalDeviceStatusApp = refreshLocalDeviceStatusApp;
   window.refreshDeviceConfigApp = refreshDeviceConfigApp;
   window.refreshDeviceConfigHistoryApp = refreshDeviceConfigHistoryApp;

@@ -386,6 +386,25 @@
 
           <div class="meta" id="ble-selected-device" style="margin-top:8px">Selected: tap a BLE device to continue</div>
 
+          <!-- Target location — shown after device selection (super admin only) -->
+          <div id="ble-target-location-section" style="display:none;margin-top:10px;background:#f0f4ff;border-radius:8px;padding:12px 14px;border:1px solid #c7d2fe">
+            <div style="font-weight:600;font-size:13px;color:#1e40af;margin-bottom:6px">📍 Target Location</div>
+            <div style="display:flex;gap:8px;align-items:stretch">
+              <select class="inp" id="ble-target-location-select" style="flex:1;margin:0">
+                <option value="">— Skip (bind manually later) —</option>
+              </select>
+              <button class="ghost-btn" style="white-space:nowrap;padding:8px 12px;flex-shrink:0" onclick="showBleNewLocationFormApp()">+ New</button>
+            </div>
+            <div class="meta" style="margin-top:5px">Device will auto-bind to selected location after provisioning.</div>
+            <div id="ble-new-location-form" style="display:none;margin-top:8px">
+              <input class="inp" id="ble-new-location-name" placeholder="Location name (e.g. RUB Gate A)" style="margin-bottom:6px">
+              <div style="display:flex;gap:8px">
+                <button class="control-btn info" style="flex:1;padding:7px 10px;font-size:12px" onclick="createAndSelectBleLocationApp()">Create &amp; Select</button>
+                <button class="ghost-btn" style="padding:7px 10px" onclick="byId('ble-new-location-form').style.display='none'">Cancel</button>
+              </div>
+            </div>
+          </div>
+
           <button class="control-btn warn" onclick="bleReadHealthApp()">Check Device Health + VPS</button>
           <pre class="diag-log" id="ble-health-output">No health response yet.</pre>
 
