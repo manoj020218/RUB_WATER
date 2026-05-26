@@ -759,7 +759,7 @@
       DANGER_WITH_SENSOR_MISMATCH: { label: 'DANGER MISMATCH', cls: 'danger' },
       DANGER_WITH_RS485_FAULT: { label: 'DANGER RS485 FAULT', cls: 'danger' },
       CLEAR_PENDING: { label: 'CLEAR PENDING', cls: 'warn' },
-      SENSOR_FAULT: { label: 'SENSOR FAULT', cls: 'off' },
+      SENSOR_FAULT: { label: 'SENSOR FAULT', cls: 'warn' },
       OFFLINE_LOCAL_MODE: { label: 'OFFLINE LOCAL', cls: 'off' }
     };
     if (statusMap[status]) {
@@ -771,7 +771,10 @@
     if (status.includes('ALERT') || status.includes('WATER_DETECTED') || status.includes('CLEAR_PENDING')) {
       return { label: 'ALERT', cls: 'warn' };
     }
-    if (status.includes('OFFLINE') || status.includes('FAULT')) {
+    if (status.includes('FAULT')) {
+      return { label: 'SENSOR FAULT', cls: 'warn' };
+    }
+    if (status.includes('OFFLINE')) {
       return { label: 'OFFLINE', cls: 'off' };
     }
     return { label: 'NORMAL', cls: 'ok' };
