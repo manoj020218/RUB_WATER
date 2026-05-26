@@ -14,11 +14,17 @@ const { notFound } = require('../utils/errors');
 const { toIso } = require('../utils/time');
 
 function ingestTelemetry(payload) {
-  const record = createTelemetryRecord(payload);
-  const device = deviceRepository.findById(record.device_id);
+  const device = deviceRepository.findById(payload.device_id);
   if (!device) {
     throw notFound('Device not found');
   }
+
+  // Resolve location from device record when payload omits it (e.g. freshly registered device)
+  const resolvedPayload = (!payload.location_id && device.location_id)
+    ? { ...payload, location_id: device.location_id }
+    : payload;
+
+  const record = createTelemetryRecord(resolvedPayload);
 
   telemetryRepository.insert(record);
   deviceRepository.updateRuntime(record.device_id, {
@@ -29,7 +35,7 @@ function ingestTelemetry(payload) {
     last_primary_sensor_status: record.primary_sensor_status
   });
 
-  if (record.status === 'DANGER' || record.switch_500mm || record.water_level_mm >= 500) {
+  if (record.location_id && (record.status === 'DANGER' || record.switch_500mm || record.water_level_mm >= 500)) {
     incidentService.openOrUpdateDangerIncident({
       locationId: record.location_id,
       deviceId: record.device_id,

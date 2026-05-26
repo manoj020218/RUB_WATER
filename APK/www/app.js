@@ -3600,7 +3600,7 @@
       try {
         cloudResponse = await bleSendCommand(cloudCommandPayload, {
           expectCmd: 'c',
-          maxWaitMs: 45000,
+          maxWaitMs: 20000,
           readTimeoutMs: 6500,
           initialDelayMs: 450,
           pollIntervalMs: 700
@@ -3684,74 +3684,120 @@
         }
       }
 
-      setProvisionStep(3, 'active', 'Checking device local + cloud over HTTP...');
-
+      // PRIMARY: Poll device local HTTP for MQTT/cloud status.
+      // After WiFi connects, the device is on the local network — HTTP is faster and
+      // more reliable than BLE because ESP32 BLE radio is stressed during WiFi activity.
+      const targetLocId = String(byId('ble-target-location-select')?.value || '').trim();
+      setProvisionStep(3, 'active', 'Checking cloud via device HTTP (primary)...');
       const localUrlAfterCloud = updateLocalUrlFromState(wifiResponse?.ip || '');
-      const localOk = localUrlAfterCloud ? await refreshLocalDeviceStatusApp(true) : false;
-      if (localOk) {
-        const localCloudState = Boolean(state.install.deviceCloudReachable);
-        if (hasVpsFlag) {
-          // Local /status reports MQTT link, but Step 3 verdict should follow VPS reachability probe.
-          state.install.deviceCloudReachable = cloudReachable;
-          setInstallMetric('ble-device-cloud-status', cloudReachable ? 'UP' : 'DOWN', cloudReachable ? 'good' : 'bad');
-          updateBleStatusLabel();
-          cloudNote += ` | Local MQTT ${localCloudState ? 'UP' : 'DOWN'}`;
-        } else {
-          cloudReachable = localCloudState;
-          cloudNote += ` | Local HTTP says cloud is ${localCloudState ? 'UP' : 'DOWN'}`;
+      if (!cloudReachable && localUrlAfterCloud) {
+        for (let h = 0; h < 10 && !cloudReachable && !state.loading; h++) {
+          await delay(h === 0 ? 1500 : 3000);
+          setProvisionStep(3, 'active', `Device HTTP check ${h + 1}/10 — waiting for cloud...`);
+          try {
+            const httpSt = await fetchLocalDeviceStatus(localUrlAfterCloud);
+            applyLocalStatus(httpSt, localUrlAfterCloud);
+            applyVoltageSettingsFromPayload(httpSt);
+            syncVoltageInputsFromState();
+            const mqttUp = httpSt?.mqtt_connected === true;
+            const vpsUp = httpSt?.vps_reachable === true;
+            setInstallMetric('ble-device-cloud-status', (mqttUp || vpsUp) ? 'UP' : 'DOWN', (mqttUp || vpsUp) ? 'good' : 'bad');
+            updateBleStatusLabel();
+            if (mqttUp || vpsUp) {
+              cloudReachable = true;
+              state.install.deviceCloudReachable = true;
+              cloudNote += ` | HTTP #${h + 1}: MQTT ${mqttUp ? 'UP' : '-'}, VPS ${vpsUp ? 'UP' : '-'}`;
+              break;
+            }
+            cloudNote = `HTTP #${h + 1}: MQTT ${mqttUp ? 'UP' : 'DOWN'}`;
+          } catch (httpErr) { /* device still coming up */ }
         }
       }
 
+      // FALLBACK: Brief backend poll (30s) using target location rather than selected device
       if (!cloudReachable && !state.loading) {
-        const backendPollWindowMs = 90000;
-        const backendPollEveryMs = 5000;
-        const pollStartedAt = Date.now();
-        let lastBackendReason = 'Backend not checked';
-        let firstPoll = true;
-
-        while (!cloudReachable && (Date.now() - pollStartedAt) < backendPollWindowMs) {
-          setProvisionStep(3, 'active', firstPoll
-            ? 'Waiting for cloud heartbeat on backend...'
-            : 'Still waiting for backend cloud confirmation...');
-          firstPoll = false;
-
-          try {
-            await refreshAppData();
-          } catch (error) {
-            // ignore backend refresh errors in fallback path
-          }
-          const backendHealth = evaluateDeviceCloudHealth();
-          lastBackendReason = backendHealth.reason;
-          const backendLastUpdateMs = Number(new Date(selectedLocationRecord()?.last_update || 0).getTime()) || 0;
-          const hasFreshPostProvisionTelemetry = backendLastUpdateMs > (preProvisionBackendUpdateMs + 1000);
-          if (backendHealth.healthy && hasFreshPostProvisionTelemetry) {
+        const bpEnd = Date.now() + 30000;
+        let firstBpPoll = true;
+        while (!cloudReachable && Date.now() < bpEnd) {
+          setProvisionStep(3, 'active', firstBpPoll ? 'Waiting for backend cloud heartbeat...' : 'Still waiting for backend...');
+          firstBpPoll = false;
+          try { await refreshAppData(); } catch (e) { /* ignore */ }
+          const checkLoc = targetLocId
+            ? state.locations.find((l) => l.location_id === targetLocId)
+            : selectedLocationRecord();
+          const locMs = Number(new Date(checkLoc?.last_update || 0).getTime()) || 0;
+          if (locMs > preProvisionBackendUpdateMs + 1000 && checkLoc?.device_status === 'ONLINE') {
             cloudReachable = true;
             state.install.deviceCloudReachable = true;
             setInstallMetric('ble-device-cloud-status', 'UP', 'good');
             updateBleStatusLabel();
-            cloudNote += ` | Backend telemetry confirms cloud UP (${backendHealth.reason})`;
+            cloudNote += ' | Backend telemetry confirmed cloud UP';
             break;
           }
-          if (backendHealth.healthy && !hasFreshPostProvisionTelemetry) {
-            lastBackendReason = `${backendHealth.reason} (waiting for fresh telemetry after apply)`;
-          }
-          await delay(backendPollEveryMs);
+          await delay(5000);
         }
+      }
 
-        if (!cloudReachable) {
-          cloudNote += ` | Backend telemetry: ${lastBackendReason}`;
+      // AUTO-BIND: Always attempt if target location selected — runs even when cloud not yet
+      // confirmed, because the device may have registered successfully despite BLE timeout.
+      if (targetLocId && isSuperAdmin()) {
+        const alreadyBound = (state.locations || []).find((l) => l.location_id === targetLocId && l.device_id);
+        if (!alreadyBound) {
+          try {
+            setProvisionStep(4, 'active', 'Looking for registered device to bind...');
+            let newest = null;
+            for (let ba = 0; ba < 5 && !newest; ba++) {
+              if (ba > 0) await delay(4000);
+              await refreshAdminDevicesApp().catch(() => {});
+              newest = (state.adminDevices || [])
+                .filter((d) => !d.location_id)
+                .sort((a, b) => new Date(b.created_at || 0) - new Date(a.created_at || 0))[0];
+            }
+            if (newest?.device_id) {
+              await apiRequest(`/admin/locations/${encodeURIComponent(targetLocId)}/bind-device`, {
+                method: 'POST', body: { device_id: newest.device_id }
+              });
+              showToast(`Device ${newest.device_id} bound to ${targetLocId}.`);
+              setProvisionStep(4, 'done', `Device ${newest.device_id} bound to ${targetLocId}.`);
+              await refreshAppData();
+              await refreshAdminDevicesApp().catch(() => {});
+              populateBleTargetLocationSection();
+              // Re-check cloud via backend after bind — telemetry now flows with valid location
+              if (!cloudReachable) {
+                setProvisionStep(3, 'active', 'Re-checking cloud after bind...');
+                await delay(6000);
+                await refreshAppData().catch(() => {});
+                const locAfterBind = state.locations.find((l) => l.location_id === targetLocId);
+                const msAfter = Number(new Date(locAfterBind?.last_update || 0).getTime()) || 0;
+                if (msAfter > preProvisionBackendUpdateMs + 1000) {
+                  cloudReachable = true;
+                  state.install.deviceCloudReachable = true;
+                  setInstallMetric('ble-device-cloud-status', 'UP', 'good');
+                  updateBleStatusLabel();
+                  cloudNote += ' | Cloud confirmed via telemetry after bind';
+                }
+              }
+            } else {
+              setProvisionStep(4, 'error', 'No new unbound device found. Device may need more time to register.');
+            }
+          } catch (bindErr) {
+            showToast(`Auto-bind failed: ${bindErr.message}`, true);
+            setProvisionStep(4, 'error', `Bind failed: ${bindErr.message}`);
+          }
         }
       }
 
       if (!cloudReachable) {
         setProvisionFinalStepTitle('failed');
         setProvisionStep(3, 'error', cloudNote);
-        setProvisionStep(4, 'error', cloudProfileSaved
-          ? 'Cloud profile saved, but device has not reached cloud yet.'
-          : 'Wi-Fi is set, but cloud is not connected.');
+        if (!targetLocId) {
+          setProvisionStep(4, 'error', cloudProfileSaved
+            ? 'Cloud profile saved, but device has not reached cloud yet.'
+            : 'Wi-Fi is set, but cloud is not connected.');
+        }
         setProvisionModalNote(cloudProfileSaved
-          ? 'Cloud profile is saved on device. Wait for internet/cloud reachability and retry check.'
-          : 'Device saved Wi-Fi but cloud check failed.');
+          ? 'Cloud profile saved on device. Wait for internet/cloud reachability and retry.'
+          : 'Device saved Wi-Fi but cloud check failed. Bind the device manually if needed.');
         setProvisionCloseEnabled(true);
         showToast(cloudProfileSaved
           ? 'Cloud profile saved. Device is still not reaching cloud.'
@@ -3759,7 +3805,9 @@
       } else {
         setProvisionFinalStepTitle('success');
         setProvisionStep(3, 'done', cloudNote);
-        setProvisionStep(4, 'done', 'Provision success. Device is cloud-ready.');
+        if (!targetLocId || !isSuperAdmin()) {
+          setProvisionStep(4, 'done', 'Provision success. Device is cloud-ready.');
+        }
         setProvisionModalNote('All steps completed successfully. Press X to close.');
         setProvisionCloseEnabled(true);
         state.ble.provisioningComplete = true;
@@ -3768,35 +3816,8 @@
         if (byId('ble-wifi-password')) {
           byId('ble-wifi-password').value = '';
         }
-        showToast('Wi-Fi provision command completed.');
-        // Refresh device list so the newly registered device appears immediately
+        showToast('Provisioning completed successfully.');
         refreshAdminDevicesApp().catch(() => {});
-
-        // Auto-bind to pre-selected target location if chosen
-        const targetLocId = String(byId('ble-target-location-select')?.value || '').trim();
-        if (targetLocId && isSuperAdmin()) {
-          try {
-            setProvisionStep(4, 'active', 'Auto-binding device to location...');
-            await delay(2000);
-            await refreshAdminDevicesApp().catch(() => {});
-            const newest = (state.adminDevices || [])
-              .filter((d) => !d.location_id)
-              .sort((a, b) => new Date(b.created_at || 0) - new Date(a.created_at || 0))[0];
-            if (newest?.device_id) {
-              await apiRequest(`/admin/locations/${encodeURIComponent(targetLocId)}/bind-device`, {
-                method: 'POST',
-                body: { device_id: newest.device_id }
-              });
-              showToast(`Device ${newest.device_id} bound to location.`);
-              setProvisionStep(4, 'done', `Done. Device ${newest.device_id} bound to ${targetLocId}.`);
-              await refreshAppData();
-              await refreshAdminDevicesApp().catch(() => {});
-              populateBleTargetLocationSection();
-            }
-          } catch (bindError) {
-            showToast(`Auto-bind failed: ${bindError.message}`, true);
-          }
-        }
       }
 
       await checkAppVpsHealth();

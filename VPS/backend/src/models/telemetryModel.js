@@ -18,9 +18,9 @@ function createTelemetryRecord(payload) {
   }
 
   const deviceId = payload.device_id;
-  const locationId = payload.location_id;
-  if (!deviceId || !locationId) {
-    throw badRequest('device_id and location_id are required');
+  const locationId = payload.location_id || null;
+  if (!deviceId) {
+    throw badRequest('device_id is required');
   }
 
   const waterLevel = Number(payload.water_level_mm ?? 0);
