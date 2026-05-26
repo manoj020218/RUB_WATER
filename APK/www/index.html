@@ -24,6 +24,7 @@
         </div>
       </div>
       <div class="top-menu-wrap">
+        <button id="alarm-enable-btn" onclick="enableAlarmSoundApp()" title="Tap to enable flood alarm sound" style="display:none;background:#dc2626;color:#fff;border:0;border-radius:8px;padding:6px 10px;font-size:13px;font-weight:700;cursor:pointer;margin-right:6px">🔔 Enable Alarm</button>
         <button class="ghost-btn menu-trigger" id="top-menu-btn" onclick="toggleHeaderMenuApp(event)" aria-haspopup="menu" aria-expanded="false" title="Menu" style="display:none">⋮</button>
         <div class="top-menu" id="top-menu" style="display:none">
           <div class="top-menu-list" id="top-menu-list"></div>
@@ -822,11 +823,14 @@
   </div>
 
   <div class="toast" id="toast"></div>
+  <script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-app-compat.js"></script>
+  <script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-messaging-compat.js"></script>
   <script src="./app.js"></script>
   <script>
     if ('serviceWorker' in navigator) {
       window.addEventListener('load', () => {
         navigator.serviceWorker.register('./sw.js').catch(() => {});
+        navigator.serviceWorker.register('./firebase-messaging-sw.js').catch(() => {});
       });
     }
   </script>

@@ -1,4 +1,5 @@
 const authService = require('../services/authService');
+const sessionRepository = require('../repositories/sessionRepository');
 const auditService = require('../services/auditService');
 
 async function login(req, res, next) {
@@ -123,11 +124,22 @@ async function resetPassword(req, res, next) {
   }
 }
 
+function updateFcmToken(req, res, next) {
+  try {
+    const fcmToken = String(req.body?.fcm_token || '').trim();
+    sessionRepository.updateFcmToken(req.auth.session._id, fcmToken || null);
+    res.json({ ok: true });
+  } catch (error) {
+    next(error);
+  }
+}
+
 module.exports = {
   login,
   refresh,
   logout,
   me,
   changePassword,
-  resetPassword
+  resetPassword,
+  updateFcmToken
 };

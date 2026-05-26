@@ -30,6 +30,7 @@ VPS/backend/.env
 VPS/backend/.env.*
 !VPS/backend/.env.example
 VPS/backend/*.log
+VPS/backend/firebase-service-account.json
 
 # -----------------------------
 # APK app (Node + Capacitor/Android)

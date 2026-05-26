@@ -53,11 +53,20 @@ function deactivateOtherSessions(userId, keepSessionId) {
   return count;
 }
 
+function updateFcmToken(sessionId, fcmToken) {
+  const session = dataStore.userSessions.find((s) => s._id === sessionId && s.is_active);
+  if (!session) return null;
+  session.fcm_token = fcmToken || null;
+  session.last_seen = new Date().toISOString();
+  return session;
+}
+
 module.exports = {
   create,
   findActiveById,
   deactivate,
   listActiveByUserId,
   deactivateByUserId,
-  deactivateOtherSessions
+  deactivateOtherSessions,
+  updateFcmToken
 };

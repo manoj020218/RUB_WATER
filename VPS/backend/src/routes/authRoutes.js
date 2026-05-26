@@ -10,5 +10,6 @@ router.get('/me', requireAuth, authController.me);
 router.post('/logout', requireAuth, authController.logout);
 router.post('/change-password', requireAuth, authController.changePassword);
 router.post('/reset-password', requireAuth, authController.resetPassword);
+router.put('/fcm-token', requireAuth, authController.updateFcmToken);
 
 module.exports = router;

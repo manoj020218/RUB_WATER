@@ -1,5 +1,15 @@
 (function () {
   const STORAGE_KEY = 'fg_mobile_session_v1';
+
+  // ── Firebase / FCM ──────────────────────────────────────────────
+  const FCM_CONFIG = {
+    apiKey: 'AIzaSyBHp7W9ucgDW4_u3MGvplLuqZFUE6-yJVI',
+    projectId: 'floodguard-f84ac',
+    messagingSenderId: '488469166284',
+    appId: '1:488469166284:web:bd34ad115167061f17aa69'
+  };
+  const FCM_VAPID_KEY = 'BEKxuTUJtugFJheypzEVBZhs1HSs7FXDoC0NcHLCEvo98g0e9qKOL0695JHebudeoovV1b5_yOSTb9obkIcRoqU';
+  // ────────────────────────────────────────────────────────────────
   const REFRESH_INTERVAL_MS = 10000;
   const REQUEST_TIMEOUT_MS = 12000;
   const IST_TIMEZONE = 'Asia/Kolkata';
@@ -43,6 +53,13 @@
       lastDeviceBatteryVoltage: null,
       adcDividerRatio: 5.0,
       adcCalibrationFactor: 1.0
+    },
+    alarm: {
+      enabled: false,
+      active: false,
+      intervalId: null,
+      audioCtx: null,
+      beepStep: 0
     },
     ble: {
       initialized: false,
@@ -3790,6 +3807,13 @@
       const activeIncident = details.incidents.find((item) => item.status === 'ACTIVE') || null;
 
       renderDashboard(selectedLocation, details.dashboardData, activeIncident);
+
+      const currentStatus = String(selectedLocation?.status || details.dashboardData?.status || '');
+      if (currentStatus.includes('DANGER')) {
+        startFloodAlarm(selectedLocation?.location_id || state.selectedLocationId);
+      } else {
+        stopFloodAlarm();
+      }
       renderAudit(details.auditLogs);
       fetchComplaints(state.selectedLocationId).then((complaints) => {
         state.complaints = complaints;
@@ -3843,6 +3867,131 @@
     }
   }
 
+  // ── Alarm sound (Web Audio API + Speech) ─────────────────────────
+  function _getAudioCtx() {
+    if (!state.alarm.audioCtx) {
+      state.alarm.audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+    }
+    if (state.alarm.audioCtx.state === 'suspended') {
+      state.alarm.audioCtx.resume();
+    }
+    return state.alarm.audioCtx;
+  }
+
+  function _playBeep(freq, durationSec, volume) {
+    try {
+      const ctx = _getAudioCtx();
+      const osc = ctx.createOscillator();
+      const gain = ctx.createGain();
+      osc.connect(gain);
+      gain.connect(ctx.destination);
+      osc.frequency.value = freq;
+      osc.type = 'sine';
+      gain.gain.setValueAtTime(volume, ctx.currentTime);
+      gain.gain.exponentialRampToValueAtTime(0.001, ctx.currentTime + durationSec);
+      osc.start(ctx.currentTime);
+      osc.stop(ctx.currentTime + durationSec);
+    } catch (_) {}
+  }
+
+  function enableAlarmSoundApp() {
+    state.alarm.enabled = true;
+    _playBeep(440, 0.15, 0.4);
+    const btn = byId('alarm-enable-btn');
+    if (btn) btn.style.display = 'none';
+    showToast('Alarm sound enabled');
+  }
+
+  function startFloodAlarm(locationId) {
+    if (!state.alarm.enabled || state.alarm.active) return;
+    state.alarm.active = true;
+    state.alarm.beepStep = 0;
+
+    const rubDigits = String(locationId || '').replace(/[^0-9]/g, '').split('').join(' ');
+    const speechText = `R U B ${rubDigits}, Flood Danger Alert, Please Evacuate`;
+
+    function tick() {
+      if (!state.alarm.active) return;
+      const freq = state.alarm.beepStep % 2 === 0 ? 900 : 600;
+      _playBeep(freq, 0.7, 0.8);
+      state.alarm.beepStep++;
+      if (state.alarm.beepStep % 6 === 0 && window.speechSynthesis) {
+        window.speechSynthesis.cancel();
+        const utt = new SpeechSynthesisUtterance(speechText);
+        utt.lang = 'en-IN';
+        utt.rate = 0.85;
+        utt.volume = 1.0;
+        window.speechSynthesis.speak(utt);
+      }
+    }
+
+    tick();
+    state.alarm.intervalId = setInterval(tick, 1000);
+  }
+
+  function stopFloodAlarm() {
+    state.alarm.active = false;
+    if (state.alarm.intervalId) {
+      clearInterval(state.alarm.intervalId);
+      state.alarm.intervalId = null;
+    }
+    if (window.speechSynthesis) window.speechSynthesis.cancel();
+  }
+
+  // ── Firebase Cloud Messaging ──────────────────────────────────────
+  async function _sendFcmTokenToServer(token) {
+    if (!state.token || !state.apiBase) return;
+    try {
+      await apiRequest('/auth/fcm-token', {
+        auth: true,
+        method: 'PUT',
+        body: { fcm_token: token }
+      });
+    } catch (_) {}
+  }
+
+  async function initFcm() {
+    if (typeof firebase === 'undefined' || !firebase.messaging) return;
+    if (!('Notification' in window)) return;
+
+    try {
+      firebase.initializeApp(FCM_CONFIG);
+    } catch (_) {
+      // already initialized — OK
+    }
+
+    const permission = await Notification.requestPermission();
+    if (permission !== 'granted') return;
+
+    try {
+      const messaging = firebase.messaging();
+      const token = await messaging.getToken({ vapidKey: FCM_VAPID_KEY });
+      if (token) {
+        await _sendFcmTokenToServer(token);
+      }
+      messaging.onMessage((payload) => {
+        const notif = payload.notification || {};
+        const event = payload.data?.event || '';
+        if (event === 'DANGER_CONFIRMED') {
+          const locId = payload.data?.location_id || state.selectedLocationId || '';
+          startFloodAlarm(locId);
+        }
+        showToast(`${notif.title || 'FloodGuard'}: ${notif.body || ''}`);
+      });
+      messaging.onTokenRefresh(async () => {
+        const newToken = await messaging.getToken({ vapidKey: FCM_VAPID_KEY });
+        if (newToken) await _sendFcmTokenToServer(newToken);
+      });
+    } catch (err) {
+      console.warn('[FCM] token error:', err.message);
+    }
+
+    // Show "Enable Alarm Sound" prompt — needs user gesture before audio plays
+    const btn = byId('alarm-enable-btn');
+    if (btn) btn.style.display = '';
+  }
+  // ─────────────────────────────────────────────────────────────────
+
   async function loginApp() {
     const apiBase = normalizeApiBase(byId('login-api-base')?.value || '');
     const loginId = String(byId('login-id')?.value || '').trim();
@@ -3889,6 +4038,7 @@
       showToast('Login successful');
       await refreshAppData();
       startPolling();
+      initFcm().catch(() => {});
 
       if (result.force_password_change) {
         openForcePwChangeModal();
@@ -3899,6 +4049,8 @@
   }
 
   function logoutApp(isAuto = false, message = 'Session cleared. Please login again.') {
+    stopFloodAlarm();
+    state.alarm.enabled = false;
     state.token = '';
     state.user = null;
     state.session = null;

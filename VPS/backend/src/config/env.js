@@ -108,5 +108,8 @@ module.exports = {
   retentionNoWaterHours: readNumber('RETENTION_NO_WATER_HOURS', 24),
   appName: 'FloodGuard by Jenix',
   projectName: 'Jenix FloodGuard - RUB Water Level Monitoring & Alarm System',
-  logsDir: path.resolve(process.cwd(), 'logs')
+  logsDir: path.resolve(process.cwd(), 'logs'),
+  fcmEnabled: readBool('FCM_ENABLED', true),
+  fcmServiceAccountPath: process.env.FIREBASE_SERVICE_ACCOUNT_PATH
+    || path.resolve(process.cwd(), 'firebase-service-account.json')
 };
