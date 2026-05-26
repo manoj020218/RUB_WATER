@@ -43,6 +43,10 @@ APK/*.log
 APK/www/dist/
 APK/www/build/
 
+# Android keystore (signing secret — never commit)
+APK/android/*.jks
+APK/android/*.keystore
+
 # Android generated artifacts
 APK/android/.gradle/
 APK/android/.cxx/
