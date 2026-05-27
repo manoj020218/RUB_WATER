@@ -29,6 +29,11 @@ void setup() {
         digitalWrite(STATUS_LED_PIN, LOW);  delay(120);
     }
 
+    // BOOT button (GPIO9, active-LOW): hold on power-up to force SSID visible this session
+    pinMode(9, INPUT_PULLUP);
+    delay(100);
+    bool boot_held = (digitalRead(9) == LOW);
+
     // WiFi AP must be started before reading MAC address
     WiFi.mode(WIFI_AP);
 
@@ -36,11 +41,15 @@ void setup() {
     storage_load(g_cfg);
     build_device_name(g_cfg.device_name, sizeof(g_cfg.device_name));
 
+    uint8_t hidden = (boot_held ? 0 : g_cfg.ssid_hidden);
+    if (boot_held) Serial.println("[WiFi] BOOT held — forcing SSID visible this session");
+
     // Open network (no password) — auth is on the HTTP login page
-    bool apOk = WiFi.softAP(g_cfg.device_name, "", AP_CHANNEL, 0, AP_MAX_CONNECTIONS);
-    Serial.printf("[WiFi] softAP '%s' %s  IP: %s\n",
+    bool apOk = WiFi.softAP(g_cfg.device_name, "", AP_CHANNEL, hidden, AP_MAX_CONNECTIONS);
+    Serial.printf("[WiFi] softAP '%s' %s  hidden=%d  IP: %s\n",
         g_cfg.device_name,
         apOk ? "OK" : "FAILED",
+        hidden,
         WiFi.softAPIP().toString().c_str());
 
     sensor_init();

@@ -179,6 +179,19 @@ a.logout{float:right;font-size:12px;color:#dc3545;text-decoration:none}
 </div>
 
 <div class="card">
+<h3>Network Visibility</h3>
+<div id="ssid-status-row" class="row" style="margin-bottom:12px">
+  <span class="lbl">WiFi SSID</span>
+  <span class="val"><span id="ssid-badge" class="badge ok">Visible</span></span>
+</div>
+<p class="hint" id="ssid-hint">Hide the SSID after installation so it does not appear in public WiFi scans. The BLE name (<span id="ble-id2">FgSensXXXXXX</span>) is always visible — use a BLE scanner to identify the device, then connect manually by typing the SSID. To force SSID visible without the app: hold the BOOT button on the board while powering on.</p>
+<div class="btn-row">
+<button id="ssid-btn" class="btn-outline" onclick="toggleSsid()">Hide SSID</button>
+</div>
+<div id="ssid-msg" class="msg"></div>
+</div>
+
+<div class="card">
 <h3>Firmware Update (OTA)</h3>
 <p class="hint">Select .bin file and upload. Device reboots automatically after success.</p>
 <input type="file" id="ota-file" accept=".bin">
@@ -201,6 +214,11 @@ function poll(){
   fetch('/api/status').then(function(r){return r.json();}).then(function(d){
     document.getElementById('dev-name').textContent=d.device_name;
     document.getElementById('ble-id').textContent=d.ble_id;
+    document.getElementById('ble-id2').textContent=d.ble_id;
+    var sb=document.getElementById('ssid-badge');
+    var btn=document.getElementById('ssid-btn');
+    if(d.ssid_hidden){sb.textContent='Hidden';sb.className='badge fault';btn.textContent='Show SSID';}
+    else{sb.textContent='Visible';sb.className='badge ok';btn.textContent='Hide SSID';}
     document.getElementById('rd').textContent=d.raw_distance_mm;
     document.getElementById('cal-rd').textContent=d.raw_distance_mm;
     var cs=document.getElementById('cal-ss');
@@ -309,6 +327,12 @@ function doReboot(){
     showMsg('cfg-msg','Rebooting… reconnect in a few seconds.',true);
   }).catch(function(){});
 }
+function toggleSsid(){
+  fetch('/api/ssid-hidden',{method:'POST'}).then(function(r){return r.json();}).then(function(d){
+    if(d.ok){showMsg('ssid-msg',d.hidden?'SSID is now hidden. Device will reboot.':'SSID is now visible. Device will reboot.',true);setTimeout(function(){location.reload();},4000);}
+    else{showMsg('ssid-msg','Error: '+d.error,false);}
+  }).catch(function(){showMsg('ssid-msg','Request failed',false);});
+}
 function uploadOta(){
   var f=document.getElementById('ota-file').files[0];
   if(!f){showMsg('ota-msg','Select a .bin file first',false);return;}
@@ -385,6 +409,7 @@ static void handle_api_status() {
     j += "\"sensor_status\":\""; j += (g_state->sensor_ok ? "OK" : "FAULT"); j += "\",";
     j += "\"trigger_delay_s\":";  j += g_cfg->trigger_delay_s;  j += ",";
     j += "\"clear_delay_s\":";    j += g_cfg->clear_delay_s;    j += ",";
+    j += "\"ssid_hidden\":";      j += (g_cfg->ssid_hidden ? "true" : "false"); j += ",";
     j += "\"uptime_seconds\":";  j += g_state->uptime_s;           j += ",";
     j += "\"config_version\":";  j += g_cfg->config_version;
     j += "}";
@@ -459,6 +484,18 @@ static void handle_api_reboot() {
     ESP.restart();
 }
 
+static void handle_api_ssid_hidden() {
+    if (!session_valid()) { send_json(403, err_json("Forbidden")); return; }
+    g_cfg->ssid_hidden = g_cfg->ssid_hidden ? 0 : 1;
+    storage_save(*g_cfg);
+    String j = "{\"ok\":true,\"hidden\":";
+    j += (g_cfg->ssid_hidden ? "true" : "false");
+    j += "}";
+    send_json(200, j);
+    delay(500);
+    ESP.restart();
+}
+
 static void handle_not_found() {
     server.sendHeader("Location", "/");
     server.send(302, "text/plain", "");
@@ -480,7 +517,8 @@ void webserver_init(DeviceConfig *cfg, AppState *state) {
     server.on("/api/status", HTTP_GET,  handle_api_status);
     server.on("/api/set-zero", HTTP_POST, handle_api_set_zero);
     server.on("/api/config",   HTTP_POST, handle_api_config);
-    server.on("/api/reboot",   HTTP_POST, handle_api_reboot);
+    server.on("/api/reboot",      HTTP_POST, handle_api_reboot);
+    server.on("/api/ssid-hidden", HTTP_POST, handle_api_ssid_hidden);
 
     // OTA firmware upload
     server.on("/update", HTTP_POST,

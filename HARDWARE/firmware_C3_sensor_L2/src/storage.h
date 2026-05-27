@@ -9,6 +9,7 @@ struct DeviceConfig {
     uint32_t clear_delay_s;
     char     device_name[16];
     uint32_t config_version;
+    uint8_t  ssid_hidden;   // 1 = hidden AP, 0 = visible
 };
 
 void storage_init();
