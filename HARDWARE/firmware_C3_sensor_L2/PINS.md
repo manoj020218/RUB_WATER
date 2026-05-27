@@ -229,3 +229,26 @@ Returns 0x0000 when no echo received (target out of range or too close)
 
 Device always advertises **`FgSensXXXXXX`** over BLE (advertisement-only, no GATT services).
 Active even when WiFi SSID is hidden. Use any BLE scanner to identify the device on-site.
+
+## Thermal Management (Outdoor Sealed Enclosure)
+
+### Firmware (already applied)
+| Setting | Value | Reason |
+|---------|-------|--------|
+| CPU frequency | 80 MHz (↓ from 160) | ~40% less dynamic power, significant temp drop |
+| WiFi TX power | 11 dBm (↓ from 20) | Short-range AP only — phone is 1–3 m away |
+
+### Hardware (installer's side)
+
+**Most impactful:**
+1. **White or light-grey enclosure** — black box in direct sun absorbs 3–4× more heat. White reflects it.
+2. **Mount in shade** — even partial shade (parapet, pipe stub) drops enclosure temp 15–20°C vs direct sun.
+3. **Aluminium enclosure** — conducts heat from chip to box wall far better than plastic. Whole box becomes a heatsink.
+4. **Thermal pad** — 1–2 mm silicone thermal pad between back of ESP32-C3 and inside of metal lid. Costs ₹30–50.
+
+**Secondary:**
+5. **Orient vents downward** — hot air rises; downward vents prevent rain ingress while allowing convection.
+6. **IP-rated vent plug** (Gore-Tex membrane) — pressure equalisation without water ingress. ₹20–40 on AliExpress.
+7. **Leave gap between boards** — don't pack relay module tight against C3; a few mm gap prevents heat stacking.
+
+> ESP32-C3 junction rated to 85°C. With firmware reductions + light-coloured box out of direct sun it stays well within limit. 
