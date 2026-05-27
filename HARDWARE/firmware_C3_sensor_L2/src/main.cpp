@@ -34,6 +34,9 @@ void setup() {
     delay(100);
     bool boot_held = (digitalRead(9) == LOW);
 
+    // Reduce CPU frequency and WiFi TX power to lower heat in sealed enclosure
+    setCpuFrequencyMhz(80);
+
     // WiFi AP must be started before reading MAC address
     WiFi.mode(WIFI_AP);
 
@@ -46,6 +49,7 @@ void setup() {
 
     // Open network (no password) — auth is on the HTTP login page
     bool apOk = WiFi.softAP(g_cfg.device_name, "", AP_CHANNEL, hidden, AP_MAX_CONNECTIONS);
+    WiFi.setTxPower(WIFI_POWER_11dBm);   // short-range AP — no need for full 20 dBm
     Serial.printf("[WiFi] softAP '%s' %s  hidden=%d  IP: %s\n",
         g_cfg.device_name,
         apOk ? "OK" : "FAILED",
