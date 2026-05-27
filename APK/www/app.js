@@ -2057,6 +2057,111 @@
       setConfigActionStatus('cloud', 'Read-only access for this role.', 'warn');
       setConfigActionStatus('local', 'Read-only access for this role.', 'warn');
     }
+
+    renderSensorLivePanel();
+  }
+
+  function renderSensorLivePanel() {
+    const panel = byId('cfg-sensor-live-panel');
+    if (!panel) return;
+    const deviceId = selectedConfigDeviceId();
+    const cfg = state.deviceConfig;
+    const rs485Enabled = cfg?.device_reported?.rs485_sensor_enabled
+      ?? cfg?.rs485_sensor_enabled ?? true;
+    if (!deviceId || !rs485Enabled) {
+      panel.style.display = 'none';
+      return;
+    }
+    panel.style.display = '';
+
+    const tel = state.latestTelemetry;
+    const badge = byId('cfg-rs485-live-badge');
+    if (badge) {
+      const st = tel?.primary_sensor_status || tel?.rs485_status || '';
+      if (!tel) {
+        badge.textContent = 'Awaiting data';
+        badge.style.background = '#eeeeee'; badge.style.color = '#757575';
+      } else if (st === 'OK' || tel?.rs485_detected === true) {
+        badge.textContent = 'Connected ✓';
+        badge.style.background = '#e8f5e9'; badge.style.color = '#2e7d32';
+      } else if (st === 'NOT_DETECTED') {
+        badge.textContent = 'Not Detected';
+        badge.style.background = '#ffebee'; badge.style.color = '#c62828';
+      } else if (st === 'FAULT') {
+        badge.textContent = 'Fault';
+        badge.style.background = '#fff3e0'; badge.style.color = '#e65100';
+      } else if (st === 'DISABLED') {
+        badge.textContent = 'Disabled';
+        badge.style.background = '#eeeeee'; badge.style.color = '#757575';
+      } else {
+        badge.textContent = 'No data';
+        badge.style.background = '#eeeeee'; badge.style.color = '#9e9e9e';
+      }
+    }
+
+    const distance = Number.isFinite(tel?.distance_mm) ? Math.round(tel.distance_mm) : null;
+    const mountHeight = Number(byId('cfg-sensor-mount-height')?.value) || 0;
+    const calcWaterLevel = (distance != null && mountHeight > 0)
+      ? Math.max(0, mountHeight - distance)
+      : (Number.isFinite(tel?.water_level_mm) ? Math.round(tel.water_level_mm) : null);
+    setText('cfg-live-distance', distance != null ? String(distance) : '--');
+    setText('cfg-live-water-level', calcWaterLevel != null ? String(calcWaterLevel) : '--');
+    setText('cfg-live-ts', tel?.timestamp ? formatDateTime(tel.timestamp) : 'No data yet');
+  }
+
+  function calSetZeroApp() {
+    const tel = state.latestTelemetry;
+    if (!tel || !Number.isFinite(tel.distance_mm)) {
+      alert('No live sensor data yet. Wait for the device to send telemetry (up to 3 minutes).');
+      return;
+    }
+    const dist = Math.round(tel.distance_mm);
+    const el = byId('cfg-sensor-mount-height');
+    if (el) el.value = String(dist);
+    renderSensorLivePanel();
+  }
+
+  function calSetLevel1App() {
+    const tel = state.latestTelemetry;
+    if (!tel || !Number.isFinite(tel.distance_mm)) {
+      alert('No live sensor data yet. Wait for the device to send telemetry.');
+      return;
+    }
+    const mountHeight = Number(byId('cfg-sensor-mount-height')?.value) || 0;
+    const level = mountHeight > 0
+      ? Math.max(0, mountHeight - Math.round(tel.distance_mm))
+      : Math.round(tel.water_level_mm ?? 0);
+    if (level <= 0) {
+      alert('Calculated water level is 0 mm — raise water to the alert height first, then tap Set Level 1.');
+      return;
+    }
+    const el = byId('cfg-alert-level');
+    if (el) el.value = String(level);
+    renderSensorLivePanel();
+  }
+
+  function calSetLevel2App() {
+    const tel = state.latestTelemetry;
+    if (!tel || !Number.isFinite(tel.distance_mm)) {
+      alert('No live sensor data yet. Wait for the device to send telemetry.');
+      return;
+    }
+    const mountHeight = Number(byId('cfg-sensor-mount-height')?.value) || 0;
+    const level = mountHeight > 0
+      ? Math.max(0, mountHeight - Math.round(tel.distance_mm))
+      : Math.round(tel.water_level_mm ?? 0);
+    if (level <= 0) {
+      alert('Calculated water level is 0 mm — raise water to the danger height first, then tap Set Level 2.');
+      return;
+    }
+    const alertLevel = Number(byId('cfg-alert-level')?.value || 0);
+    if (alertLevel > 0 && level <= alertLevel) {
+      alert(`Level 2 (danger: ${level} mm) must be higher than Level 1 (alert: ${alertLevel} mm). Raise water higher and try again.`);
+      return;
+    }
+    const el = byId('cfg-danger-level');
+    if (el) el.value = String(level);
+    renderSensorLivePanel();
   }
 
   function parseConfigInt(id, label) {
@@ -5774,6 +5879,10 @@
   window.saveDeviceConfigApp = saveDeviceConfigApp;
   window.saveDeviceConfigLocalLanApp = saveDeviceConfigLocalLanApp;
   window.pushDeviceConfigApp = pushDeviceConfigApp;
+  window.renderSensorLivePanelApp = renderSensorLivePanel;
+  window.calSetZeroApp = calSetZeroApp;
+  window.calSetLevel1App = calSetLevel1App;
+  window.calSetLevel2App = calSetLevel2App;
   window.changePasswordApp = changePasswordApp;
   window.markDeviceFaultyApp = markDeviceFaultyApp;
   window.markDeviceReplacementApp = markDeviceReplacementApp;
