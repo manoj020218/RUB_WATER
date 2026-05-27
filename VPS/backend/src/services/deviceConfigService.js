@@ -130,7 +130,7 @@ function getDeviceConfig({ deviceId, authContext }) {
     assertUserLocationAccess(authContext.user, device.location_id);
   }
 
-  const allTelemetry = telemetryRepository.listByDevice(deviceId);
+  const allTelemetry = telemetryRepository.listByDevice(deviceId).filter((r) => r.type === 'TELEMETRY');
   const latestTelemetry = allTelemetry.length > 0 ? allTelemetry[allTelemetry.length - 1] : null;
   const deviceReported = latestTelemetry?.config ?? null;
   const deviceReportedAt = deviceReported ? (latestTelemetry.timestamp || null) : null;
