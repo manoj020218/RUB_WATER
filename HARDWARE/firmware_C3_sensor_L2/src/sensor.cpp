@@ -16,9 +16,9 @@ static uint32_t     lastValidMs   = 0;
 
 // Discard leading garbage, return true if a valid 4-byte frame is parsed
 static bool readFrame(uint32_t &dist_mm) {
-    // Skip bytes until 0xFF header or buffer is empty
     while (sensorSerial.available() > 0 && sensorSerial.peek() != 0xFF) {
-        sensorSerial.read();
+        uint8_t junk = sensorSerial.read();
+        Serial.printf("[sensor] skip byte 0x%02X\n", junk);
     }
     if (sensorSerial.available() < 4) return false;
 
@@ -28,14 +28,24 @@ static bool readFrame(uint32_t &dist_mm) {
     if (buf[0] != 0xFF) return false;
 
     uint8_t csum = (uint8_t)((buf[0] + buf[1] + buf[2]) & 0xFF);
-    if (csum != buf[3]) return false;
+    if (csum != buf[3]) {
+        Serial.printf("[sensor] BAD CSUM  bytes: %02X %02X %02X %02X  expected %02X\n",
+                      buf[0], buf[1], buf[2], buf[3], csum);
+        return false;
+    }
 
     uint32_t d = (uint32_t)buf[1] * 256u + buf[2];
-    if (d < SENSOR_MIN_MM || d > SENSOR_MAX_MM) return false;
+    if (d < SENSOR_MIN_MM || d > SENSOR_MAX_MM) {
+        Serial.printf("[sensor] OUT OF RANGE  %u mm (valid 280-2500)\n", d);
+        return false;
+    }
 
+    Serial.printf("[sensor] OK  %u mm\n", d);
     dist_mm = d;
     return true;
 }
+
+static uint32_t lastNoDataWarnMs = 0;
 
 // Drop the min and max from the ring buffer, average the remaining 3
 static uint32_t filteredAverage() {
@@ -55,6 +65,14 @@ void sensor_init() {
 }
 
 void sensor_update() {
+    if (sensorSerial.available() == 0) {
+        uint32_t now = millis();
+        if (now - lastNoDataWarnMs > 5000) {
+            Serial.println("[sensor] no bytes on UART1 (GPIO20) — check wiring/power");
+            lastNoDataWarnMs = now;
+        }
+    }
+
     uint32_t dist;
     while (readFrame(dist)) {
         samples[sampleCount % SENSOR_FILTER_SAMPLES] = dist;

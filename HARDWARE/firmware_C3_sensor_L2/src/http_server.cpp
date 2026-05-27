@@ -155,13 +155,24 @@ a.logout{float:right;font-size:12px;color:#dc3545;text-decoration:none}
 </div>
 
 <div class="card">
-<h3>Thresholds</h3>
+<h3>Thresholds &amp; Delays</h3>
+<div style="background:#fff8e1;border:1px solid #ffe082;border-radius:8px;padding:10px 12px;margin-bottom:12px;font-size:13px">
+  <span style="color:#555">Zero Reference (sensor → dry ground):</span>&nbsp;
+  <strong id="zero-ref-display" style="color:#0d6e56;font-size:15px">-- mm</strong>
+  <span style="color:#888;font-size:12px;display:block;margin-top:3px">Level 1 and Level 2 must each be <b>less than</b> this value to be reachable.</span>
+</div>
 <label>Level 1 Alert Threshold (mm)</label>
-<input type="number" id="l1" min="10" max="2000" value="200">
+<input type="number" id="l1" min="10" max="2000" value="200" oninput="updateHints()">
+<div id="l1-hint" style="font-size:12px;color:#0d6e56;margin:3px 0 6px 2px"></div>
 <label>Level 2 Danger Threshold (mm)</label>
-<input type="number" id="l2" min="10" max="2000" value="400">
+<input type="number" id="l2" min="10" max="2000" value="400" oninput="updateHints()">
+<div id="l2-hint" style="font-size:12px;color:#dc3545;margin:3px 0 6px 2px"></div>
+<label>Trigger Delay (s) — relay ON only after level stays above threshold for this long</label>
+<input type="number" id="trig" min="1" max="3600" value="60">
+<label>Clear Delay (s) — relay OFF only after level stays below threshold for this long</label>
+<input type="number" id="clr" min="1" max="3600" value="300">
 <div class="btn-row">
-<button class="btn-green" onclick="saveConfig()">Save Thresholds</button>
+<button class="btn-green" onclick="saveConfig()">Save</button>
 <button class="btn-red" onclick="doReboot()">Reboot Device</button>
 </div>
 <div id="cfg-msg" class="msg"></div>
@@ -196,6 +207,7 @@ function poll(){
     cs.textContent=d.sensor_status;
     cs.className='badge '+(d.sensor_status==='OK'?'ok':'fault');
     document.getElementById('zd').textContent=d.zero_distance_mm;
+    document.getElementById('zero-ref-display').textContent=d.zero_distance_mm+' mm';
     document.getElementById('wl').textContent=d.water_level_mm;
     document.getElementById('th1').textContent=d.level1_threshold_mm;
     document.getElementById('th2').textContent=d.level2_threshold_mm;
@@ -208,31 +220,87 @@ function poll(){
     var r2=document.getElementById('r2');
     r2.textContent=d.relay2?'ON':'OFF';
     r2.className='badge '+(d.relay2?'relay-on':'relay-off');
-    document.getElementById('l1').value=d.level1_threshold_mm;
-    document.getElementById('l2').value=d.level2_threshold_mm;
+    var focused=document.activeElement;
+    function setIfUnfocused(id,v){if(document.getElementById(id)!==focused)document.getElementById(id).value=v;}
+    setIfUnfocused('l1',d.level1_threshold_mm);
+    setIfUnfocused('l2',d.level2_threshold_mm);
+    setIfUnfocused('trig',d.trigger_delay_s);
+    setIfUnfocused('clr',d.clear_delay_s);
     var u=d.uptime_seconds;
     var h=Math.floor(u/3600),m=Math.floor((u%3600)/60),s=u%60;
     document.getElementById('up').textContent=(h?h+'h ':'')+( m?m+'m ':'')+s+'s';
+    updateHints();
   }).catch(function(){});
   setTimeout(poll,2000);
 }
+function updateHints(){
+  var zero=parseInt(document.getElementById('zd').textContent)||0;
+  var l1=parseInt(document.getElementById('l1').value)||0;
+  var l2=parseInt(document.getElementById('l2').value)||0;
+  var h1=document.getElementById('l1-hint');
+  var h2=document.getElementById('l2-hint');
+  if(zero>0&&l1>0){
+    if(l1>=zero){
+      h1.style.color='#dc3545';
+      h1.textContent='Warning: '+l1+' mm ≥ Zero ('+zero+' mm) — unreachable. Max allowed: '+(zero-1)+' mm';
+    } else {
+      h1.style.color='#0d6e56';
+      h1.textContent='Relay 1 alerts when water rises '+l1+' mm above dry ground (sensor reads ≤'+(zero-l1)+' mm)';
+    }
+  } else { h1.textContent=''; }
+  if(zero>0&&l2>0){
+    if(l2>=zero){
+      h2.style.color='#dc3545';
+      h2.textContent='Warning: '+l2+' mm ≥ Zero ('+zero+' mm) — unreachable. Max allowed: '+(zero-1)+' mm';
+    } else {
+      h2.style.color='#dc3545';
+      h2.textContent='Relay 2 danger when water rises '+l2+' mm above dry ground (sensor reads ≤'+(zero-l2)+' mm)';
+    }
+  } else { h2.textContent=''; }
+}
 function setZero(){
   fetch('/api/set-zero',{method:'POST'}).then(function(r){return r.json();}).then(function(d){
-    showMsg('zero-msg',d.ok?'Zero level saved successfully':('Error: '+d.error),d.ok);
+    if(d.ok){
+      showMsg('zero-msg','Zero saved. Checking thresholds…',true);
+      setTimeout(function(){
+        fetch('/api/status').then(function(r){return r.json();}).then(function(s){
+          var z=s.zero_distance_mm;
+          document.getElementById('zd').textContent=z;
+          document.getElementById('zero-ref-display').textContent=z+' mm';
+          var l1=parseInt(document.getElementById('l1').value)||0;
+          var l2=parseInt(document.getElementById('l2').value)||0;
+          var changed=false;
+          if(l1>=z){var nl1=Math.max(10,Math.round(z*0.3));document.getElementById('l1').value=nl1;changed=true;}
+          if(l2>=z){var nl2=Math.max(20,Math.round(z*0.6));document.getElementById('l2').value=nl2;changed=true;}
+          updateHints();
+          if(changed)showMsg('zero-msg','Zero saved. Thresholds auto-adjusted to fit new range.',true);
+          else showMsg('zero-msg','Zero level saved successfully.',true);
+        });
+      },300);
+    } else {
+      showMsg('zero-msg','Error: '+d.error,false);
+    }
   }).catch(function(){showMsg('zero-msg','Request failed',false);});
 }
 function saveConfig(){
   var l1=parseInt(document.getElementById('l1').value);
   var l2=parseInt(document.getElementById('l2').value);
+  var trig=parseInt(document.getElementById('trig').value);
+  var clr=parseInt(document.getElementById('clr').value);
+  var zero=parseInt(document.getElementById('zd').textContent)||0;
   if(isNaN(l1)||l1<=0){showMsg('cfg-msg','Level 1 must be > 0 mm',false);return;}
+  if(zero>0&&l1>=zero){showMsg('cfg-msg','Level 1 ('+l1+' mm) must be less than Zero reference ('+zero+' mm) — raise sensor or lower threshold',false);return;}
   if(isNaN(l2)||l2<=l1){showMsg('cfg-msg','Level 2 must be greater than Level 1',false);return;}
+  if(zero>0&&l2>=zero){showMsg('cfg-msg','Level 2 ('+l2+' mm) must be less than Zero reference ('+zero+' mm) — raise sensor or lower threshold',false);return;}
   if(l2>2000){showMsg('cfg-msg','Level 2 must be ≤ 2000 mm',false);return;}
+  if(isNaN(trig)||trig<1||trig>3600){showMsg('cfg-msg','Trigger delay must be 1–3600 s',false);return;}
+  if(isNaN(clr)||clr<1||clr>3600){showMsg('cfg-msg','Clear delay must be 1–3600 s',false);return;}
   fetch('/api/config',{
     method:'POST',
     headers:{'Content-Type':'application/json'},
-    body:JSON.stringify({level1_threshold_mm:l1,level2_threshold_mm:l2})
+    body:JSON.stringify({level1_threshold_mm:l1,level2_threshold_mm:l2,trigger_delay_s:trig,clear_delay_s:clr})
   }).then(function(r){return r.json();}).then(function(d){
-    showMsg('cfg-msg',d.ok?'Thresholds saved':('Error: '+d.error),d.ok);
+    showMsg('cfg-msg',d.ok?'Settings saved':('Error: '+d.error),d.ok);
   }).catch(function(){showMsg('cfg-msg','Request failed',false);});
 }
 function doReboot(){
@@ -315,6 +383,8 @@ static void handle_api_status() {
     j += "\"relay1\":"; j += (g_state->relay1 ? "true" : "false"); j += ",";
     j += "\"relay2\":"; j += (g_state->relay2 ? "true" : "false"); j += ",";
     j += "\"sensor_status\":\""; j += (g_state->sensor_ok ? "OK" : "FAULT"); j += "\",";
+    j += "\"trigger_delay_s\":";  j += g_cfg->trigger_delay_s;  j += ",";
+    j += "\"clear_delay_s\":";    j += g_cfg->clear_delay_s;    j += ",";
     j += "\"uptime_seconds\":";  j += g_state->uptime_s;           j += ",";
     j += "\"config_version\":";  j += g_cfg->config_version;
     j += "}";
@@ -342,18 +412,19 @@ static void handle_api_config() {
     if (!session_valid()) { send_json(403, err_json("Forbidden")); return; }
 
     String body = server.arg("plain");
-    int l1 = -1, l2 = -1;
+    int l1 = -1, l2 = -1, trig = -1, clr = -1;
 
-    int idx = body.indexOf("\"level1_threshold_mm\"");
-    if (idx >= 0) {
+    auto parseField = [&](const char *key) -> int {
+        int idx = body.indexOf(key);
+        if (idx < 0) return -1;
         idx = body.indexOf(':', idx) + 1;
-        l1 = body.substring(idx).toInt();
-    }
-    idx = body.indexOf("\"level2_threshold_mm\"");
-    if (idx >= 0) {
-        idx = body.indexOf(':', idx) + 1;
-        l2 = body.substring(idx).toInt();
-    }
+        return body.substring(idx).toInt();
+    };
+
+    l1   = parseField("\"level1_threshold_mm\"");
+    l2   = parseField("\"level2_threshold_mm\"");
+    trig = parseField("\"trigger_delay_s\"");
+    clr  = parseField("\"clear_delay_s\"");
 
     if (l1 <= 0 || l2 <= 0) {
         send_json(400, err_json("Missing or invalid fields")); return;
@@ -364,9 +435,17 @@ static void handle_api_config() {
     if (l2 > 2000) {
         send_json(400, err_json("Level 2 must be <= 2000 mm")); return;
     }
+    if (trig < 1 || trig > 3600) {
+        send_json(400, err_json("Trigger delay must be 1–3600 s")); return;
+    }
+    if (clr < 1 || clr > 3600) {
+        send_json(400, err_json("Clear delay must be 1–3600 s")); return;
+    }
 
     g_cfg->level1_threshold_mm = (uint32_t)l1;
     g_cfg->level2_threshold_mm = (uint32_t)l2;
+    g_cfg->trigger_delay_s     = (uint32_t)trig;
+    g_cfg->clear_delay_s       = (uint32_t)clr;
     g_cfg->config_version++;
     storage_save(*g_cfg);
     led_signal_config_saved();
