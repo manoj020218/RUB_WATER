@@ -29,11 +29,13 @@ private:
     SensorSnapshot _snapshot{};
     int32_t _mountHeightMm = 1200;
     int32_t _zeroDistanceMm = 1200;
-    bool _enabled = true;
+    bool _enabled = false;
     bool _detected = false;
+    bool _uartReady = false;
     unsigned long _lastReadMs = 0;
-    unsigned long _graceStartMs = 0;   // detection grace period start (ms)
+    unsigned long _graceStartMs = 0;
 
     void loadZeroFromNvs();
     void persistZeroToNvs();
+    bool readDypFrame(int32_t& distOut);
 };

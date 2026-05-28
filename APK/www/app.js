@@ -1997,6 +1997,15 @@
     if (formBody) formBody.style.display = '';
     if (noDeviceMsg) noDeviceMsg.style.display = 'none';
 
+    // Offline warning banner
+    const offlineWarn = byId('cfg-offline-warning');
+    const offlineDot  = byId('cfg-offline-dot');
+    const selectedLoc = state.locations.find((l) => l.location_id === state.selectedLocationId);
+    const devStatus   = String(selectedLoc?.status || state.latestTelemetry?.status || '');
+    const isOffline   = !devStatus || devStatus === 'OFFLINE' || devStatus === 'UNKNOWN';
+    if (offlineWarn) offlineWarn.style.display = isOffline ? '' : 'none';
+    if (offlineDot)  offlineDot.style.animation = isOffline ? 'blink 1s infinite' : 'none';
+
     const config = configLike || defaultConfigForView();
 
     // Prefer device_reported values (live from device telemetry) when available.
