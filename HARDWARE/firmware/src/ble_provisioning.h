@@ -33,4 +33,7 @@ private:
     String _pendingCommand;
     NetworkDiagnostics _latestDiagnostics{};
     bool _mqttConnected = false;
+    // Non-zero = reboot at this millis() timestamp (scheduled after cloud save
+    // so the BLE response is sent to the app before the device restarts).
+    unsigned long _rebootScheduledMs = 0;
 };

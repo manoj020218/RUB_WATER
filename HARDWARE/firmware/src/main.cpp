@@ -1,5 +1,6 @@
 #include <Arduino.h>
 #include <ArduinoJson.h>
+#include <Preferences.h>
 #include <cstring>
 #include <time.h>
 
@@ -25,6 +26,33 @@
 // Override Arduino framework weak symbol — default 8 KB overflows during
 // MQTT/HTTP TCP connect because lwIP cleanup path needs ~30 KB of stack.
 size_t getArduinoLoopTaskStackSize() { return 65536; }
+
+// Hold BOOT button (GPIO0) for 5 s at power-on to wipe WiFi + MQTT credentials
+// from NVS and reboot into BLE provisioning mode. Used for re-provisioning tests.
+static void checkFactoryReset() {
+    constexpr int     kBootPin = 0;
+    constexpr unsigned long kHoldMs = 5000UL;
+    pinMode(kBootPin, INPUT_PULLUP);
+    if (digitalRead(kBootPin) != LOW) return;
+
+    Serial.println("[RESET] BOOT held — keep holding 5 s to factory-reset, release to cancel...");
+    const unsigned long t0 = millis();
+    while (millis() - t0 < kHoldMs) {
+        if (digitalRead(kBootPin) != LOW) {
+            Serial.println("[RESET] Released — normal boot continues");
+            return;
+        }
+        delay(100);
+    }
+    Serial.println("[RESET] Clearing NVS (fgcfg namespace: WiFi + MQTT credentials)...");
+    Preferences prefs;
+    prefs.begin("fgcfg", false);
+    prefs.clear();
+    prefs.end();
+    Serial.println("[RESET] Done. Rebooting into BLE provisioning mode...");
+    delay(500);
+    ESP.restart();
+}
 
 namespace {
 AlarmState gPreviousState = AlarmState::NORMAL;
@@ -244,6 +272,7 @@ void setup() {
     Serial.begin(115200);
     delay(500);
     Serial.println("\n=== FloodGuard Firmware Boot ===");
+    checkFactoryReset();
 
     ConfigManager::getInstance().begin();
     const DeviceConfig& config = ConfigManager::getInstance().getConfig();

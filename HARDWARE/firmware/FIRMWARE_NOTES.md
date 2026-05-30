@@ -406,3 +406,78 @@ always override `location_id` from `device.location_id` (DB), never trust the pa
 
 This matters whenever a device is re-provisioned to a different location, or when
 `DEFAULT_LOCATION_ID` in firmware doesn't exactly match the ID in the DB.
+
+---
+
+## 14. Provisioning pipeline — build envs, factory reset, provision key (PROD READY)
+
+### Build environments (`platformio.ini`)
+
+| Environment | Command | Use |
+|---|---|---|
+| `esp32-s3-prod` | `pio run -e esp32-s3-prod -t upload` | **Field devices** — BLE provisioning enabled |
+| `esp32-s3-dev` | `pio run -e esp32-s3-dev -t upload` | Bench testing — hardcoded WiFi, BLE skipped |
+
+`pio run` (no flags) defaults to **prod**. The dev build defines `DEV_WIFI_SSID` which
+the preprocessor uses to skip BLE entirely and patch in hardcoded WiFi credentials.
+
+### Factory reset — re-provision any time
+
+Hold the **BOOT button (GPIO0)** for **5 seconds** at power-on:
+1. Serial prints: `[RESET] BOOT held — keep holding 5s to factory-reset...`
+2. Release before 5 s → normal boot (safe cancellation)
+3. Hold full 5 s → NVS namespace `fgcfg` is cleared (all WiFi + MQTT credentials)
+4. Device reboots → BLE advertises `JNX-FG<MAC>` → ready for fresh provisioning
+
+This is the test loop: flash once, factory-reset repeatedly to test provisioning.
+`fgcfg` is the only Preferences namespace the firmware uses for credentials; clearing
+it is equivalent to a factory reset without re-flashing.
+
+### Provision key
+
+```
+FloodGuard@302020
+```
+Stored in `VPS_SHIFT_CONFIG.json` → `security.deviceProvisionKey`.
+`requireDeviceProvisionKey: true` — the VPS rejects any `/api/device/register` call
+that doesn't include `x-provision-key: FloodGuard@302020`.
+
+The app's BLE provisioning screen has a **"Provision Key"** input (persisted in
+localStorage). Enter this value before tapping **Apply Cloud**.
+
+### Device registration flow (via BLE `c` command)
+
+1. App sends BLE `c` command with `pk: "FloodGuard@302020"` and VPS URL
+2. Firmware calls `registerDeviceAndFetchKey()` → `POST http://api.floodguard.iotsoft.in/api/device/register`
+   with `x-provision-key: FloodGuard@302020` header
+3. VPS returns `{ device_key: "fgk_...", cloud: { mqtt: { host, port, username, password } } }`
+4. Firmware saves `device_key` as MQTT password to NVS; MQTT username = deviceId (per §12 rule)
+5. After saving, firmware schedules a **2.5 s reboot** so the BLE response reaches the app first
+
+### Auto-reboot after cloud provisioning
+
+`ble_provisioning.cpp::handleCommand()` sets `_rebootScheduledMs = millis() + 2500` at the
+end of every `set_cloud` / `c` handler. `loop()` fires `ESP.restart()` when elapsed.
+
+**Why reboot instead of reconnecting in-place:**
+- BLE is consuming ~70 KB internal RAM; rebooting frees it for MQTT/WiFi
+- `deviceIsProvisioned` is evaluated once in `setup()` — after provisioning, a reboot
+  ensures BLE is never started again for this device
+- Clean state: all services re-init with the new NVS credentials
+
+### End-to-end test sequence
+
+1. Flash `esp32-s3-prod` → Serial shows `[BLE] Advertising as JNX-FG<MAC>`
+2. Open FloodGuard app → **Provision** tab → **Scan** → select the device
+3. **WiFi tab**: enter SSID + password → **Connect** → wait for `[BLE][set_wifi] wc=1 ip=...`
+4. **Cloud tab**: enter Provision Key `FloodGuard@302020` → **Apply** → wait for confirmation
+5. Device prints `[BLE] Cloud credentials saved — rebooting in 2.5 s` → reboots
+6. App shows BLE disconnect (expected) → device reconnects WiFi + MQTT
+7. Dashboard shows device status = **ONLINE**
+
+To re-test: hold BOOT 5 s → factory reset → repeat from step 2. The firmware's
+`DEFAULT_LOCATION_ID` is a hint only. Both `ingestTelemetry` and `ingestEvent` must
+always override `location_id` from `device.location_id` (DB), never trust the payload.
+
+This matters whenever a device is re-provisioned to a different location, or when
+`DEFAULT_LOCATION_ID` in firmware doesn't exactly match the ID in the DB.

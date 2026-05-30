@@ -517,6 +517,12 @@ void BleProvisioningService::loop(const DeviceConfig& config, const NetworkDiagn
         return;
     }
     processPendingCommand(config);
+
+    if (_rebootScheduledMs > 0 && millis() >= _rebootScheduledMs) {
+        Serial.println("[BLE] Rebooting now to apply provisioned credentials...");
+        delay(100);
+        ESP.restart();
+    }
 }
 
 bool BleProvisioningService::isStarted() const {
@@ -1027,6 +1033,10 @@ String BleProvisioningService::handleCommand(const String& request, const Device
                 vpsErr.length() > 0 ? vpsErr.c_str() : "-"
             );
         }
+        // Reboot 2.5 s after the BLE response is written so the app can read it.
+        // On reboot the device is provisioned → BLE won't start → full RAM for MQTT/WiFi.
+        _rebootScheduledMs = millis() + 2500UL;
+        Serial.println("[BLE] Cloud credentials saved — rebooting in 2.5 s");
     } else if (cmd == "health" || cmd == "diag" || cmd == "diagnostics") {
         resDoc["uptime_ms"] = millis();
         resDoc["free_heap"] = ESP.getFreeHeap();
