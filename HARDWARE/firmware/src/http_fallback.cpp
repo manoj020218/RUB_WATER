@@ -4,7 +4,7 @@
 #include <HTTPClient.h>
 #include <Preferences.h>
 #include <WiFi.h>
-#include <WiFiClientSecure.h>
+#include <WiFiClient.h>
 #include <cstring>
 
 namespace {
@@ -34,13 +34,12 @@ String normalizeBaseUrl(const String& raw) {
     return out;
 }
 
-bool beginHttpRequest(HTTPClient& client, WiFiClient& plainClient, WiFiClientSecure& secureClient, const String& url) {
+bool beginHttpRequest(HTTPClient& client, WiFiClient& plainClient, const String& url) {
     client.setConnectTimeout(kHttpConnectTimeoutMs);
     client.setTimeout(kHttpRequestTimeoutMs);
     client.setFollowRedirects(HTTPC_STRICT_FOLLOW_REDIRECTS);
     if (url.startsWith("https://")) {
-        secureClient.setInsecure();
-        return client.begin(secureClient, url);
+        return false;  // HTTPS not used; avoids large SSL stack/heap allocation
     }
     return client.begin(plainClient, url);
 }
@@ -109,8 +108,7 @@ bool HttpFallbackService::fetchPendingCommand(String& outCommand, String& outPay
     const String url = String(_baseUrl) + "/api/device/" + _deviceId + "/commands/pending";
     HTTPClient client;
     WiFiClient plainClient;
-    WiFiClientSecure secureClient;
-    if (!beginHttpRequest(client, plainClient, secureClient, url)) {
+    if (!beginHttpRequest(client, plainClient, url)) {
         return false;
     }
 
@@ -173,8 +171,7 @@ bool HttpFallbackService::postJson(const String& path, const char* payload) {
     const String url = String(_baseUrl) + path;
     HTTPClient client;
     WiFiClient plainClient;
-    WiFiClientSecure secureClient;
-    if (!beginHttpRequest(client, plainClient, secureClient, url)) {
+    if (!beginHttpRequest(client, plainClient, url)) {
         return false;
     }
 
@@ -182,7 +179,11 @@ bool HttpFallbackService::postJson(const String& path, const char* payload) {
     applyAuthHeaders(client);
     const int code = client.POST(payload ? payload : "{}");
     client.end();
-    return code >= 200 && code < 300;
+    const bool ok = code >= 200 && code < 300;
+    if (ok) {
+        _vpsReachable = true;
+    }
+    return ok;
 }
 
 void HttpFallbackService::loadPersistedCloudAuth() {
@@ -195,7 +196,7 @@ void HttpFallbackService::loadPersistedCloudAuth() {
     const String savedToken = prefs.getString(kPrefsDeviceTokenKey, "");
     prefs.end();
 
-    if (savedBaseUrl.length() > 0) {
+    if (savedBaseUrl.length() > 0 && savedBaseUrl.indexOf("FGServer.jenix.in") < 0) {
         copyCString(_baseUrl, sizeof(_baseUrl), savedBaseUrl);
     }
 

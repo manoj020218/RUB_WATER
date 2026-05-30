@@ -10,7 +10,7 @@
 #include <ESP.h>
 #include <HTTPClient.h>
 #include <WiFi.h>
-#include <WiFiClientSecure.h>
+#include <WiFiClient.h>
 #include <esp_err.h>
 #include <esp_mac.h>
 
@@ -159,7 +159,7 @@ String normalizeBaseUrl(const String& raw) {
         return out;
     }
     if (!out.startsWith("http://") && !out.startsWith("https://")) {
-        out = String("https://") + out;
+        out = String("http://") + out;
     }
     while (out.endsWith("/")) {
         out.remove(out.length() - 1);
@@ -207,13 +207,12 @@ String extractHostFromUrl(const String& url) {
     return work;
 }
 
-bool beginHttpRequest(HTTPClient& client, WiFiClient& plainClient, WiFiClientSecure& secureClient, const String& url) {
+bool beginHttpRequest(HTTPClient& client, WiFiClient& plainClient, const String& url) {
     client.setConnectTimeout(5000);
     client.setTimeout(8000);
     client.setFollowRedirects(HTTPC_STRICT_FOLLOW_REDIRECTS);
     if (url.startsWith("https://")) {
-        secureClient.setInsecure();
-        return client.begin(secureClient, url);
+        return false;  // HTTPS not supported; avoids SSL stack allocation
     }
     return client.begin(plainClient, url);
 }
@@ -233,6 +232,11 @@ bool registerDeviceAndFetchKey(
         *errorText = "";
     }
 
+    // BLE + WiFi share the 2.4GHz radio on ESP32-S3. The BLE write that
+    // triggered this command can cause a brief WiFi drop. Retry up to 3 s.
+    for (uint8_t i = 0; i < 6 && WiFi.status() != WL_CONNECTED; i++) {
+        delay(500);
+    }
     if (WiFi.status() != WL_CONNECTED) {
         if (errorText != nullptr) {
             *errorText = "wifi_not_connected";
@@ -269,8 +273,7 @@ bool registerDeviceAndFetchKey(
         const String registerUrl = registerUrls[idx];
         HTTPClient client;
         WiFiClient plainClient;
-        WiFiClientSecure secureClient;
-        if (!beginHttpRequest(client, plainClient, secureClient, registerUrl)) {
+        if (!beginHttpRequest(client, plainClient, registerUrl)) {
             lastError = "register_begin_failed";
             continue;
         }
@@ -380,31 +383,11 @@ bool httpGetHealth(const String& healthUrl, int& statusCode, uint32_t& elapsedMs
         }
     };
 
-    // NOTE: HTTPClient::begin(NetworkClient&, ...) keeps a reference to the client.
-    // Keep the WiFiClient/WiFiClientSecure alive for the full request lifetime.
     if (healthUrl.startsWith("https://")) {
-        WiFiClientSecure secureClient;
-        secureClient.setInsecure();
-
-        HTTPClient client;
-        client.setTimeout(5000);
-        client.setConnectTimeout(5000);
-        client.setFollowRedirects(HTTPC_STRICT_FOLLOW_REDIRECTS);
-        if (!client.begin(secureClient, healthUrl)) {
-            if (errorText != nullptr) {
-                *errorText = "http_begin_failed";
-            }
-            return false;
+        if (errorText != nullptr) {
+            *errorText = "https_not_supported";
         }
-
-        const unsigned long start = millis();
-        statusCode = client.GET();
-        elapsedMs = millis() - start;
-        if (statusCode < 200 || statusCode >= 400) {
-            applyErrorDetail(client);
-        }
-        client.end();
-        return statusCode >= 200 && statusCode < 400;
+        return false;
     }
 
     WiFiClient plainClient;
@@ -531,7 +514,7 @@ void BleProvisioningService::loop(const DeviceConfig& config, const NetworkDiagn
     _mqttConnected = mqttConnected;
 
     if (!_started) {
-        begin(config);
+        return;
     }
     processPendingCommand(config);
 }
@@ -590,8 +573,11 @@ void BleProvisioningService::processPendingCommand(const DeviceConfig& config) {
     }
     _pendingCommandReady = false;
 
-    const String response = handleCommand(_pendingCommand, config);
+    String response = handleCommand(_pendingCommand, config);
     if (gBleCharacteristic != nullptr) {
+        if (response.length() > 590) {
+            response = response.substring(0, 590);
+        }
         gBleCharacteristic->setValue(response.c_str());
     }
 }

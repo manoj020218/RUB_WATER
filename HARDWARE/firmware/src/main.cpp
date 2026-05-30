@@ -22,6 +22,10 @@
 #include "watchdog.h"
 #include "wifi_manager.h"
 
+// Override Arduino framework weak symbol — default 8 KB overflows during
+// MQTT/HTTP TCP connect because lwIP cleanup path needs ~30 KB of stack.
+size_t getArduinoLoopTaskStackSize() { return 65536; }
+
 namespace {
 AlarmState gPreviousState = AlarmState::NORMAL;
 unsigned long gLastHeartbeatMs = 0;
@@ -54,6 +58,11 @@ bool publishWithFallback(const char* queueTopic, const String& mqttTopic, const 
     if (MqttClientService::getInstance().isConnected() &&
         MqttClientService::getInstance().publish(mqttTopic.c_str(), payload)) {
         return true;
+    }
+
+    if (!WifiManager::getInstance().isConnected()) {
+        LocalEventQueue::getInstance().enqueue(queueTopic, payload);
+        return false;
     }
 
     bool httpPosted = false;
@@ -259,6 +268,15 @@ void setup() {
     );
 
     WifiManager::getInstance().begin(config.wifiSsid, config.wifiPass);
+    // Read NVS-loaded SSID before any DEV override to detect provisioning state.
+    // "CHANGE_WIFI_SSID" is the factory sentinel meaning no credentials saved yet.
+    const bool deviceIsProvisioned =
+        WifiManager::getInstance().getConfiguredSsid() != "CHANGE_WIFI_SSID" &&
+        WifiManager::getInstance().getConfiguredSsid().length() > 0;
+#if defined(DEV_WIFI_SSID) && defined(DEV_WIFI_PASS)
+    Serial.println("[WiFi] DEV override: using hardcoded SSID=" DEV_WIFI_SSID);
+    WifiManager::getInstance().setCredentials(DEV_WIFI_SSID, DEV_WIFI_PASS, false);
+#endif
     NetworkDiagnosticsService::getInstance().begin();
     TimeSyncService::getInstance().begin();
     WatchdogService::getInstance().begin();
@@ -268,7 +286,17 @@ void setup() {
     AlarmStateMachine::getInstance().begin();
     RelayController::getInstance().begin(config.gpio);
     CommandHandler::getInstance().begin();
-    BleProvisioningService::getInstance().begin(config);
+    // BLE provisioning needs ~70KB internal RAM. Skip on provisioned devices or DEV
+    // builds — internal heap (~94KB total) must be preserved for MQTT/WiFi stack.
+#if defined(DEV_WIFI_SSID)
+    Serial.println("[BLE] Skipped — DEV_WIFI build");
+#else
+    if (deviceIsProvisioned) {
+        Serial.println("[BLE] Skipped — WiFi credentials in NVS");
+    } else {
+        BleProvisioningService::getInstance().begin(config);
+    }
+#endif
 
     LocalEventQueue::getInstance().begin();
     HttpFallbackService::getInstance().begin(config.httpBaseUrl, config.deviceId);
@@ -290,7 +318,11 @@ void loop() {
     const bool wifiConnected = WifiManager::getInstance().isConnected();
 
     TimeSyncService::getInstance().loop(wifiConnected);
-    MqttClientService::getInstance().loop();
+    // Guard: WiFi must be up AND 15-second BLE provisioning window must have passed
+    static const unsigned long kMqttBootDelayMs = 15000UL;
+    if (wifiConnected && millis() >= kMqttBootDelayMs) {
+        MqttClientService::getInstance().loop();
+    }
     const bool mqttConnected = MqttClientService::getInstance().isConnected();
     CommandHandler::getInstance().loop();
 
@@ -370,7 +402,7 @@ void loop() {
         mqttConnected
     );
 
-    if (!mqttConnected) {
+    if (wifiConnected && !mqttConnected) {
         String polledCommand;
         String polledPayload;
         if (HttpFallbackService::getInstance().fetchPendingCommand(polledCommand, polledPayload)) {

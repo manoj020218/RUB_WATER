@@ -6,7 +6,7 @@
 #include <HTTPClient.h>
 #include <WebServer.h>
 #include <WiFi.h>
-#include <WiFiClientSecure.h>
+#include <WiFiClient.h>
 #include <cctype>
 
 #include "config_manager.h"
@@ -27,7 +27,7 @@ String normalizeBaseUrl(const String& raw) {
     }
 
     if (!out.startsWith("http://") && !out.startsWith("https://")) {
-        out = String("https://") + out;
+        out = String("http://") + out;
     }
 
     while (out.endsWith("/")) {
@@ -163,13 +163,12 @@ uint16_t parsePort(const String& hostPort, uint16_t fallbackPort) {
     return fallbackPort;
 }
 
-bool beginHttpRequest(HTTPClient& client, WiFiClient& plainClient, WiFiClientSecure& secureClient, const String& url) {
+bool beginHttpRequest(HTTPClient& client, WiFiClient& plainClient, const String& url) {
     client.setConnectTimeout(5000);
     client.setTimeout(8000);
     client.setFollowRedirects(HTTPC_STRICT_FOLLOW_REDIRECTS);
     if (url.startsWith("https://")) {
-        secureClient.setInsecure();
-        return client.begin(secureClient, url);
+        return false;  // HTTPS not supported; avoids SSL stack/heap allocation
     }
     return client.begin(plainClient, url);
 }
@@ -226,8 +225,7 @@ bool registerDeviceAndFetchKey(
     for (size_t idx = 0; idx < registerUrlCount; ++idx) {
         HTTPClient client;
         WiFiClient plainClient;
-        WiFiClientSecure secureClient;
-        if (!beginHttpRequest(client, plainClient, secureClient, registerUrls[idx])) {
+        if (!beginHttpRequest(client, plainClient, registerUrls[idx])) {
             lastError = "register_begin_failed";
             continue;
         }
@@ -695,6 +693,7 @@ void LocalConfigServer::ensureServerStarted() {
         doc["battery_voltage"] = VoltageMonitor::getInstance().readSupplyVoltage();
         doc["adc_raw_volts"] = VoltageMonitor::getInstance().lastAdcVolts();
         doc["mqtt_connected"] = gInstance->_mqttConnected;
+        doc["vps_reachable"] = HttpFallbackService::getInstance().isVpsReachable();
         doc["ip"] = WiFi.localIP().toString();
 
         char payload[1024]{};

@@ -14,6 +14,7 @@ public:
     bool postCommandAck(const char* commandAckPayload);
     bool postConfigAck(const char* configAckPayload);
     bool fetchPendingCommand(String& outCommand, String& outPayload);
+    bool isVpsReachable() const { return _vpsReachable; }
 
 private:
     HttpFallbackService() = default;
@@ -21,6 +22,7 @@ private:
     char _deviceId[32]{};
     char _deviceToken[160]{};
     unsigned long _lastPollMs = 0;
+    bool _vpsReachable = false;
 
     void loadPersistedCloudAuth();
     void persistCloudAuth();

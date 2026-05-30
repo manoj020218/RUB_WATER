@@ -22,6 +22,7 @@ private:
     char _ssid[64]{};
     char _password[64]{};
     unsigned long _lastConnectAttemptMs = 0;
+    bool _dnsConfigured = false;
     void loadPersistedCredentials();
     void persistCredentials();
 };

@@ -75,13 +75,15 @@ void MqttClientService::updateConnection(const char* host, uint16_t port, const 
 void MqttClientService::loop() {
     if (!_client.connected()) {
         const unsigned long now = millis();
-        if (now - _lastReconnectAttemptMs >= 5000UL) {
+        if (now - _lastReconnectAttemptMs >= _reconnectIntervalMs) {
             _lastReconnectAttemptMs = now;
             connect();
         }
         return;
     }
 
+    _reconnectIntervalMs = 5000UL;
+    _consecutiveFailures = 0;
     _client.loop();
 }
 
@@ -163,12 +165,25 @@ bool MqttClientService::connect() {
 
     if (ok) {
         Serial.printf("[MQTT] Connected! device=%s topic_base=rub/%s\n", _deviceId, _deviceId);
+        _reconnectIntervalMs = 5000UL;
+        _consecutiveFailures = 0;
         subscribe();
     } else {
         // PubSubClient state codes: -4=timeout -3=conn_lost -2=conn_failed -1=disconnected
         // 1=bad_protocol 2=bad_clientid 3=unavailable 4=bad_credentials 5=unauthorized
         Serial.printf("[MQTT] Connect FAILED state=%d host=%s port=%u user=%s\n",
             _client.state(), _host, _port, _user);
+        _consecutiveFailures++;
+        // Exponential backoff: 5s → 15s → 30s → 60s → 300s (caps at 5 min)
+        if (_consecutiveFailures >= 5) {
+            _reconnectIntervalMs = 300000UL;
+        } else if (_consecutiveFailures >= 4) {
+            _reconnectIntervalMs = 60000UL;
+        } else if (_consecutiveFailures >= 3) {
+            _reconnectIntervalMs = 30000UL;
+        } else if (_consecutiveFailures >= 2) {
+            _reconnectIntervalMs = 15000UL;
+        }
     }
     return ok;
 }
@@ -191,7 +206,7 @@ void MqttClientService::loadPersistedConnection() {
     const String savedPass = prefs.getString(kPrefsMqttPassKey, "");
     prefs.end();
 
-    if (savedHost.length() > 0) {
+    if (savedHost.length() > 0 && savedHost != "FGServer.jenix.in") {
         std::memset(_host, 0, sizeof(_host));
         std::strncpy(_host, savedHost.c_str(), sizeof(_host) - 1);
     }

@@ -252,3 +252,11 @@ Active even when WiFi SSID is hidden. Use any BLE scanner to identify the device
 7. **Leave gap between boards** — don't pack relay module tight against C3; a few mm gap prevents heat stacking.
 
 > ESP32-C3 junction rated to 85°C. With firmware reductions + light-coloured box out of direct sun it stays well within limit. 
+
+To flash multiple boards: double-click flash_c3.bat from HARDWARE/firmware_C3_sensor_L2/
+
+  - First run builds the firmware once (takes ~2 min)
+  - Every subsequent board: plug in → press Enter → done in ~90 seconds
+  - Type Q to exit when finished
+
+  After each successful flash it prints the full setup checklist so the installer doesn't miss a step. If flashing fails it lists the exact   causes to check.

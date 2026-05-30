@@ -3,6 +3,7 @@
 #include <Preferences.h>
 #include <WiFi.h>
 #include <cstring>
+#include <lwip/dns.h>
 
 #include "device_profile.h"
 
@@ -38,8 +39,19 @@ void WifiManager::begin(const char* ssid, const char* password) {
 
 void WifiManager::loop() {
     if (isConnected()) {
+        if (!_dnsConfigured) {
+            _dnsConfigured = true;
+            ip_addr_t dns;
+            IP4_ADDR(&dns.u_addr.ip4, 8, 8, 8, 8);
+            dns.type = IPADDR_TYPE_V4;
+            dns_setserver(0, &dns);
+            Serial.printf("[WiFi] Connected — IP=%s RSSI=%ld dBm DNS=8.8.8.8\n",
+                          WiFi.localIP().toString().c_str(),
+                          (long)WiFi.RSSI());
+        }
         return;
     }
+    _dnsConfigured = false;
 
     const unsigned long now = millis();
     if (now - _lastConnectAttemptMs < DeviceProfile::WIFI_RETRY_INTERVAL_MS) {

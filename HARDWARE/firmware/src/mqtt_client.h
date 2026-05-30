@@ -41,6 +41,8 @@ private:
     char _deviceId[32]{};
     uint16_t _port = 1883;
     unsigned long _lastReconnectAttemptMs = 0;
+    unsigned long _reconnectIntervalMs = 5000UL;
+    uint8_t _consecutiveFailures = 0;
     MqttCommandCallback _commandCallback = nullptr;
 
     bool connect();

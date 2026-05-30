@@ -36,16 +36,28 @@ void SensorRs485::begin(int32_t sensorMountHeightMm, bool enabled) {
     _snapshot      = {};
     _snapshot.enabled  = enabled;
 
-    if (!enabled) return;
+    Serial.printf("[RS485] begin: enabled=%d mountH=%d zeroD=%d\n",
+                  enabled, (int)sensorMountHeightMm, (int)_zeroDistanceMm);
 
-    // DE/RE pin LOW = receive mode (DYP auto-sends, no TX needed)
-    pinMode(DeviceProfile::RS485_DERE_PIN, OUTPUT);
-    digitalWrite(DeviceProfile::RS485_DERE_PIN, LOW);
+    if (!enabled) {
+        Serial.println("[RS485] Sensor disabled — UART not started");
+        return;
+    }
+
+    if (DeviceProfile::RS485_DERE_PIN >= 0) {
+        pinMode(DeviceProfile::RS485_DERE_PIN, OUTPUT);
+        digitalWrite(DeviceProfile::RS485_DERE_PIN, LOW);
+        Serial.printf("[RS485] DE pin GPIO%d set LOW (receive mode)\n",
+                      DeviceProfile::RS485_DERE_PIN);
+    }
 
     rs485Serial.begin(kBaud, SERIAL_8N1,
                       DeviceProfile::RS485_RX_PIN,
                       DeviceProfile::RS485_TX_PIN);
     _uartReady = true;
+    Serial.printf("[RS485] UART2 started: RX=GPIO%d  TX=GPIO%d  baud=%u\n",
+                  DeviceProfile::RS485_RX_PIN,
+                  DeviceProfile::RS485_TX_PIN, (unsigned)kBaud);
 }
 
 // ── readDypFrame ───────────────────────────────────────────────────────────
@@ -53,26 +65,50 @@ void SensorRs485::begin(int32_t sensorMountHeightMm, bool enabled) {
 // DYP-A01 auto-mode frame: 0xFF  H  L  SUM   (4 bytes, ~1 frame/sec)
 bool SensorRs485::readDypFrame(int32_t& distOut) {
     bool got = false;
+    int available = rs485Serial.available();
+    if (available > 0) {
+        Serial.printf("[RS485] %d byte(s) in UART buffer\n", available);
+    }
     while (rs485Serial.available() >= 1) {
         // Sync on start byte
         if (rs485Serial.peek() != (int)0xFF) {
-            rs485Serial.read();
+            uint8_t dropped = (uint8_t)rs485Serial.read();
+            Serial.printf("[RS485] Non-sync byte dropped: 0x%02X\n", dropped);
             continue;
         }
-        if (rs485Serial.available() < 4) break;  // wait for full frame
+        if (rs485Serial.available() < 4) {
+            // DYP may insert a brief gap after 0xFF — wait up to 50 ms
+            const unsigned long t0 = millis();
+            while (rs485Serial.available() < 4 && (millis() - t0) < 300UL) { yield(); }
+            if (rs485Serial.available() < 4) {
+                Serial.printf("[RS485] Frame timeout: only %d/4 bytes after 300ms\n",
+                              rs485Serial.available());
+                break;
+            }
+        }
 
         uint8_t b[4];
         for (int i = 0; i < 4; i++) b[i] = (uint8_t)rs485Serial.read();
+        Serial.printf("[RS485] Frame: 0x%02X 0x%02X 0x%02X 0x%02X\n",
+                      b[0], b[1], b[2], b[3]);
 
         const uint8_t csum = (uint8_t)((b[0] + b[1] + b[2]) & 0xFF);
-        if (csum != b[3]) continue;  // bad checksum — discard
+        if (csum != b[3]) {
+            Serial.printf("[RS485] Bad checksum: calc=0x%02X got=0x%02X\n",
+                          csum, b[3]);
+            continue;
+        }
 
         const int32_t d = (int32_t)b[1] * 256 + (int32_t)b[2];
-        if (d < kMinDistMm || d > kMaxDistMm) continue;  // out of range
+        if (d < kMinDistMm || d > kMaxDistMm) {
+            Serial.printf("[RS485] Distance out of range: %d mm (valid %d-%d)\n",
+                          (int)d, (int)kMinDistMm, (int)kMaxDistMm);
+            continue;
+        }
 
+        Serial.printf("[RS485] Valid reading: %d mm\n", (int)d);
         distOut = d;
         got = true;
-        // Keep draining to consume the freshest frame in the buffer
     }
     return got;
 }
@@ -114,7 +150,16 @@ void SensorRs485::loop() {
         return;  // keep last reading, still valid
     }
 
-    // Timeout — sensor not responding
+    // Timeout — sensor not responding; log every 5 s to avoid flooding
+    if (now - _lastReadMs >= 5000UL || _lastReadMs == 0) {
+        const unsigned long elapsed = _snapshot.lastValidMs > 0
+            ? (now - _snapshot.lastValidMs) / 1000UL
+            : (now - _graceStartMs) / 1000UL;
+        Serial.printf("[RS485] No frame for %lus — sensor absent or wiring issue\n",
+                      elapsed);
+        _lastReadMs = now;
+    }
+
     _snapshot.distanceMm   = 0;
     _snapshot.waterLevelMm = 0;
     _snapshot.valid        = false;
