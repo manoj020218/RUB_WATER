@@ -1,0 +1,955 @@
+#include "local_webserver.h"
+
+#include <ArduinoJson.h>
+#include <ESPmDNS.h>
+#include <Preferences.h>
+#include <WiFi.h>
+
+#include "config_manager.h"
+#include "device_profile.h"
+#include "dyp_sensor.h"
+#include "flood_state_machine.h"
+#include "mqtt_manager.h"
+#include "ota_manager.h"
+#include "output_controller.h"
+#include "pump_controller.h"
+#include "remote_box_manager.h"
+#include "sd_fifo.h"
+#include "voltage_monitor.h"
+#include "wifi_manager.h"
+
+namespace {
+constexpr uint8_t kGenericRelayModel2Ch = 2;
+constexpr uint8_t kGenericRelayModel4Ch = 4;
+constexpr uint32_t kGenericRelayReadbackDelayMs = 25UL;
+
+uint8_t clampGenericRelayModel(int raw) {
+    return raw >= 4 ? kGenericRelayModel4Ch : kGenericRelayModel2Ch;
+}
+
+uint8_t genericRelayCountFromModel(uint8_t model) {
+    return model >= kGenericRelayModel4Ch ? 4 : 2;
+}
+
+uint16_t genericRelayFirstCoilFromModel(uint8_t model) {
+    return model >= kGenericRelayModel4Ch ? 0x0001 : 0x0000;
+}
+
+uint8_t genericRelayStatusReadCountFromModel(uint8_t model) {
+    return model >= kGenericRelayModel4Ch ? 4 : 2;
+}
+
+uint16_t genericRelayAddressRegisterFromModel(uint8_t model) {
+    return model >= kGenericRelayModel4Ch ? 0x4000 : 0x0000;
+}
+
+const char* genericRelayModelLabel(uint8_t model) {
+    return model >= kGenericRelayModel4Ch ? "4CH" : "2CH";
+}
+
+struct GenericRelayStatusSnapshot {
+    bool valid = false;
+#ifdef GENERIC_REMOTE_RELAY_MODE
+    uint8_t slaveId = GENERIC_REMOTE_RELAY_RIGHT_ADDR;
+    uint8_t moduleType = GENERIC_REMOTE_RELAY_RIGHT_MODEL;
+#else
+    uint8_t slaveId = 255;
+    uint8_t moduleType = kGenericRelayModel2Ch;
+#endif
+    uint8_t relayCount = genericRelayCountFromModel(moduleType);
+    bool relay1On = false;
+    bool relay2On = false;
+    bool relay3On = false;
+    bool relay4On = false;
+    uint8_t exceptionCode = 0;
+};
+
+String genericRelayModelOptions(uint8_t model) {
+    const uint8_t normalized = clampGenericRelayModel(model);
+    String html;
+    html += "<option value='2'";
+    if (normalized == kGenericRelayModel2Ch) html += " selected";
+    html += ">2 Relay Module</option>";
+    html += "<option value='4'";
+    if (normalized == kGenericRelayModel4Ch) html += " selected";
+    html += ">4 Relay Module</option>";
+    return html;
+}
+
+String genericRelayConfigFields(uint8_t addr, uint8_t model) {
+    String html;
+    html += "<label>Module Address</label><input type='number' min='1' max='255' name='modbus_addr' value='";
+    html += String(addr);
+    html += "'>";
+    html += "<label>Module Type</label><select name='module_type'>";
+    html += genericRelayModelOptions(model);
+    html += "</select>";
+    return html;
+}
+
+void updateGenericRelaySnapshot(GenericRelayStatusSnapshot& snapshot,
+                                uint8_t slaveId, uint8_t model,
+                                bool valid, uint8_t exceptionCode,
+                                uint8_t coilByte) {
+    snapshot.valid = valid;
+    snapshot.slaveId = slaveId;
+    snapshot.moduleType = clampGenericRelayModel(model);
+    snapshot.relayCount = genericRelayCountFromModel(snapshot.moduleType);
+    snapshot.exceptionCode = exceptionCode;
+    snapshot.relay1On = valid ? ((coilByte & 0x01U) != 0) : false;
+    snapshot.relay2On = valid ? ((coilByte & 0x02U) != 0) : false;
+    snapshot.relay3On = valid ? ((coilByte & 0x04U) != 0) : false;
+    snapshot.relay4On = valid ? ((coilByte & 0x08U) != 0) : false;
+}
+
+uint8_t snapshotCoilByte(const GenericRelayStatusSnapshot& snapshot) {
+    uint8_t coilByte = 0;
+    if (snapshot.relay1On) coilByte |= 0x01U;
+    if (snapshot.relay2On) coilByte |= 0x02U;
+    if (snapshot.relay3On) coilByte |= 0x04U;
+    if (snapshot.relay4On) coilByte |= 0x08U;
+    return coilByte;
+}
+
+RtuResult readGenericRelaySnapshot(RtuBus bus, uint8_t slaveId, uint8_t model, uint8_t& coilByte) {
+    uint8_t coilBytes[1] = {0};
+    const RtuResult result = Rs485RtuMaster::getInstance().readCoils(
+        bus, slaveId,
+        genericRelayFirstCoilFromModel(model),
+        genericRelayStatusReadCountFromModel(model),
+        coilBytes, sizeof(coilBytes));
+    coilByte = coilBytes[0];
+    return result;
+}
+
+GenericRelayStatusSnapshot g_genericRelayStatus;
+}
+
+LocalWebserver& LocalWebserver::getInstance() {
+    static LocalWebserver inst;
+    return inst;
+}
+
+void LocalWebserver::buildMdnsHost(char* out, size_t outSize, const char* deviceId) {
+    if (!out || outSize == 0) return;
+    size_t w = 0;
+    bool lastWasDash = false;
+    for (size_t i = 0; deviceId && deviceId[i] != '\0' && w + 1 < outSize; ++i) {
+        const char c = deviceId[i];
+        if ((c >= 'a' && c <= 'z') || (c >= '0' && c <= '9')) {
+            out[w++] = c;
+            lastWasDash = false;
+        } else if (c >= 'A' && c <= 'Z') {
+            out[w++] = static_cast<char>(c - 'A' + 'a');
+            lastWasDash = false;
+        } else if (!lastWasDash && w > 0) {
+            out[w++] = '-';
+            lastWasDash = true;
+        }
+    }
+    while (w > 0 && out[w - 1] == '-') --w;
+    if (w == 0) {
+        strncpy(out, "floodguard-main", outSize - 1);
+        out[outSize - 1] = '\0';
+        return;
+    }
+    out[w] = '\0';
+}
+
+void LocalWebserver::begin(const char* apSsid, const char* deviceId) {
+    strncpy(_apSsid,    apSsid,   sizeof(_apSsid)    - 1);
+    strncpy(_deviceId,  deviceId, sizeof(_deviceId)  - 1);
+    buildMdnsHost(_mdnsHost, sizeof(_mdnsHost), deviceId);
+    setupRoutes();
+    Serial.printf("[WEB] Webserver ready on port 80 (AP SSID: %s, mDNS: %s.local)\n", _apSsid, _mdnsHost);
+}
+
+void LocalWebserver::loop() {
+    startServerIfNeeded();
+    _server.handleClient();
+    updateMdns();
+    if (_apActive) {
+        // Auto-close AP after duration
+        if (millis() - _apStartMs >= _apDurationMs) {
+            stopAp();
+        }
+    }
+}
+
+void LocalWebserver::startAp(uint32_t durationMs) {
+    WiFi.softAP(_apSsid);
+    startServerIfNeeded();
+    _apActive     = true;
+    _apStartMs    = millis();
+    _apDurationMs = durationMs;
+    Serial.printf("[WEB] AP started: SSID=%s IP=%s duration=%lus\n",
+                  _apSsid, WiFi.softAPIP().toString().c_str(), durationMs / 1000UL);
+}
+
+void LocalWebserver::stopAp() {
+    WiFi.softAPdisconnect(true);
+    _apActive  = false;
+    _loggedIn  = false;
+    Serial.println("[WEB] AP stopped");
+}
+
+void LocalWebserver::startServerIfNeeded() {
+    if (_serverStarted) return;
+    _server.begin();
+    _serverStarted = true;
+}
+
+void LocalWebserver::updateMdns() {
+    if (WifiManager::getInstance().isConnected()) {
+        if (!_mdnsStarted) {
+            if (MDNS.begin(_mdnsHost)) {
+                MDNS.addService("http", "tcp", 80);
+                _mdnsStarted = true;
+                Serial.printf("[WEB] mDNS started: http://%s.local/\n", _mdnsHost);
+            } else {
+                Serial.printf("[WEB] mDNS start failed for %s.local\n", _mdnsHost);
+            }
+        }
+        return;
+    }
+
+    if (_mdnsStarted) {
+        MDNS.end();
+        _mdnsStarted = false;
+        Serial.println("[WEB] mDNS stopped (WiFi disconnected)");
+    }
+}
+
+void LocalWebserver::setupRoutes() {
+    _server.on("/",                    HTTP_GET,  [this]{ handleRoot(); });
+    _server.on("/login",               HTTP_GET,  [this]{ handleLogin(); });
+    _server.on("/login",               HTTP_POST, [this]{ handleLoginPost(); });
+    _server.on("/logout",              HTTP_GET,  [this]{ handleLogout(); });
+    _server.on("/status",              HTTP_GET,  [this]{ handleStatus(); });
+    _server.on("/config",              HTTP_GET,  [this]{ handleConfig(); });
+    _server.on("/config",              HTTP_POST, [this]{ handleConfigPost(); });
+    _server.on("/diagnostics",         HTTP_GET,  [this]{ handleDiagnostics(); });
+    _server.on("/relay-test",          HTTP_GET,  [this]{ handleRelayTest(); });
+    _server.on("/relay-test",          HTTP_POST, [this]{ handleRelayTestPost(); });
+    _server.on("/remote-test",         HTTP_GET,  [this]{ handleRemoteTest(); });
+    _server.on("/remote-test",         HTTP_POST, [this]{ handleRemoteTestPost(); });
+    _server.on("/calibration",         HTTP_GET,  [this]{ handleCalibration(); });
+    _server.on("/calibration",         HTTP_POST, [this]{ handleCalibrationPost(); });
+    _server.on("/firmware-upload",     HTTP_GET,  [this]{ handleFirmwareUpload(); });
+    _server.on("/reboot",              HTTP_GET,  [this]{ handleReboot(); });
+    _server.on("/reboot",              HTTP_POST, [this]{ handleRebootPost(); });
+    _server.on("/factory-reset-confirm", HTTP_GET,  [this]{ handleFactoryReset(); });
+    _server.on("/factory-reset-confirm", HTTP_POST, [this]{ handleFactoryResetPost(); });
+    _server.onNotFound([this]{ handleNotFound(); });
+
+    // Firmware upload handler
+    _server.on("/firmware-upload", HTTP_POST,
+        [this]{ handleFirmwareUploadPost(); },
+        [this]{
+            HTTPUpload& upload = _server.upload();
+            if (upload.status == UPLOAD_FILE_START) {
+                if (!OtaManager::getInstance().beginLocalUpload(upload.totalSize)) {
+                    _server.send(503, "text/plain", "OTA blocked: alert/danger active");
+                    return;
+                }
+            } else if (upload.status == UPLOAD_FILE_WRITE) {
+                OtaManager::getInstance().writeChunk(upload.buf, upload.currentSize);
+            } else if (upload.status == UPLOAD_FILE_END) {
+                String reason;
+                OtaManager::getInstance().endLocalUpload(reason);
+            }
+        }
+    );
+}
+
+bool LocalWebserver::checkAuth() {
+    if (_loggedIn && millis() < _sessionExpMs) return true;
+    _loggedIn = false;
+    return false;
+}
+
+void LocalWebserver::sendUnauth() {
+    _server.sendHeader("Location", "/login");
+    _server.send(302, "text/plain", "");
+}
+
+// HTML helpers
+
+String LocalWebserver::htmlHeader(const char* title) {
+    String h = "<!DOCTYPE html><html><head><meta charset='utf-8'>"
+               "<meta name='viewport' content='width=device-width,initial-scale=1'>"
+               "<title>FloodGuard - "; h += title;
+    h += "</title><style>"
+         "body{font-family:sans-serif;margin:0;background:#f4f4f4;color:#222}"
+         "nav{background:#1a73e8;padding:8px 16px}"
+         "nav a{color:#fff;margin-right:12px;text-decoration:none;font-size:14px}"
+         ".card{background:#fff;border-radius:8px;padding:16px;margin:16px;box-shadow:0 1px 4px #0002}"
+         "h2{margin-top:0;color:#1a73e8}label{display:block;margin:8px 0 2px}"
+         "input,select{width:100%;padding:6px;box-sizing:border-box;border:1px solid #ccc;border-radius:4px}"
+         "button,.btn{background:#1a73e8;color:#fff;border:none;padding:8px 16px;"
+         "border-radius:4px;cursor:pointer;margin-top:8px}"
+         ".btn-danger{background:#d32f2f}.btn-warn{background:#f57c00}"
+         ".ok{color:green}.err{color:red}table{width:100%;border-collapse:collapse}"
+         "td,th{padding:6px 8px;text-align:left;border-bottom:1px solid #eee}"
+         "th{background:#f0f0f0}.badge{padding:2px 8px;border-radius:12px;font-size:12px;"
+         "background:#1a73e8;color:#fff}"
+         "</style></head><body>"
+         "<nav><b style='color:#fff'>FloodGuard</b>&nbsp;&nbsp;";
+    return h;
+}
+
+String LocalWebserver::htmlFooter() {
+    return "<p style='text-align:center;color:#999;font-size:12px;margin-top:32px'>"
+           "FloodGuard &copy; " FIRMWARE_VERSION "</p></body></html>";
+}
+
+String LocalWebserver::navBar(const char* active) {
+    const char* pages[][2] = {
+        {"/status","Status"},{"/config","Config"},{"/calibration","Calibrate"},
+        {"/relay-test","Relay Test"},{"/remote-test","Remote"},
+        {"/diagnostics","Diagnostics"},{"/firmware-upload","OTA"},
+        {"/reboot","Reboot"},{"/logout","Logout"}
+    };
+    String nav;
+    for (auto& p : pages) {
+        nav += "<a href='"; nav += p[0]; nav += "'";
+        if (strcmp(p[0] + 1, active) == 0) nav += " style='text-decoration:underline'";
+        nav += ">"; nav += p[1]; nav += "</a>";
+    }
+    nav += "</nav>";
+    return nav;
+}
+
+// Page handlers
+
+void LocalWebserver::handleRoot() {
+    _server.sendHeader("Location", checkAuth() ? "/status" : "/login");
+    _server.send(302, "text/plain", "");
+}
+
+void LocalWebserver::handleLogin() {
+    String html = htmlHeader("Login") + "</nav>";
+    html += "<div class='card' style='max-width:360px;margin:60px auto'>"
+            "<h2>FloodGuard Login</h2>"
+            "<form method='POST' action='/login'>"
+            "<label>Password</label>"
+            "<input type='password' name='pw' autofocus>"
+            "<button type='submit'>Login</button></form></div>";
+    html += htmlFooter();
+    _server.send(200, "text/html", html);
+}
+
+void LocalWebserver::handleLoginPost() {
+    if (_server.hasArg("pw") && _server.arg("pw") == kPassword) {
+        _loggedIn     = true;
+        _sessionExpMs = millis() + 3600000UL;  // 1 hour session
+        _server.sendHeader("Location", "/status");
+        _server.send(302, "text/plain", "");
+    } else {
+        String html = htmlHeader("Login") + "</nav>";
+        html += "<div class='card' style='max-width:360px;margin:60px auto'>"
+                "<p class='err'>Wrong password</p>"
+                "<a href='/login'>Try again</a></div>";
+        html += htmlFooter();
+        _server.send(401, "text/html", html);
+    }
+}
+
+void LocalWebserver::handleLogout() {
+    _loggedIn = false;
+    _server.sendHeader("Location", "/login");
+    _server.send(302, "text/plain", "");
+}
+
+void LocalWebserver::handleStatus() {
+    if (!checkAuth()) { sendUnauth(); return; }
+    const auto& dyp  = DypSensor::getInstance().snapshot();
+    const auto& fsm  = FloodStateMachine::getInstance().snapshot();
+    const auto& out  = OutputController::getInstance().snapshot();
+    const auto& vmon = VoltageMonitor::getInstance().snapshot();
+    const auto& sd   = SdFifo::getInstance().status();
+    const auto& left = RemoteBoxManager::getInstance().leftStatus();
+    const auto& right= RemoteBoxManager::getInstance().rightStatus();
+
+    String html = htmlHeader("Status") + navBar("status");
+    html += "<div class='card'><h2>Device Status</h2>";
+    html += "<table>";
+    html += "<tr><th>PID</th><td>" PRODUCT_PID "</td></tr>";
+    html += "<tr><th>Device ID</th><td>" + String(_deviceId) + "</td></tr>";
+    html += "<tr><th>Firmware</th><td>" FIRMWARE_VERSION "</td></tr>";
+    html += "<tr><th>Hardware</th><td>" HARDWARE_VERSION "</td></tr>";
+    html += "<tr><th>Uptime</th><td>" + String(millis()/1000) + " s</td></tr>";
+    html += "<tr><th>Free Heap</th><td>" + String(ESP.getFreeHeap()/1024) + " KB</td></tr>";
+    html += "<tr><th>Hostname</th><td><span class='ok'>" + String(_mdnsHost) + ".local</span></td></tr>";
+    html += "<tr><th>WiFi</th><td>" + (WifiManager::getInstance().isConnected()
+            ? String("<span class='ok'>Connected</span> ") + WifiManager::getInstance().localIp()
+            : String("<span class='err'>Disconnected</span>")) + "</td></tr>";
+    html += "<tr><th>MQTT</th><td>" + String(MqttManager::getInstance().isConnected()
+            ? "<span class='ok'>Connected</span>" : "<span class='err'>Disconnected</span>")
+            + "</td></tr>";
+    html += "<tr><th>SD Card</th><td>" + String(sd.mounted
+            ? "<span class='ok'>Mounted</span>" : "<span class='err'>Missing/Fault</span>")
+            + "</td></tr>";
+    html += "</table></div>";
+
+    html += "<div class='card'><h2>Flood State</h2><table>";
+    html += "<tr><th>State</th><td><b>" + String(floodStateStr(fsm.state)) + "</b></td></tr>";
+    html += "<tr><th>Water Level</th><td>" + String(dyp.waterLevelMm) + " mm</td></tr>";
+    html += "<tr><th>Distance</th><td>" + String(dyp.distanceMm) + " mm</td></tr>";
+    html += "<tr><th>Sensor Valid</th><td>" + String(dyp.valid ? "Yes" : "No") + "</td></tr>";
+    html += "<tr><th>L1 Active</th><td>" + String(fsm.l1Active ? "YES" : "no") + "</td></tr>";
+    html += "<tr><th>L2 Active</th><td>" + String(fsm.l2Active ? "YES" : "no") + "</td></tr>";
+    html += "</table></div>";
+
+    html += "<div class='card'><h2>Outputs</h2><table>";
+    html += "<tr><th>Local Siren</th><td>" + String(out.sirenOn ? "<span class='err'>ON</span>" : "off") + "</td></tr>";
+    html += "<tr><th>Local Flash</th><td>" + String(out.flashOn ? "<span class='err'>ON</span>" : "off") + "</td></tr>";
+    html += "<tr><th>Pump</th><td>" + String(out.sumpPumpOn ? "<span class='ok'>ON</span>" : "off") + "</td></tr>";
+    html += "<tr><th>RF Siren</th><td>" + String(out.rfDangerSirenOn ? "<span class='err'>ON</span>" : "off") + "</td></tr>";
+    html += "</table></div>";
+
+    html += "<div class='card'><h2>Battery</h2><table>";
+    html += "<tr><th>Voltage</th><td>" + String(vmon.voltage, 2) + " V</td></tr>";
+    html += "<tr><th>ADC Raw</th><td>" + String(vmon.adcRaw) + "</td></tr>";
+    html += "<tr><th>Status</th><td>" + String(vmon.criticalBattery ? "<span class='err'>CRITICAL</span>"
+            : vmon.lowBattery ? "<span class='badge' style='background:#f57c00'>LOW</span>"
+            : "<span class='ok'>OK</span>") + "</td></tr>";
+    html += "</table></div>";
+
+    html += "<div class='card'><h2>Remote Boxes</h2><table>";
+    html += "<tr><th></th><th>Online</th><th>Battery</th><th>Siren</th><th>Flash</th></tr>";
+#ifdef GENERIC_REMOTE_RELAY_MODE
+    html += "<tr><td>Left Relay (" + String(GENERIC_REMOTE_RELAY_LEFT_MODEL) + "CH, ID" + String(GENERIC_REMOTE_RELAY_LEFT_ADDR) + ")</td><td>" + String(left.online ? "<span class='ok'>Y</span>" : "<span class='err'>N</span>")
+            + "</td><td>" + String(left.batteryVoltage, 1) + "V</td>"
+            + "<td>" + String(left.sirenOn ? "ON" : "off") + "</td>"
+            + "<td>" + String(left.flashOn ? "ON" : "off") + "</td></tr>";
+    html += "<tr><td>Right Relay (" + String(GENERIC_REMOTE_RELAY_RIGHT_MODEL) + "CH, ID" + String(GENERIC_REMOTE_RELAY_RIGHT_ADDR) + ")</td><td>" + String(right.online ? "<span class='ok'>Y</span>" : "<span class='err'>N</span>")
+            + "</td><td>" + String(right.batteryVoltage, 1) + "V</td>"
+            + "<td>" + String(right.sirenOn ? "ON" : "off") + "</td>"
+            + "<td>" + String(right.flashOn ? "ON" : "off") + "</td></tr>";
+#else
+    html += "<tr><td>Left (ID11)</td><td>" + String(left.online ? "<span class='ok'>Y</span>" : "<span class='err'>N</span>")
+            + "</td><td>" + String(left.batteryVoltage, 1) + "V</td>"
+            + "<td>" + String(left.sirenOn ? "ON" : "off") + "</td>"
+            + "<td>" + String(left.flashOn ? "ON" : "off") + "</td></tr>";
+    html += "<tr><td>Right (ID12)</td><td>" + String(right.online ? "<span class='ok'>Y</span>" : "<span class='err'>N</span>")
+            + "</td><td>" + String(right.batteryVoltage, 1) + "V</td>"
+            + "<td>" + String(right.sirenOn ? "ON" : "off") + "</td>"
+            + "<td>" + String(right.flashOn ? "ON" : "off") + "</td></tr>";
+#endif
+    html += "</table></div>";
+    html += htmlFooter();
+    _server.send(200, "text/html", html);
+}
+
+void LocalWebserver::handleConfig() {
+    if (!checkAuth()) { sendUnauth(); return; }
+    const auto& cfg = ConfigManager::getInstance().get();
+    String html = htmlHeader("Config") + navBar("config");
+    html += "<div class='card'><h2>Flood Thresholds</h2>"
+            "<form method='POST' action='/config'>"
+            "<label>Alert Level (mm)</label>"
+            "<input type='number' name='alert_level_mm' value='" + String(cfg.alertLevelMm) + "'>"
+            "<label>Danger Level (mm)</label>"
+            "<input type='number' name='danger_level_mm' value='" + String(cfg.dangerLevelMm) + "'>"
+            "<label>Danger Clear Level (mm)</label>"
+            "<input type='number' name='danger_clear_level_mm' value='" + String(cfg.dangerClearLevelMm) + "'>"
+            "<label>Pump Auto Start (mm)</label>"
+            "<input type='number' name='pump_auto_start_level_mm' value='" + String(cfg.pumpAutoStartLevelMm) + "'>"
+            "<label>Pump Auto Stop (mm)</label>"
+            "<input type='number' name='pump_auto_stop_level_mm' value='" + String(cfg.pumpAutoStopLevelMm) + "'>"
+            "<label>Trigger Delay (sec)</label>"
+            "<input type='number' name='trigger_delay_seconds' value='" + String(cfg.triggerDelaySeconds) + "'>"
+            "<label>Alarm Clear Delay (sec)</label>"
+            "<input type='number' name='alarm_clear_delay_seconds' value='" + String(cfg.alarmClearDelaySeconds) + "'>"
+            "<label>Pump Low Stop Delay (sec)</label>"
+            "<input type='number' name='pump_low_level_stop_delay_seconds' value='" + String(cfg.pumpLowStopDelaySeconds) + "'>"
+            "<label>Pump Max Runtime (min)</label>"
+            "<input type='number' name='pump_max_runtime_minutes' value='" + String(cfg.pumpMaxRuntimeMinutes) + "'>"
+            "<label>Left Remote Enabled</label>"
+            "<select name='left_remote_enabled'><option value='1'" + String(cfg.leftRemoteEnabled?" selected":"") + ">Yes</option>"
+            "<option value='0'" + String(!cfg.leftRemoteEnabled?" selected":"") + ">No</option></select>"
+            "<label>Right Remote Enabled</label>"
+            "<select name='right_remote_enabled'><option value='1'" + String(cfg.rightRemoteEnabled?" selected":"") + ">Yes</option>"
+            "<option value='0'" + String(!cfg.rightRemoteEnabled?" selected":"") + ">No</option></select>"
+            "<label>Daily Reboot Hour (0-23)</label>"
+            "<input type='number' name='daily_reboot_hour' value='" + String(cfg.dailyRebootHour) + "'>"
+            "<label>Daily Reboot Minute (0-59)</label>"
+            "<input type='number' name='daily_reboot_minute' value='" + String(cfg.dailyRebootMinute) + "'>"
+            "<button type='submit'>Save Config</button></form></div>";
+    html += htmlFooter();
+    _server.send(200, "text/html", html);
+}
+
+void LocalWebserver::handleConfigPost() {
+    if (!checkAuth()) { sendUnauth(); return; }
+    StaticJsonDocument<512> doc;
+    auto setU16 = [&](const char* k) {
+        if (_server.hasArg(k)) doc[k] = _server.arg(k).toInt();
+    };
+    setU16("alert_level_mm"); setU16("danger_level_mm"); setU16("danger_clear_level_mm");
+    setU16("pump_auto_start_level_mm"); setU16("pump_auto_stop_level_mm");
+    setU16("trigger_delay_seconds"); setU16("alarm_clear_delay_seconds");
+    setU16("pump_low_level_stop_delay_seconds"); setU16("pump_max_runtime_minutes");
+    setU16("daily_reboot_hour"); setU16("daily_reboot_minute");
+    if (_server.hasArg("left_remote_enabled"))
+        doc["left_remote_enabled"]  = (_server.arg("left_remote_enabled") == "1");
+    if (_server.hasArg("right_remote_enabled"))
+        doc["right_remote_enabled"] = (_server.arg("right_remote_enabled") == "1");
+
+    char json[512];
+    serializeJson(doc, json, sizeof(json));
+    String reason;
+    if (ConfigManager::getInstance().applyJson(json, reason)) {
+        _server.sendHeader("Location", "/config");
+        _server.send(302, "text/plain", "");
+    } else {
+        String html = htmlHeader("Config") + navBar("config");
+        html += "<div class='card'><p class='err'>Error: " + reason + "</p>"
+                "<a href='/config'>Back</a></div>";
+        html += htmlFooter();
+        _server.send(400, "text/html", html);
+    }
+}
+
+void LocalWebserver::handleDiagnostics() {
+    if (!checkAuth()) { sendUnauth(); return; }
+    String html = htmlHeader("Diagnostics") + navBar("diagnostics");
+    html += "<div class='card'><h2>System Diagnostics</h2><table>";
+    html += "<tr><th>Free Heap</th><td>" + String(ESP.getFreeHeap()) + " bytes</td></tr>";
+    html += "<tr><th>Min Free Heap</th><td>" + String(ESP.getMinFreeHeap()) + " bytes</td></tr>";
+    html += "<tr><th>PSRAM Size</th><td>" + String(ESP.getPsramSize()/1024) + " KB</td></tr>";
+    html += "<tr><th>Free PSRAM</th><td>" + String(ESP.getFreePsram()/1024) + " KB</td></tr>";
+    html += "<tr><th>Chip Cores</th><td>" + String(ESP.getChipCores()) + "</td></tr>";
+    html += "<tr><th>CPU Freq</th><td>" + String(ESP.getCpuFreqMHz()) + " MHz</td></tr>";
+    html += "<tr><th>Reset Reason</th><td>" + String(esp_reset_reason()) + "</td></tr>";
+    html += "<tr><th>WiFi RSSI</th><td>" + String(WifiManager::getInstance().rssi()) + " dBm</td></tr>";
+    html += "<tr><th>MQTT State</th><td>" + String(MqttManager::getInstance().isConnected() ? "connected" : "disconnected") + "</td></tr>";
+    const auto& sd = SdFifo::getInstance().status();
+    html += "<tr><th>SD Mounted</th><td>" + String(sd.mounted ? "yes" : "no") + "</td></tr>";
+    html += "<tr><th>SD Records</th><td>" + String(sd.recordCount) + "</td></tr>";
+    html += "</table></div>";
+    html += htmlFooter();
+    _server.send(200, "text/html", html);
+}
+
+void LocalWebserver::handleRelayTest() {
+    if (!checkAuth()) { sendUnauth(); return; }
+    String html = htmlHeader("Relay Test") + navBar("relay-test");
+    html += "<div class='card'><h2>Local Relay Test</h2>"
+            "<p style='color:#f57c00'>Each test runs for a short duration then turns OFF.</p>"
+            "<form method='POST' action='/relay-test'>"
+            "<button type='submit' name='relay' value='siren' class='btn btn-warn'>Test Siren (3s)</button><br><br>"
+            "<button type='submit' name='relay' value='flash' class='btn btn-warn'>Test Flash (5s)</button><br><br>"
+            "<button type='submit' name='relay' value='voice' class='btn'>Test Voice/Future (3s)</button><br><br>"
+            "<button type='submit' name='relay' value='pump' class='btn btn-danger' onclick=\"return confirm('Confirm pump test?')\">Test Pump (5s)</button><br><br>"
+            "<button type='submit' name='relay' value='rf_siren' class='btn btn-warn'>Test RF Siren (3s)</button><br><br>"
+            "<button type='submit' name='relay' value='rf_pump'  class='btn btn-warn'>Test RF Pump (3s)</button>"
+            "</form></div>";
+    html += htmlFooter();
+    _server.send(200, "text/html", html);
+}
+
+void LocalWebserver::handleRelayTestPost() {
+    if (!checkAuth()) { sendUnauth(); return; }
+    auto& out = OutputController::getInstance();
+    const String relay = _server.arg("relay");
+    if      (relay == "siren")    { out.setSiren(true);          delay(3000); out.setSiren(false); }
+    else if (relay == "flash")    { out.setFlash(true);          delay(5000); out.setFlash(false); }
+    else if (relay == "voice")    { out.setVoiceFuture(true);    delay(3000); out.setVoiceFuture(false); }
+    else if (relay == "pump")     { out.setSumpPump(true);       delay(5000); out.setSumpPump(false); }
+    else if (relay == "rf_siren") { out.setRfDangerSiren(true);  delay(3000); out.setRfDangerSiren(false); }
+    else if (relay == "rf_pump")  { out.setRfSumpPump(true);     delay(3000); out.setRfSumpPump(false); }
+    Serial.printf("[WEB] Relay test: %s\n", relay.c_str());
+    _server.sendHeader("Location", "/relay-test");
+    _server.send(302, "text/plain", "");
+}
+
+void LocalWebserver::handleRemoteTest() {
+    if (!checkAuth()) { sendUnauth(); return; }
+    const auto& left  = RemoteBoxManager::getInstance().leftStatus();
+    const auto& right = RemoteBoxManager::getInstance().rightStatus();
+    const uint8_t genericAddr = g_genericRelayStatus.slaveId;
+    const uint8_t genericModel = clampGenericRelayModel(g_genericRelayStatus.moduleType);
+    String html = htmlHeader("Remote Test") + navBar("remote-test");
+    html += "<div class='card'><h2>Remote Box Status</h2><table>";
+    html += "<tr><th>Box</th><th>Online</th><th>Battery</th><th>Siren</th><th>Flash</th><th>Pump</th></tr>";
+#ifdef GENERIC_REMOTE_RELAY_MODE
+    html += "<tr><td>Left Relay (" + String(GENERIC_REMOTE_RELAY_LEFT_MODEL) + "CH, ID" + String(GENERIC_REMOTE_RELAY_LEFT_ADDR) + ")</td><td>" + String(left.online?"Y":"N") + "</td><td>"
+            + String(left.batteryVoltage,1) + "V</td><td>" + String(left.sirenOn?"ON":"off")
+            + "</td><td>" + String(left.flashOn?"ON":"off") + "</td><td>N/A</td></tr>";
+    html += "<tr><td>Right Relay (" + String(GENERIC_REMOTE_RELAY_RIGHT_MODEL) + "CH, ID" + String(GENERIC_REMOTE_RELAY_RIGHT_ADDR) + ")</td><td>" + String(right.online?"Y":"N") + "</td><td>"
+            + String(right.batteryVoltage,1) + "V</td><td>" + String(right.sirenOn?"ON":"off")
+            + "</td><td>" + String(right.flashOn?"ON":"off") + "</td><td>N/A</td></tr>";
+#else
+    html += "<tr><td>Left (ID11)</td><td>" + String(left.online?"Y":"N") + "</td><td>"
+            + String(left.batteryVoltage,1) + "V</td><td>" + String(left.sirenOn?"ON":"off")
+            + "</td><td>" + String(left.flashOn?"ON":"off") + "</td><td>" + String(left.pumpOn?"ON":"off") + "</td></tr>";
+    html += "<tr><td>Right (ID12)</td><td>" + String(right.online?"Y":"N") + "</td><td>"
+            + String(right.batteryVoltage,1) + "V</td><td>" + String(right.sirenOn?"ON":"off")
+            + "</td><td>" + String(right.flashOn?"ON":"off") + "</td><td>" + String(right.pumpOn?"ON":"off") + "</td></tr>";
+#endif
+    html += "</table></div>";
+#ifndef GENERIC_REMOTE_RELAY_MODE
+    html += "<div class='card'><h2>Right Box Manual RTU Test</h2>";
+    html += "<p>Send immediate Modbus commands to right remote box slave ID 12.</p>";
+    html += "<form method='POST' action='/remote-test'>"
+            "<input type='hidden' name='action' value='right_siren_on'>"
+            "<button type='submit' class='btn'>Right Siren ON</button></form>";
+    html += "<form method='POST' action='/remote-test'>"
+            "<input type='hidden' name='action' value='right_siren_off'>"
+            "<button type='submit' class='btn'>Right Siren OFF</button></form>";
+    html += "<form method='POST' action='/remote-test'>"
+            "<input type='hidden' name='action' value='right_flash_on'>"
+            "<button type='submit' class='btn'>Right Flash ON</button></form>";
+    html += "<form method='POST' action='/remote-test'>"
+            "<input type='hidden' name='action' value='right_flash_off'>"
+            "<button type='submit' class='btn'>Right Flash OFF</button></form>";
+    html += "<form method='POST' action='/remote-test'>"
+            "<input type='hidden' name='action' value='right_all_off'>"
+            "<button type='submit' class='btn'>Right All OFF</button></form></div>";
+#endif
+    html += "<div class='card'><h2>Generic Modbus Relay Module Test</h2>";
+    html += "<p>Use this for standard RTU relay modules on the right bus. Select the correct board type because 2-channel and 4-channel boards use different Modbus maps.</p>";
+    html += "<p>Address read/set works only when one relay module is connected on that bus.</p>";
+    html += "<form method='POST' action='/remote-test'>"
+            + genericRelayConfigFields(genericAddr, genericModel) +
+            "<input type='hidden' name='action' value='generic_r1_on'>"
+            "<button type='submit' class='btn'>Relay 1 ON</button></form>";
+    html += "<form method='POST' action='/remote-test'>"
+            + genericRelayConfigFields(genericAddr, genericModel) +
+            "<input type='hidden' name='action' value='generic_r1_off'>"
+            "<button type='submit' class='btn'>Relay 1 OFF</button></form>";
+    html += "<form method='POST' action='/remote-test'>"
+            + genericRelayConfigFields(genericAddr, genericModel) +
+            "<input type='hidden' name='action' value='generic_r2_on'>"
+            "<button type='submit' class='btn'>Relay 2 ON</button></form>";
+    html += "<form method='POST' action='/remote-test'>"
+            + genericRelayConfigFields(genericAddr, genericModel) +
+            "<input type='hidden' name='action' value='generic_r2_off'>"
+            "<button type='submit' class='btn'>Relay 2 OFF</button></form>";
+    html += "<form method='POST' action='/remote-test'>"
+            + genericRelayConfigFields(genericAddr, genericModel) +
+            "<input type='hidden' name='action' value='generic_r3_on'>"
+            "<button type='submit' class='btn'>Relay 3 ON</button></form>";
+    html += "<form method='POST' action='/remote-test'>"
+            + genericRelayConfigFields(genericAddr, genericModel) +
+            "<input type='hidden' name='action' value='generic_r3_off'>"
+            "<button type='submit' class='btn'>Relay 3 OFF</button></form>";
+    html += "<form method='POST' action='/remote-test'>"
+            + genericRelayConfigFields(genericAddr, genericModel) +
+            "<input type='hidden' name='action' value='generic_r4_on'>"
+            "<button type='submit' class='btn'>Relay 4 ON</button></form>";
+    html += "<form method='POST' action='/remote-test'>"
+            + genericRelayConfigFields(genericAddr, genericModel) +
+            "<input type='hidden' name='action' value='generic_r4_off'>"
+            "<button type='submit' class='btn'>Relay 4 OFF</button></form>";
+    html += "<form method='POST' action='/remote-test'>"
+            + genericRelayConfigFields(genericAddr, genericModel) +
+            "<input type='hidden' name='action' value='generic_read_status'>"
+            "<button type='submit' class='btn btn-warn'>Read Relay Status</button></form>";
+    html += "<form method='POST' action='/remote-test'>"
+            + genericRelayConfigFields(genericAddr, genericModel) +
+            "<input type='hidden' name='action' value='generic_read_addr'>"
+            "<button type='submit' class='btn btn-warn'>Read Module Address</button></form>";
+    html += "<form method='POST' action='/remote-test'>"
+            + genericRelayConfigFields(genericAddr, genericModel) +
+            "<label>New Address</label><input type='number' min='1' max='255' name='new_addr' value='" + String(genericAddr) + "'>"
+            "<input type='hidden' name='action' value='generic_set_addr'>"
+            "<button type='submit' class='btn btn-warn'>Set Module Address</button></form>";
+    html += "</div>";
+    html += "<div class='card'><h2>Generic Module Last Read</h2><table>";
+    html += "<tr><th>Module Address</th><td>" + String(g_genericRelayStatus.slaveId) + "</td></tr>";
+    html += "<tr><th>Module Type</th><td>" + String(genericRelayModelLabel(g_genericRelayStatus.moduleType)) + "</td></tr>";
+    html += "<tr><th>Relay Count</th><td>" + String(g_genericRelayStatus.relayCount) + "</td></tr>";
+    if (g_genericRelayStatus.valid) {
+        html += "<tr><th>Link</th><td><span class='ok'>OK</span></td></tr>";
+        html += "<tr><th>Relay 1</th><td>" + String(g_genericRelayStatus.relay1On ? "ON" : "OFF") + "</td></tr>";
+        html += "<tr><th>Relay 2</th><td>" + String(g_genericRelayStatus.relay2On ? "ON" : "OFF") + "</td></tr>";
+        html += "<tr><th>Relay 3</th><td>" + String(g_genericRelayStatus.relayCount >= 3 ? (g_genericRelayStatus.relay3On ? "ON" : "OFF") : "N/A") + "</td></tr>";
+        html += "<tr><th>Relay 4</th><td>" + String(g_genericRelayStatus.relayCount >= 4 ? (g_genericRelayStatus.relay4On ? "ON" : "OFF") : "N/A") + "</td></tr>";
+    } else {
+        html += "<tr><th>Link</th><td><span class='err'>No valid status yet</span></td></tr>";
+        html += "<tr><th>Last Error</th><td>0x" + String(g_genericRelayStatus.exceptionCode, HEX) + "</td></tr>";
+    }
+    html += "</table></div>";
+    html += htmlFooter();
+    _server.send(200, "text/html", html);
+}
+
+void LocalWebserver::handleRemoteTestPost() {
+    if (!checkAuth()) { sendUnauth(); return; }
+
+    const String action = _server.arg("action");
+    bool ok = false;
+
+    if (action == "right_siren_on") {
+        ok = RemoteBoxManager::getInstance().manualSetSirenFlash(RtuBus::RIGHT, true, false);
+    } else if (action == "right_siren_off") {
+        ok = RemoteBoxManager::getInstance().manualSetSirenFlash(RtuBus::RIGHT, false, false);
+    } else if (action == "right_flash_on") {
+        ok = RemoteBoxManager::getInstance().manualSetSirenFlash(RtuBus::RIGHT, false, true);
+    } else if (action == "right_flash_off") {
+        ok = RemoteBoxManager::getInstance().manualSetSirenFlash(RtuBus::RIGHT, false, false);
+    } else if (action == "right_all_off") {
+        ok = RemoteBoxManager::getInstance().manualSetSirenFlash(RtuBus::RIGHT, false, false);
+    } else if (action == "generic_r1_on" || action == "generic_r1_off" ||
+               action == "generic_r2_on" || action == "generic_r2_off" ||
+               action == "generic_r3_on" || action == "generic_r3_off" ||
+               action == "generic_r4_on" || action == "generic_r4_off" ||
+               action == "generic_read_status" || action == "generic_read_addr" ||
+               action == "generic_set_addr") {
+        const uint8_t slaveId = (uint8_t)constrain(_server.arg("modbus_addr").toInt(), 1, 255);
+        const uint8_t moduleType = clampGenericRelayModel(_server.arg("module_type").toInt());
+
+        if (action == "generic_read_status") {
+            uint8_t coilByte = 0;
+            Serial.printf("[RTU] Generic module status read right bus id=%d type=%s\n",
+                          (int)slaveId, genericRelayModelLabel(moduleType));
+            const RtuResult result = readGenericRelaySnapshot(RtuBus::RIGHT, slaveId, moduleType, coilByte);
+            updateGenericRelaySnapshot(g_genericRelayStatus, slaveId, moduleType, result.ok, result.exceptionCode, coilByte);
+            ok = true;
+        } else if (action == "generic_read_addr") {
+            uint16_t addrReg[1] = {0};
+            const uint16_t addrRegStart = genericRelayAddressRegisterFromModel(moduleType);
+            Serial.printf("[RTU] Generic module address read right bus type=%s reg=0x%04X\n",
+                          genericRelayModelLabel(moduleType), (unsigned)addrRegStart);
+            const RtuResult result = Rs485RtuMaster::getInstance().readHolding(
+                RtuBus::RIGHT, 0x00, addrRegStart, 1, addrReg);
+            const uint8_t detectedAddr = result.ok ? (uint8_t)constrain((int)addrReg[0], 1, 255) : slaveId;
+            updateGenericRelaySnapshot(g_genericRelayStatus, detectedAddr, moduleType, result.ok, result.exceptionCode, 0);
+            ok = result.ok;
+        } else if (action == "generic_set_addr") {
+            const uint8_t newAddr = (uint8_t)constrain(_server.arg("new_addr").toInt(), 1, 255);
+            RtuResult writeResult{false, 0xFF};
+            if (moduleType >= kGenericRelayModel4Ch) {
+                writeResult = Rs485RtuMaster::getInstance().writeSingle(
+                    RtuBus::RIGHT, 0x00, genericRelayAddressRegisterFromModel(moduleType), newAddr);
+            } else {
+                const uint16_t values[1] = {newAddr};
+                writeResult = Rs485RtuMaster::getInstance().writeMultipleRegisters(
+                    RtuBus::RIGHT, 0x00, genericRelayAddressRegisterFromModel(moduleType), values, 1);
+            }
+
+            uint16_t addrReg[1] = {0};
+            const RtuResult readResult = Rs485RtuMaster::getInstance().readHolding(
+                RtuBus::RIGHT, 0x00, genericRelayAddressRegisterFromModel(moduleType), 1, addrReg);
+            const bool readOk = readResult.ok;
+            const uint8_t confirmedAddr = readOk ? (uint8_t)constrain((int)addrReg[0], 1, 255) : newAddr;
+            updateGenericRelaySnapshot(
+                g_genericRelayStatus, confirmedAddr, moduleType,
+                readOk, writeResult.ok ? readResult.exceptionCode : writeResult.exceptionCode, 0);
+            ok = writeResult.ok && readOk && confirmedAddr == newAddr;
+        } else {
+            const uint16_t firstCoil = genericRelayFirstCoilFromModel(moduleType);
+            uint16_t coilAddr = firstCoil;
+            bool coilOn = false;
+            if (action == "generic_r1_on") {
+                coilAddr = firstCoil + 0;
+                coilOn = true;
+            } else if (action == "generic_r1_off") {
+                coilAddr = firstCoil + 0;
+                coilOn = false;
+            } else if (action == "generic_r2_on") {
+                coilAddr = firstCoil + 1;
+                coilOn = true;
+            } else if (action == "generic_r2_off") {
+                coilAddr = firstCoil + 1;
+                coilOn = false;
+            } else if (action == "generic_r3_on") {
+                coilAddr = firstCoil + 2;
+                coilOn = true;
+            } else if (action == "generic_r3_off") {
+                coilAddr = firstCoil + 2;
+                coilOn = false;
+            } else if (action == "generic_r4_on") {
+                coilAddr = firstCoil + 3;
+                coilOn = true;
+            } else if (action == "generic_r4_off") {
+                coilAddr = firstCoil + 3;
+                coilOn = false;
+            }
+            Serial.printf("[RTU] Generic module test right bus id=%d type=%s coil=%u on=%d\n",
+                          (int)slaveId, genericRelayModelLabel(moduleType),
+                          (unsigned)coilAddr, coilOn ? 1 : 0);
+            const uint16_t onValue = moduleType >= kGenericRelayModel4Ch ? 0x0100 : 0xFF00;
+            const RtuResult writeResult = Rs485RtuMaster::getInstance().writeCoilValue(
+                RtuBus::RIGHT, slaveId, coilAddr, coilOn ? onValue : 0x0000);
+            delay(kGenericRelayReadbackDelayMs);
+            uint8_t coilByte = 0;
+            const RtuResult readResult = readGenericRelaySnapshot(RtuBus::RIGHT, slaveId, moduleType, coilByte);
+            const bool linkOk = writeResult.ok || readResult.ok;
+            uint8_t effectiveCoilByte = coilByte;
+            if (!readResult.ok) {
+                effectiveCoilByte = snapshotCoilByte(g_genericRelayStatus);
+                const uint8_t logicalBit = (uint8_t)(coilAddr - firstCoil);
+                const uint8_t mask = (uint8_t)(1U << logicalBit);
+                if (coilOn) effectiveCoilByte |= mask;
+                else        effectiveCoilByte &= (uint8_t)~mask;
+            }
+            updateGenericRelaySnapshot(
+                g_genericRelayStatus, slaveId, moduleType,
+                linkOk, writeResult.ok ? readResult.exceptionCode : writeResult.exceptionCode, effectiveCoilByte);
+            const uint8_t logicalBit = (uint8_t)(coilAddr - firstCoil);
+            const uint8_t mask = (uint8_t)(1U << logicalBit);
+            const bool observedState = (effectiveCoilByte & mask) != 0;
+            ok = writeResult.ok || (readResult.ok && observedState == coilOn);
+        }
+    }
+
+    if (!ok) {
+        const bool genericAction = action.startsWith("generic_");
+        _server.send(500, "text/html",
+            htmlHeader("Remote Test") + navBar("remote-test") +
+            "<div class='card'><p class='err'>" +
+            String(genericAction
+                ? "Generic relay RTU command failed. Check module address, module type, right bus wiring, and module baud rate."
+                : "Right RTU command failed. Check slave ID, right bus wiring, DE/RE, and module baud/address.") +
+            "</p>"
+            "<a href='/remote-test'>Back</a></div>" + htmlFooter());
+        return;
+    }
+
+    _server.sendHeader("Location", "/remote-test");
+    _server.send(302, "text/plain", "");
+}
+
+void LocalWebserver::handleCalibration() {
+    if (!checkAuth()) { sendUnauth(); return; }
+    const auto& dyp  = DypSensor::getInstance().snapshot();
+    const auto& cfg  = ConfigManager::getInstance().get();
+    const auto& vmon = VoltageMonitor::getInstance().snapshot();
+    String html = htmlHeader("Calibration") + navBar("calibration");
+    html += "<div class='card'><h2>Sensor Zero Calibration</h2>";
+    html += "<p>Current distance: <b>" + String(dyp.distanceMm) + " mm</b> | "
+            "Sensor valid: <b>" + String(dyp.valid?"yes":"no") + "</b></p>";
+    html += "<p>Current zero distance: <b>" + String(cfg.zeroDistanceMm) + " mm</b></p>";
+    html += "<form method='POST' action='/calibration'>"
+            "<input type='hidden' name='action' value='zero'>"
+            "<button type='submit' class='btn'>Set Current Reading as Ground Zero</button></form>";
+
+    html += "<h2>Battery ADC Calibration</h2>";
+    html += "<p>Reported voltage: <b>" + String(vmon.voltage, 3) + " V</b></p>";
+    html += "<form method='POST' action='/calibration'>"
+            "<label>Actual Multimeter Voltage (V)</label>"
+            "<input type='number' step='0.01' name='actual_v' placeholder='e.g. 12.56'>"
+            "<input type='hidden' name='action' value='batt'>"
+            "<button type='submit' class='btn'>Apply Battery Calibration</button></form></div>";
+    html += htmlFooter();
+    _server.send(200, "text/html", html);
+}
+
+void LocalWebserver::handleCalibrationPost() {
+    if (!checkAuth()) { sendUnauth(); return; }
+    const String action = _server.arg("action");
+    String reason;
+    bool ok = false;
+
+    if (action == "zero") {
+        ok = DypSensor::getInstance().setZeroFromCurrentReading(reason);
+        if (ok) {
+            const uint16_t z = (uint16_t)DypSensor::getInstance().zeroDistanceMm();
+            ConfigManager::getInstance().setZeroDistance(z, reason);
+        }
+    } else if (action == "batt") {
+        const float actual = _server.arg("actual_v").toFloat();
+        const float reported = VoltageMonitor::getInstance().snapshot().voltage;
+        if (reported > 0.5f && actual > 5.0f && actual < 20.0f) {
+            const float newCal = (VoltageMonitor::getInstance().calibrationFactor() * actual) / reported;
+            ok = ConfigManager::getInstance().setBatteryCalibration(
+                VoltageMonitor::getInstance().dividerRatio(), newCal, reason);
+            if (ok) VoltageMonitor::getInstance().setCalibration(
+                VoltageMonitor::getInstance().dividerRatio(), newCal);
+        } else {
+            reason = "invalid_actual_voltage";
+        }
+    }
+
+    if (ok) {
+        _server.sendHeader("Location", "/calibration");
+        _server.send(302, "text/plain", "");
+    } else {
+        String html = htmlHeader("Calibration") + navBar("calibration");
+        html += "<div class='card'><p class='err'>" + reason + "</p>"
+                "<a href='/calibration'>Back</a></div>";
+        html += htmlFooter();
+        _server.send(400, "text/html", html);
+    }
+}
+
+void LocalWebserver::handleFirmwareUpload() {
+    if (!checkAuth()) { sendUnauth(); return; }
+    String html = htmlHeader("Firmware Upload") + navBar("firmware-upload");
+    html += "<div class='card'><h2>Local OTA Firmware Upload</h2>";
+    if (!OtaManager::getInstance().isSafeToOta()) {
+        html += "<p class='err'>OTA is blocked while alert/danger/pump is active.</p>";
+    } else {
+        html += "<p>Upload a valid .bin firmware file. Device will reboot after successful upload.</p>"
+                "<form method='POST' action='/firmware-upload' enctype='multipart/form-data'>"
+                "<input type='file' name='firmware' accept='.bin'>"
+                "<button type='submit' class='btn btn-warn'>Upload &amp; Flash</button></form>";
+    }
+    html += "</div>";
+    html += htmlFooter();
+    _server.send(200, "text/html", html);
+}
+
+void LocalWebserver::handleFirmwareUploadPost() {
+    _server.send(200, "text/html",
+        htmlHeader("OTA") + "</nav><div class='card'>"
+        "<p>Upload processed. Device is rebooting...</p></div>" + htmlFooter());
+}
+
+void LocalWebserver::handleReboot() {
+    if (!checkAuth()) { sendUnauth(); return; }
+    String html = htmlHeader("Reboot") + navBar("reboot");
+    html += "<div class='card'><h2>Reboot Device</h2>"
+            "<form method='POST' action='/reboot'>"
+            "<button type='submit' class='btn btn-warn' onclick=\"return confirm('Reboot now?')\">Reboot Now</button>"
+            "</form></div>";
+    html += htmlFooter();
+    _server.send(200, "text/html", html);
+}
+
+void LocalWebserver::handleRebootPost() {
+    if (!checkAuth()) { sendUnauth(); return; }
+    _server.send(200, "text/html",
+        htmlHeader("Rebooting") + "</nav><div class='card'><p>Rebooting...</p></div>" + htmlFooter());
+    delay(500);
+    ESP.restart();
+}
+
+void LocalWebserver::handleFactoryReset() {
+    if (!checkAuth()) { sendUnauth(); return; }
+    String html = htmlHeader("Factory Reset") + navBar("factory-reset-confirm");
+    html += "<div class='card'><h2 style='color:red'>Factory Reset</h2>"
+            "<p>This will erase WiFi credentials. Device will reboot into BLE provisioning mode.</p>"
+            "<form method='POST' action='/factory-reset-confirm'>"
+            "<input type='password' name='pw' placeholder='Confirm password'>"
+            "<button type='submit' class='btn btn-danger'>Confirm Factory Reset</button></form></div>";
+    html += htmlFooter();
+    _server.send(200, "text/html", html);
+}
+
+void LocalWebserver::handleFactoryResetPost() {
+    if (!checkAuth()) { sendUnauth(); return; }
+    if (_server.arg("pw") != kPassword) {
+        _server.send(401, "text/plain", "Wrong password");
+        return;
+    }
+    Preferences prefs;
+    prefs.begin(NVS_NS_WIFI, false);
+    prefs.clear();
+    prefs.end();
+    Serial.println("[WEB] Factory reset triggered via webserver");
+    _server.send(200, "text/html",
+        htmlHeader("Reset") + "</nav><div class='card'>"
+        "<p>WiFi credentials erased. Rebooting into provisioning mode...</p></div>" + htmlFooter());
+    delay(1000);
+    ESP.restart();
+}
+
+void LocalWebserver::handleNotFound() {
+    _server.sendHeader("Location", checkAuth() ? "/status" : "/login");
+    _server.send(302, "text/plain", "");
+}
