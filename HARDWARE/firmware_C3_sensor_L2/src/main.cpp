@@ -73,7 +73,13 @@ void setup() {
 }
 
 void loop() {
-    sensor_update();
+    // Rate-limited sensor read — interval configurable from web UI
+    static uint32_t g_last_sensor_ms = 0;
+    uint32_t        now              = millis();
+    if (now - g_last_sensor_ms >= g_cfg.sensor_interval_ms) {
+        g_last_sensor_ms = now;
+        sensor_update();
+    }
 
     uint32_t raw      = sensor_get_distance_mm();
     bool     sens_ok  = (sensor_get_status() == SENSOR_OK);

@@ -187,6 +187,9 @@ a.logout{float:right;font-size:12px;color:#dc3545;text-decoration:none}
 <input type="number" id="trig" min="1" max="3600" value="60">
 <label>Clear Delay (s) — relay OFF only after level stays below threshold for this long</label>
 <input type="number" id="clr" min="1" max="3600" value="300">
+<label>Sensor Read Interval (ms) — how often the ultrasonic sensor is polled</label>
+<input type="number" id="sens_ms" min="100" max="180000" value="1000" oninput="updateSensHint()">
+<div id="sens-hint" style="font-size:12px;color:#0d6e56;margin:3px 0 6px 2px"></div>
 <div class="btn-row">
 <button class="btn-green" onclick="saveConfig()">Save</button>
 <button class="btn-red" onclick="doReboot()">Reboot Device</button>
@@ -260,12 +263,22 @@ function poll(){
     setIfUnfocused('l2',d.level2_threshold_mm);
     setIfUnfocused('trig',d.trigger_delay_s);
     setIfUnfocused('clr',d.clear_delay_s);
+    setIfUnfocused('sens_ms',d.sensor_interval_ms);
+    updateSensHint();
     var u=d.uptime_seconds;
     var h=Math.floor(u/3600),m=Math.floor((u%3600)/60),s=u%60;
     document.getElementById('up').textContent=(h?h+'h ':'')+( m?m+'m ':'')+s+'s';
     updateHints();
   }).catch(function(){});
   setTimeout(poll,2000);
+}
+function updateSensHint(){
+  var v=parseInt(document.getElementById('sens_ms').value)||0;
+  var h=document.getElementById('sens-hint');
+  if(v<100||v>180000){h.style.color='#dc3545';h.textContent='Must be 100 – 180,000 ms (3 min max)';return;}
+  h.style.color='#0d6e56';
+  var s=(v/1000).toFixed(v<1000?1:0);
+  h.textContent='Sensor polled every '+s+' s — lower = more responsive, higher = cooler device';
 }
 function updateHints(){
   var zero=parseInt(document.getElementById('zd').textContent)||0;
@@ -321,6 +334,7 @@ function saveConfig(){
   var l2=parseInt(document.getElementById('l2').value);
   var trig=parseInt(document.getElementById('trig').value);
   var clr=parseInt(document.getElementById('clr').value);
+  var sensMs=parseInt(document.getElementById('sens_ms').value);
   var zero=parseInt(document.getElementById('zd').textContent)||0;
   if(isNaN(l1)||l1<=0){showMsg('cfg-msg','Level 1 must be > 0 mm',false);return;}
   if(zero>0&&l1>=zero){showMsg('cfg-msg','Level 1 ('+l1+' mm) must be less than Zero reference ('+zero+' mm) — raise sensor or lower threshold',false);return;}
@@ -329,10 +343,11 @@ function saveConfig(){
   if(l2>2000){showMsg('cfg-msg','Level 2 must be ≤ 2000 mm',false);return;}
   if(isNaN(trig)||trig<1||trig>3600){showMsg('cfg-msg','Trigger delay must be 1–3600 s',false);return;}
   if(isNaN(clr)||clr<1||clr>3600){showMsg('cfg-msg','Clear delay must be 1–3600 s',false);return;}
+  if(isNaN(sensMs)||sensMs<100||sensMs>180000){showMsg('cfg-msg','Sensor interval must be 100–180,000 ms',false);return;}
   fetch('/api/config',{
     method:'POST',
     headers:{'Content-Type':'application/json'},
-    body:JSON.stringify({level1_threshold_mm:l1,level2_threshold_mm:l2,trigger_delay_s:trig,clear_delay_s:clr})
+    body:JSON.stringify({level1_threshold_mm:l1,level2_threshold_mm:l2,trigger_delay_s:trig,clear_delay_s:clr,sensor_interval_ms:sensMs})
   }).then(function(r){return r.json();}).then(function(d){
     showMsg('cfg-msg',d.ok?'Settings saved':('Error: '+d.error),d.ok);
   }).catch(function(){showMsg('cfg-msg','Request failed',false);});
@@ -384,6 +399,7 @@ static void serve_login(const char *err = "") {
 
 static void handle_get_root() {
     if (!session_valid()) { require_auth(); return; }
+    server.sendHeader("Cache-Control", "no-store");
     server.send(200, "text/html", FPSTR(CONFIG_HTML));
 }
 
@@ -428,7 +444,8 @@ static void handle_api_status() {
     j += "\"ssid_hidden\":";      j += (g_cfg->ssid_hidden ? "true" : "false"); j += ",";
     j += "\"uptime_seconds\":";  j += g_state->uptime_s;           j += ",";
     j += "\"config_version\":";  j += g_cfg->config_version; j += ",";
-    j += "\"wifi_sleep_in_s\":"; j += webserver_wifi_sleep_in_s();
+    j += "\"sensor_interval_ms\":"; j += g_cfg->sensor_interval_ms; j += ",";
+    j += "\"wifi_sleep_in_s\":";   j += webserver_wifi_sleep_in_s();
     j += "}";
     send_json(200, j);
 }
@@ -454,7 +471,7 @@ static void handle_api_config() {
     if (!session_valid()) { send_json(403, err_json("Forbidden")); return; }
 
     String body = server.arg("plain");
-    int l1 = -1, l2 = -1, trig = -1, clr = -1;
+    int l1 = -1, l2 = -1, trig = -1, clr = -1, sens_ms = -1;
 
     auto parseField = [&](const char *key) -> int {
         int idx = body.indexOf(key);
@@ -463,10 +480,11 @@ static void handle_api_config() {
         return body.substring(idx).toInt();
     };
 
-    l1   = parseField("\"level1_threshold_mm\"");
-    l2   = parseField("\"level2_threshold_mm\"");
-    trig = parseField("\"trigger_delay_s\"");
-    clr  = parseField("\"clear_delay_s\"");
+    l1      = parseField("\"level1_threshold_mm\"");
+    l2      = parseField("\"level2_threshold_mm\"");
+    trig    = parseField("\"trigger_delay_s\"");
+    clr     = parseField("\"clear_delay_s\"");
+    sens_ms = parseField("\"sensor_interval_ms\"");
 
     if (l1 <= 0 || l2 <= 0) {
         send_json(400, err_json("Missing or invalid fields")); return;
@@ -478,16 +496,20 @@ static void handle_api_config() {
         send_json(400, err_json("Level 2 must be <= 2000 mm")); return;
     }
     if (trig < 1 || trig > 3600) {
-        send_json(400, err_json("Trigger delay must be 1–3600 s")); return;
+        send_json(400, err_json("Trigger delay must be 1-3600 s")); return;
     }
     if (clr < 1 || clr > 3600) {
-        send_json(400, err_json("Clear delay must be 1–3600 s")); return;
+        send_json(400, err_json("Clear delay must be 1-3600 s")); return;
+    }
+    if (sens_ms < 100 || sens_ms > 180000) {
+        send_json(400, err_json("Sensor interval must be 100-180000 ms")); return;
     }
 
     g_cfg->level1_threshold_mm = (uint32_t)l1;
     g_cfg->level2_threshold_mm = (uint32_t)l2;
     g_cfg->trigger_delay_s     = (uint32_t)trig;
     g_cfg->clear_delay_s       = (uint32_t)clr;
+    g_cfg->sensor_interval_ms  = (uint32_t)sens_ms;
     g_cfg->config_version++;
     storage_save(*g_cfg);
     led_signal_config_saved();
