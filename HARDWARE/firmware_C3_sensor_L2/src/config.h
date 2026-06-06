@@ -34,6 +34,8 @@
 // ─── HTTP ────────────────────────────────────────────────────────────────────
 #define HTTP_PORT                80
 #define SESSION_TIMEOUT_MS       (30UL * 60 * 1000)   // 30 min
+#define WIFI_IDLE_TIMEOUT_MS     (30UL * 60 * 1000)   // WiFi off after 30 min of no HTTP activity
+#define WIFI_WAKE_HOLD_MS        3000UL               // hold BOOT this long to wake WiFi via restart
 
 // ─── Defaults ────────────────────────────────────────────────────────────────
 #define DEFAULT_LEVEL1_MM       200

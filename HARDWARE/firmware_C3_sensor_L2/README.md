@@ -5,14 +5,25 @@ Converts a DYP-A01CNYUB-2.1 TTL ultrasonic sensor into two configurable relay ou
 
 ---
 
+> ## ⚠️ APPROVED HARDWARE — DO NOT SUBSTITUTE
+>
+> **This firmware is tested and approved ONLY for the `C3-SUPERMINI-V1601` board.**
+>
+> Do NOT flash this firmware onto any other ESP32-C3 variant (DevKitM-1, DevKitC-02, XIAO C3, etc.).  
+> Other boards may have different GPIO assignments, LED polarity, USB/UART wiring, or flash layout that will cause incorrect behaviour or hardware damage.
+>
+> **Approved MCU board: `C3-SUPERMINI-V1601`**
+
+---
+
 ## Hardware
 
-| Component | Part |
-|-----------|------|
-| MCU | ESP32-C3 (any dev board with GPIO 4, 5, 8, 20, 21) |
-| Sensor | DYP-A01CNYUB-2.1 UART auto-mode waterproof ultrasonic |
-| Relay module | Dual-channel, active-LOW (most common boards) |
-| Status LED | Onboard blue LED on GPIO 8 (active-HIGH) |
+| Component | Part | Notes |
+|-----------|------|-------|
+| MCU | **C3-SUPERMINI-V1601** | Only approved board — see warning above |
+| Sensor | DYP-A01CNYUB-2.1 UART auto-mode waterproof ultrasonic | |
+| Relay module | Dual-channel, active-LOW (most common boards) | |
+| Status LED | Onboard blue LED on GPIO 8 (active-HIGH) | Built into C3-SUPERMINI-V1601 |
 
 ---
 
@@ -71,6 +82,8 @@ LED cathode → GND
 
 ## Build & Flash
 
+**Board required: C3-SUPERMINI-V1601** — connect via USB-C cable.
+
 ```bash
 # Install PlatformIO CLI (or use VS Code PlatformIO extension)
 pip install platformio
@@ -78,12 +91,15 @@ pip install platformio
 # Build
 pio run -e esp32-c3-devkitm-1
 
-# Flash (USB-C)
+# Flash — auto-detects port, or specify manually
 pio run -e esp32-c3-devkitm-1 -t upload
+pio run -e esp32-c3-devkitm-1 -t upload --upload-port COM14   # example port
 
 # Monitor serial
 pio device monitor --baud 115200
 ```
+
+For flashing multiple boards in sequence, use the `flash_c3.bat` script in this folder — it builds once and loops, prompting you to plug in the next board each time.
 
 ---
 

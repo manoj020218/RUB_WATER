@@ -9,6 +9,21 @@ static WebServer    server(HTTP_PORT);
 static DeviceConfig *g_cfg   = nullptr;
 static AppState     *g_state = nullptr;
 
+// ─── WiFi idle sleep tracking ─────────────────────────────────────────────────
+static uint32_t g_last_activity_ms = 0;   // millis() of last valid HTTP activity
+
+bool webserver_wifi_should_sleep() {
+    if (g_last_activity_ms == 0) return false;
+    return (millis() - g_last_activity_ms) >= WIFI_IDLE_TIMEOUT_MS;
+}
+
+uint32_t webserver_wifi_sleep_in_s() {
+    if (g_last_activity_ms == 0) return WIFI_IDLE_TIMEOUT_MS / 1000;
+    const uint32_t elapsed = millis() - g_last_activity_ms;
+    if (elapsed >= WIFI_IDLE_TIMEOUT_MS) return 0;
+    return (WIFI_IDLE_TIMEOUT_MS - elapsed) / 1000;
+}
+
 // ─── Session ──────────────────────────────────────────────────────────────────
 static char     g_token[17]      = "";   // 16 hex chars + null
 static uint32_t g_token_expires  = 0;
@@ -25,7 +40,8 @@ static bool session_valid() {
     String cookie = server.header("Cookie");
     String needle = String("sess=") + g_token;
     if (cookie.indexOf(needle) < 0) return false;
-    g_token_expires = millis() + SESSION_TIMEOUT_MS;  // refresh
+    g_token_expires    = millis() + SESSION_TIMEOUT_MS;  // refresh session
+    g_last_activity_ms = millis();                        // reset WiFi idle timer
     return true;
 }
 
