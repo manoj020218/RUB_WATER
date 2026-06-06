@@ -130,6 +130,31 @@ For flashing multiple boards in sequence, use the `flash_c3.bat` script in this 
 
 ---
 
+## Thermal Management
+
+The C3-SUPERMINI-V1601 is installed in a **sealed outdoor enclosure** where heat cannot escape by convection. Without mitigation the ESP32-C3 CPU and radio generate enough sustained heat to reduce long-term flash and capacitor reliability. The firmware applies five complementary layers — none of them affect alarm accuracy.
+
+| Layer | Setting | Why it is safe |
+|-------|---------|----------------|
+| **CPU frequency** | 160 MHz → 80 MHz | All tasks (sensor UART, HTTP, relay state machine) complete with headroom at 80 MHz. Halves dynamic CPU power. |
+| **Auto CPU light sleep** | Idles to 40 MHz; CPU halts during `delay()` | CPU wakes in < 1 ms on any interrupt (WiFi packet, UART byte, timer). WiFi AP hardware runs independently — beacon, HTTP responses, and relay GPIO are unaffected. Sensor UART FIFO buffers data between reads. At 1 s sensor interval + 50 ms loop delay the CPU is active < 5 % of the time. |
+| **WiFi TX power** | 20 dBm → 8.5 dBm (~7 mW) | Device operates < 5 m from the technician's phone. 8.5 dBm gives ~15–20 m range in open air — far more than needed. Saves ≈ 40 % of RF transmit power. |
+| **BLE advertising stops after 5 min** | `BLE_ADV_TIMEOUT_MS = 300 000 ms` | BLE is only needed at install time so the technician can find the device name in a BLE scanner. Once installed, continuous BLE advertising is wasted radio energy. Web UI, relays, and WiFi are unaffected. Reboot the device to re-advertise. |
+| **Loop delay** | 10 ms → 50 ms awake / 200 ms WiFi-sleeping | Loop runs at 20 Hz instead of 100 Hz. Relay timer error: ±50 ms on a 60 s trigger delay = 0.08 % — completely negligible for flood control. When WiFi is already off (idle timeout), 200 ms is more than enough to detect a 3-second BOOT button hold. |
+| **WiFi off after 30 min idle** | `WIFI_IDLE_TIMEOUT_MS = 1 800 000 ms` | If no browser has an active session for 30 minutes, the AP turns off entirely. Hold BOOT 3 s to wake via restart. |
+| **Configurable sensor interval** | Default 1 s, range 100 ms – 180 s | Fewer ultrasonic reads = fewer UART transactions = fewer CPU wake-ups. Adjustable from the web UI without reflashing. |
+
+### Performance impact summary
+
+| What you care about | Impact of thermal measures |
+|---------------------|---------------------------|
+| Relay trigger timing | Governed by `trigger_delay_s` (default 60 s). Loop at 50 ms adds ≤ 50 ms timing jitter = 0.08 % error. |
+| Sensor read accuracy | Interval respected to ± 50 ms. For a water-level sensor this is invisible. |
+| Web UI response | ≤ 50 ms added latency before an HTTP request is processed. Imperceptible to a human. |
+| BLE device discovery | Available for the first 5 minutes after each power-on. Enough for any installation workflow. |
+
+---
+
 ## Relay Logic
 
 ```

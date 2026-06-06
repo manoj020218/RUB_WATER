@@ -27,9 +27,18 @@
 #define RELAY1_HYSTERESIS_MM      30
 #define RELAY2_HYSTERESIS_MM      50
 
+// ─── Firmware Identity ────────────────────────────────────────────────────────
+#define FIRMWARE_VERSION        "1.3.0"
+#define FIRMWARE_DATE           "2026-06-06"
+
 // ─── WiFi AP ─────────────────────────────────────────────────────────────────
 #define AP_CHANNEL               6
 #define AP_MAX_CONNECTIONS       4
+
+// ─── Thermal Management ───────────────────────────────────────────────────────
+// BLE advertises only at install time so the installer can identify the device.
+// After this timeout the radio goes quiet — no functional impact once installed.
+#define BLE_ADV_TIMEOUT_MS      (5UL * 60 * 1000)  // stop BLE after 5 min
 
 // ─── HTTP ────────────────────────────────────────────────────────────────────
 #define HTTP_PORT                80

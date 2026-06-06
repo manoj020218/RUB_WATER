@@ -144,6 +144,7 @@ a.logout{float:right;font-size:12px;color:#dc3545;text-decoration:none}
 <h2>&#128167; FloodGuard Sensor <a class="logout" href="/logout">Logout</a></h2>
 <div class="row"><span class="lbl">Device Name</span><span class="val" id="dev-name">-</span></div>
 <div class="row"><span class="lbl">BLE ID</span><span class="val" id="ble-id">-</span></div>
+<div class="row"><span class="lbl">Firmware</span><span class="val" id="fw-ver">-</span></div>
 </div>
 
 <div class="card">
@@ -234,6 +235,7 @@ function poll(){
     document.getElementById('dev-name').textContent=d.device_name;
     document.getElementById('ble-id').textContent=d.ble_id;
     document.getElementById('ble-id2').textContent=d.ble_id;
+    document.getElementById('fw-ver').textContent=d.firmware_version+' ('+d.firmware_date+')';
     var sb=document.getElementById('ssid-badge');
     var btn=document.getElementById('ssid-btn');
     if(d.ssid_hidden){sb.textContent='Hidden';sb.className='badge fault';btn.textContent='Show SSID';}
@@ -445,8 +447,9 @@ static void handle_api_status() {
     j += "\"uptime_seconds\":";  j += g_state->uptime_s;           j += ",";
     j += "\"config_version\":";  j += g_cfg->config_version; j += ",";
     j += "\"sensor_interval_ms\":"; j += g_cfg->sensor_interval_ms; j += ",";
-    j += "\"wifi_sleep_in_s\":";   j += webserver_wifi_sleep_in_s();
-    j += "}";
+    j += "\"wifi_sleep_in_s\":";   j += webserver_wifi_sleep_in_s(); j += ",";
+    j += "\"firmware_version\":\""; j += FIRMWARE_VERSION; j += "\",";
+    j += "\"firmware_date\":\"";    j += FIRMWARE_DATE;    j += "\"}";
     send_json(200, j);
 }
 
