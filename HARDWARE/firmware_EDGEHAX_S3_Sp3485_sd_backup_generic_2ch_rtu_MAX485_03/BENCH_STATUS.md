@@ -1,5 +1,5 @@
 # FloodGuard Edgehax S3 — Bench Status & Resumption Guide
-**Last updated: 2026-06-01**
+**Last updated: 2026-06-04**
 
 ---
 
@@ -312,3 +312,67 @@ Current automatic runtime scope:
 
 Current source of truth for this backup path:
 - Folder: `D:\IOT Device\RUB\FloodGuard\HARDWARE\firmware_EDGEHAX_S3_Sp3485_sd_backup_generic_2ch_rtu_2026_06_02`
+
+---
+
+## MAX485 Bench Continuation (2026-06-04)
+
+Current flashed unit:
+- Board on `COM7`
+- Build/env: `floodguard_edgehax_s3_generic_relay_2ch_backup`
+- Web UI reachable at:
+  - `http://192.168.1.207/`
+  - `http://fg-main-edgehax-01.local/`
+- Login password: `Hanuman#2026`
+
+Current right-side relay bench result:
+- Right-side generic relay is working on the MAX485 auto-direction variant
+- Confirmed working path:
+  - open `/remote-test`
+  - module type `2 Relay Module`
+  - module address currently tested as `255`
+  - manual `Relay 1 ON/OFF` and `Relay 2 ON/OFF` now work
+- `Link` can become `OK` again after a fresh successful manual command
+
+Important runtime behavior found during bench:
+- The relay auto-OFF was not coming from telemetry
+- The OFF command was coming from the main runtime logic in `src/main.cpp`
+- In normal flood state, firmware calls `rem.setSirenFlash(false, false)` for remote boxes
+- This means a manual relay ON from `/remote-test` will eventually be overridden when the flood state is normal
+
+Manual override behavior now in this MAX485 backup build:
+- Manual `/remote-test` actions suspend automatic remote relay control for `15 minutes`
+- During that manual-override window, automatic remote OFF commands are not queued
+- After the override window expires, normal flood runtime logic resumes
+- If the system is still in `NORMAL` state at that time, remote relays will be commanded OFF by design
+
+Why this matters for the DYP sensor connection:
+- Once DYP is connected, remote relay behavior should be judged against the actual flood state machine
+- Expected production behavior:
+  - `NORMAL` state -> remote siren/flash OFF
+  - `ALERT/DANGER` path -> remote outputs follow flood logic
+- So a relay turning OFF later while the system remains `NORMAL` is expected runtime behavior, not necessarily an RS485 fault
+
+Observed UI/RTU note:
+- After an automatic OFF or an RTU timeout, `/remote-test` may show `Link` invalid or `No valid status yet`
+- A fresh successful manual command can restore `Link = OK`
+- This is a bench observation to revisit later if status-read stability is still important in production
+
+Specific behavior for this generic `2CH` RTU relay module:
+- `Read Relay Status` is not a reliable operator action for this module at present
+- Even when `Link` is already `OK`, pressing `Read Relay Status` can make `Link` go invalid
+- Manual relay commands are currently the reliable path:
+  - pressing `Relay 1 ON` immediately updates `Link = OK` and relay status `ON`
+  - pressing `Relay 1 OFF` immediately updates `Link = OK` and relay status `OFF`
+  - same practical behavior applies to `Relay 2 ON/OFF`
+- For field troubleshooting on this module, treat the ON/OFF command itself as the status refresh method
+- Practical operator rule:
+  - if relay is expected `ON`, pressing the same relay `ON` command again is the current safe way to confirm/update UI state
+  - if relay is expected `OFF`, pressing the same relay `OFF` command again is the current safe way to confirm/update UI state
+- So for this module family, command-and-refresh works better than explicit status-read polling
+
+Correction to make later after DYP is connected:
+- Re-test remote relay behavior with real `DYP + FSM` state transitions
+- Confirm that remote OFF in `NORMAL` is acceptable for the final field logic
+- If field troubleshooting needs longer manual hold or latch behavior, add an explicit manual-test mode or resume-auto button in `/remote-test`
+- If this relay family remains deployed, consider changing the UI later so `Read Relay Status` is hidden, relabeled, or replaced with a safer module-specific refresh action

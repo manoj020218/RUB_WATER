@@ -23,9 +23,23 @@
 #include "watchdog.h"
 #include "wifi_manager.h"
 
-// Override Arduino framework weak symbol — default 8 KB overflows during
-// MQTT/HTTP TCP connect because lwIP cleanup path needs ~30 KB of stack.
-size_t getArduinoLoopTaskStackSize() { return 65536; }
+// loopTask stack sizing: BLE init needs ~70 KB internal heap; the loopTask
+// stack ALSO comes from internal RAM (64 KB), leaving only ~30 KB — not enough
+// for BLE (see FIRMWARE_NOTES §11). Solution: use a small stack (24 KB) when
+// unprovisioned so BLE has room. After provisioning + reboot, BLE is skipped
+// and the full 64 KB is restored for TCP/MQTT (needs 30–57 KB, see §1).
+// This function is called before setup() so it uses Preferences directly.
+size_t getArduinoLoopTaskStackSize() {
+    Preferences prefs;
+    if (prefs.begin("fgcfg", true)) {
+        const String ssid = prefs.getString("wifi_ssid", "");
+        prefs.end();
+        if (ssid.length() > 0 && ssid != "CHANGE_WIFI_SSID") {
+            return 65536;  // provisioned: BLE skipped, full stack for TCP
+        }
+    }
+    return 24576;  // unprovisioned: small stack so BLE gets ~70 KB internal heap
+}
 
 // Hold BOOT button (GPIO0) for 5 s at power-on to wipe WiFi + MQTT credentials
 // from NVS and reboot into BLE provisioning mode. Used for re-provisioning tests.
@@ -317,6 +331,10 @@ void setup() {
     CommandHandler::getInstance().begin();
     // BLE provisioning needs ~70KB internal RAM. Skip on provisioned devices or DEV
     // builds — internal heap (~94KB total) must be preserved for MQTT/WiFi stack.
+    Serial.printf("[HEAP] Before BLE: internal=%d  total=%d  PSRAM=%d\n",
+                  (int)heap_caps_get_free_size(MALLOC_CAP_INTERNAL | MALLOC_CAP_8BIT),
+                  (int)heap_caps_get_free_size(MALLOC_CAP_DEFAULT),
+                  (int)heap_caps_get_free_size(MALLOC_CAP_SPIRAM));
 #if defined(DEV_WIFI_SSID)
     Serial.println("[BLE] Skipped — DEV_WIFI build");
 #else

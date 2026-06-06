@@ -48,6 +48,14 @@
           <input class="inp" id="login-password" type="password" placeholder="Enter password" value="123456">
           <button class="primary-btn" onclick="loginApp()">Login</button>
           <div class="hint">Access can be granted or withdrawn by super admin from dashboard.</div>
+          <div class="build-info-panel" id="login-build-info">
+            <div class="build-info-title">App Version</div>
+            <div class="build-info-line">
+              <span id="login-app-version">--</span>
+              <span class="build-info-sep">|</span>
+              <span id="login-app-release-date">--</span>
+            </div>
+          </div>
           <div class="err" id="login-error"></div>
         </div>
       </section>
@@ -298,7 +306,7 @@
             <h2 class="view-title">Vendor Install</h2>
             <span class="chip" id="ble-role-chip">VENDOR</span>
           </div>
-          <p class="view-subtitle">BLE provisioning for ESP32-S3 (JNX-FGXXXX) and site diagnostics.</p>
+          <p class="view-subtitle">BLE provisioning for ESP32-S3 (JXFGXXXXXX) and site diagnostics.</p>
 
           <!-- Registered Devices table — super admin only -->
           <div id="install-device-table-section" style="display:none;margin-top:4px;margin-bottom:16px">
@@ -802,6 +810,51 @@
         <div class="card">
           <h2 class="view-title">Settings</h2>
           <p class="view-subtitle" id="settings-user-info">Account settings</p>
+
+          <h3 style="font-size:14px;margin:0 0 8px">App Build</h3>
+          <div class="build-info-panel">
+            <div class="build-info-line">
+              <span class="build-info-label">Version</span>
+              <span class="build-info-value" id="settings-app-version">--</span>
+            </div>
+            <div class="build-info-line">
+              <span class="build-info-label">Build Code</span>
+              <span class="build-info-value" id="settings-app-build-code">--</span>
+            </div>
+            <div class="build-info-line">
+              <span class="build-info-label">Last Release</span>
+              <span class="build-info-value" id="settings-app-release-date">--</span>
+            </div>
+          </div>
+
+          <h3 style="font-size:14px;margin:16px 0 8px">App Updates</h3>
+          <div class="build-info-panel">
+            <div class="build-info-line">
+              <span class="build-info-label">Update Channel</span>
+              <span class="build-info-value">FloodGuard VPS</span>
+            </div>
+            <div class="build-info-line">
+              <span class="build-info-label">Latest Published</span>
+              <span class="build-info-value" id="settings-latest-version">--</span>
+            </div>
+            <div class="build-info-line">
+              <span class="build-info-label">Published On</span>
+              <span class="build-info-value" id="settings-latest-release-date">--</span>
+            </div>
+            <div class="build-info-line">
+              <span class="build-info-label">Status</span>
+              <span class="build-info-value" id="settings-update-availability">Not checked yet</span>
+            </div>
+            <div class="build-info-line build-info-line--stack" id="settings-update-notes-wrap" style="display:none">
+              <span class="build-info-label">Release Notes</span>
+              <div class="build-notes" id="settings-update-notes"></div>
+            </div>
+            <div class="row" style="margin-top:10px">
+              <button class="ghost-btn" style="flex:1" onclick="checkForAppUpdateApp()">Check for Update</button>
+              <button class="control-btn info" id="settings-download-update-btn" onclick="downloadLatestAppUpdateApp()" style="margin-top:0;flex:1;display:none">Download Latest APK</button>
+            </div>
+            <div class="meta" id="settings-update-status">Use this to verify whether a newer APK is available on the FloodGuard VPS.</div>
+          </div>
 
           <h3 style="font-size:14px;margin:16px 0 8px">Change Password</h3>
           <label class="lbl">Current Password</label>

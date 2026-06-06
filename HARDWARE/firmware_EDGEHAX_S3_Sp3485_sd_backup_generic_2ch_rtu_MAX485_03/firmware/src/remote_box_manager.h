@@ -48,6 +48,7 @@ public:
     void setSirenFlash(bool sirenOn, bool flashOn);
     void setPump(bool on);
     bool manualSetSirenFlash(RtuBus bus, bool sirenOn, bool flashOn);
+    void suspendAutoControl(uint32_t durationMs = 900000UL);
 
     const RemoteBoxStatus& leftStatus()  const { return _left; }
     const RemoteBoxStatus& rightStatus() const { return _right; }
@@ -65,8 +66,10 @@ private:
     bool _pendingFlash         = false;
     bool _pendingPump          = false;
     bool _pendingPumpState     = false;
+    uint32_t _manualHoldoffUntilMs = 0;
 
     void pollBox(RtuBus bus, RemoteBoxStatus& status, uint8_t slaveId);
     void sendCommands(RtuBus bus, uint8_t slaveId,
                       bool sirenOn, bool flashOn, bool pumpOn);
+    bool autoControlSuspended(uint32_t now) const;
 };

@@ -9,6 +9,7 @@ const complaintRoutes = require('./complaintRoutes');
 const reportRoutes = require('./reportRoutes');
 const integrationRoutes = require('./integrationRoutes');
 const vendorRoutes = require('./vendorRoutes');
+const appReleaseRoutes = require('./appReleaseRoutes');
 
 const router = express.Router();
 
@@ -19,6 +20,7 @@ router.use('/devices', deviceConfigRoutes);
 router.use('/complaints', complaintRoutes);
 router.use('/reports', reportRoutes);
 router.use('/integration', integrationRoutes);
+router.use('/app-release', appReleaseRoutes);
 router.use('/', monitoringRoutes);
 router.use('/admin', adminRoutes);
 router.use('/vendor-mgmt', vendorRoutes);

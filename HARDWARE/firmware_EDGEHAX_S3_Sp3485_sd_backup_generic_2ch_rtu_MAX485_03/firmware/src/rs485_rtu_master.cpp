@@ -11,6 +11,7 @@ constexpr uint32_t kResponseStartTimeoutMs = 350UL; // wait for first response b
 constexpr uint32_t kInterByteTimeoutMs = 25UL;      // once bytes start, wait this long for the next byte
 constexpr uint32_t kInterFrameMs   = 5UL;     // silence between frames at 9600
 constexpr uint32_t kPostFlushTxHoldMs = 10UL; // 8-byte Modbus RTU request wire time at 9600 + margin
+constexpr uint32_t kRetryRecoveryMs = 12UL;   // extra settle time before retrying a short/no-response exchange
 constexpr uint8_t kMaxExchangeAttempts = 2;
 
 bool txActiveLevel(RtuBus bus) {
@@ -344,7 +345,7 @@ uint8_t Rs485RtuMaster::sendAndReceive(const uint8_t* req, size_t reqLen,
         }
 
         if (attempt + 1 < kMaxExchangeAttempts) {
-            delay(kInterFrameMs);
+            delay(kRetryRecoveryMs);
         } else if (received == 0) {
             Serial.println("[RTU] RX: 0 bytes (timeout)");
         } else {

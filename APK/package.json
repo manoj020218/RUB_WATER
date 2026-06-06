@@ -1,6 +1,6 @@
 {
   "name": "floodguard-android-app",
-  "version": "1.0.0",
+  "version": "1.0.1",
   "private": true,
   "description": "FloodGuard by Jenix Android app (Capacitor)",
   "scripts": {
@@ -12,7 +12,8 @@
   "dependencies": {
     "@capacitor-community/bluetooth-le": "^6.1.0",
     "@capacitor/android": "^6.1.2",
-    "@capacitor/core": "^6.1.2"
+    "@capacitor/core": "^6.1.2",
+    "@capacitor/push-notifications": "^6.0.1"
   },
   "devDependencies": {
     "@capacitor/cli": "^6.1.2",

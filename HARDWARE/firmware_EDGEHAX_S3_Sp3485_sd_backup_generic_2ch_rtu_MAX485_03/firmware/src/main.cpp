@@ -107,7 +107,7 @@ void setup() {
     {
         uint8_t mac[6] = {};
         esp_read_mac(mac, ESP_MAC_WIFI_STA);
-        snprintf(apSsid, sizeof(apSsid), "FgMain%02X%02X%02X", mac[3], mac[4], mac[5]);
+        snprintf(apSsid, sizeof(apSsid), "JXFG%02X%02X%02X", mac[3], mac[4], mac[5]);
     }
     LocalWebserver::getInstance().begin(apSsid, gDeviceId);
 
@@ -191,16 +191,25 @@ void loop() {
     auto& ble = BleProvisioning::getInstance();
     if (ble.isStarted()) {
         ble.loop();
-        // Disable BLE after first successful WiFi + MQTT connection
-        if (!gMqttFirstConnected && MqttManager::getInstance().isConnected()) {
-            gMqttFirstConnected = true;
+        // Stop BLE as soon as WiFi connects — no need to wait for MQTT/internet
+        static bool sBleStopped = false;
+        if (!sBleStopped && WifiManager::getInstance().isConnected()) {
+            sBleStopped = true;
             ble.stop();
             if (!gApReopenedManually) {
                 LocalWebserver::getInstance().stopAp();
             }
-            Serial.println("[MAIN] Provisioning complete — BLE and AP disabled");
+            Serial.println("[MAIN] WiFi connected — BLE provisioning complete");
         }
     }
+    // Track first MQTT connect (telemetry init trigger)
+    if (!gMqttFirstConnected && MqttManager::getInstance().isConnected()) {
+        gMqttFirstConnected = true;
+        Serial.println("[MAIN] Cloud connected");
+    }
+
+    // ── Internet reachability check (every 60s) ────────────────────────────
+    WifiManager::getInstance().pollInternet();
 
     // ── Maintenance AP ─────────────────────────────────────────────────────
     LocalWebserver::getInstance().loop();

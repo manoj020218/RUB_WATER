@@ -256,6 +256,76 @@ button {
   min-height: 16px;
 }
 
+.build-info-panel {
+  margin-top: 12px;
+  border: 1px solid #dbeafe;
+  border-radius: 10px;
+  background: #eff6ff;
+  padding: 10px 12px;
+}
+
+.build-info-title {
+  font-size: 11px;
+  font-weight: 800;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  color: #1d4ed8;
+}
+
+.build-info-line {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  margin-top: 6px;
+  font-size: 12px;
+  color: #1e3a8a;
+  flex-wrap: wrap;
+}
+
+.build-info-line--stack {
+  align-items: flex-start;
+  flex-direction: column;
+}
+
+.build-info-label {
+  font-weight: 700;
+  color: #334155;
+}
+
+.build-info-value {
+  font-weight: 800;
+  color: #0f172a;
+}
+
+.build-info-sep {
+  color: #93c5fd;
+}
+
+.build-notes {
+  width: 100%;
+  display: grid;
+  gap: 4px;
+}
+
+.build-note-item {
+  font-size: 11px;
+  color: #334155;
+  padding-left: 10px;
+  position: relative;
+}
+
+.build-note-item::before {
+  content: "";
+  position: absolute;
+  left: 0;
+  top: 7px;
+  width: 4px;
+  height: 4px;
+  border-radius: 999px;
+  background: #1d4ed8;
+}
+
 .row {
   display: flex;
   align-items: center;

@@ -7,6 +7,7 @@
 #ifdef GENERIC_REMOTE_RELAY_MODE
 namespace {
 constexpr uint32_t kGenericRelayReadbackDelayMs = 25UL;
+constexpr uint32_t kGenericRelayCommandRetryDelayMs = 20UL;
 
 uint8_t genericRelaySlaveIdForBus(RtuBus bus) {
     return bus == RtuBus::LEFT ? GENERIC_REMOTE_RELAY_LEFT_ADDR : GENERIC_REMOTE_RELAY_RIGHT_ADDR;
@@ -24,8 +25,30 @@ uint16_t genericRelayFirstCoilForModel(uint8_t model) {
     return model >= 4 ? 0x0001 : 0x0000;
 }
 
+uint16_t genericRelayPrimaryOnValueForModel(uint8_t model) {
+    return model >= 4 ? 0x0100 : 0xFF00;
+}
+
+uint16_t genericRelayAlternateOnValueForModel(uint8_t model) {
+    return model >= 4 ? 0xFF00 : 0x0100;
+}
+
 uint8_t genericRelayStatusReadCountForModel(uint8_t model) {
     return model >= 4 ? 4 : 2;
+}
+
+bool writeGenericRelayCoil(RtuBus bus, uint8_t slaveId, uint16_t coilAddr,
+                           bool on, uint16_t primaryOnValue, uint16_t alternateOnValue) {
+    auto& rtu = Rs485RtuMaster::getInstance();
+    const uint16_t primaryValue = on ? primaryOnValue : 0x0000;
+    RtuResult r = rtu.writeCoilValue(bus, slaveId, coilAddr, primaryValue);
+    if (r.ok || !on || alternateOnValue == primaryOnValue) {
+        return r.ok;
+    }
+
+    delay(kGenericRelayCommandRetryDelayMs);
+    r = rtu.writeCoilValue(bus, slaveId, coilAddr, alternateOnValue);
+    return r.ok;
 }
 
 bool pollGenericRelayBox(RtuBus bus, RemoteBoxStatus& status, uint8_t slaveId) {
@@ -55,19 +78,19 @@ bool pollGenericRelayBox(RtuBus bus, RemoteBoxStatus& status, uint8_t slaveId) {
 }
 
 bool writeGenericRelayOutputs(RtuBus bus, uint8_t slaveId, bool sirenOn, bool flashOn) {
-    auto& rtu = Rs485RtuMaster::getInstance();
     const uint8_t model = genericRelayModelForBus(bus);
     const uint8_t relayCount = genericRelayCountForModel(model);
     const uint16_t firstCoil = genericRelayFirstCoilForModel(model);
-    const uint16_t onValue = model >= 4 ? 0x0100 : 0xFF00;
+    const uint16_t primaryOnValue = genericRelayPrimaryOnValueForModel(model);
+    const uint16_t alternateOnValue = genericRelayAlternateOnValueForModel(model);
     const bool voiceOn = sirenOn;  // relay 3 follows danger/siren state
     const bool spareOn = false;    // relay 4 reserved for future barrier use
 
-    if (!rtu.writeCoilValue(bus, slaveId, firstCoil + 0, sirenOn ? onValue : 0x0000).ok) return false;
-    if (!rtu.writeCoilValue(bus, slaveId, firstCoil + 1, flashOn ? onValue : 0x0000).ok) return false;
+    if (!writeGenericRelayCoil(bus, slaveId, firstCoil + 0, sirenOn, primaryOnValue, alternateOnValue)) return false;
+    if (!writeGenericRelayCoil(bus, slaveId, firstCoil + 1, flashOn, primaryOnValue, alternateOnValue)) return false;
     if (relayCount >= 4) {
-        if (!rtu.writeCoilValue(bus, slaveId, firstCoil + 2, voiceOn ? onValue : 0x0000).ok) return false;
-        if (!rtu.writeCoilValue(bus, slaveId, firstCoil + 3, spareOn ? onValue : 0x0000).ok) return false;
+        if (!writeGenericRelayCoil(bus, slaveId, firstCoil + 2, voiceOn, primaryOnValue, alternateOnValue)) return false;
+        if (!writeGenericRelayCoil(bus, slaveId, firstCoil + 3, spareOn, primaryOnValue, alternateOnValue)) return false;
     }
     delay(kGenericRelayReadbackDelayMs);
     return true;
@@ -91,6 +114,9 @@ void RemoteBoxManager::loop() {
     const auto& cfg = ConfigManager::getInstance().get();
     if (!cfg.leftRemoteEnabled && !cfg.rightRemoteEnabled) return;
 
+    const uint32_t now = millis();
+    if (autoControlSuspended(now)) return;
+
 #ifdef GENERIC_REMOTE_RELAY_MODE
     const uint8_t leftSlaveId  = GENERIC_REMOTE_RELAY_LEFT_ADDR;
     const uint8_t rightSlaveId = GENERIC_REMOTE_RELAY_RIGHT_ADDR;
@@ -103,7 +129,6 @@ void RemoteBoxManager::loop() {
     const FloodState fs = FloodStateMachine::getInstance().snapshot().state;
     _pollIntervalMs = isAlertOrDanger(fs) ? 5000UL : 30000UL;
 
-    const uint32_t now = millis();
     if ((now - _lastPollMs) < _pollIntervalMs) return;
     _lastPollMs = now;
 
@@ -134,6 +159,7 @@ void RemoteBoxManager::loop() {
 }
 
 void RemoteBoxManager::setSirenFlash(bool sirenOn, bool flashOn) {
+    if (autoControlSuspended(millis())) return;
     _pendingSirenFlash = true;
     _pendingSiren      = sirenOn;
     _pendingFlash      = flashOn;
@@ -144,7 +170,12 @@ void RemoteBoxManager::setPump(bool on) {
     _pendingPumpState = on;
 }
 
+void RemoteBoxManager::suspendAutoControl(uint32_t durationMs) {
+    _manualHoldoffUntilMs = millis() + durationMs;
+}
+
 bool RemoteBoxManager::manualSetSirenFlash(RtuBus bus, bool sirenOn, bool flashOn) {
+    suspendAutoControl();
 #ifdef GENERIC_REMOTE_RELAY_MODE
     const uint8_t slaveId = genericRelaySlaveIdForBus(bus);
     auto& status = (bus == RtuBus::LEFT) ? _left : _right;
@@ -275,4 +306,8 @@ void RemoteBoxManager::sendCommands(RtuBus bus, uint8_t slaveId,
                       bus == RtuBus::LEFT ? "left" : "right");
     }
 #endif
+}
+
+bool RemoteBoxManager::autoControlSuspended(uint32_t now) const {
+    return _manualHoldoffUntilMs != 0 && (int32_t)(now - _manualHoldoffUntilMs) < 0;
 }

@@ -427,7 +427,8 @@ static void handle_api_status() {
     j += "\"clear_delay_s\":";    j += g_cfg->clear_delay_s;    j += ",";
     j += "\"ssid_hidden\":";      j += (g_cfg->ssid_hidden ? "true" : "false"); j += ",";
     j += "\"uptime_seconds\":";  j += g_state->uptime_s;           j += ",";
-    j += "\"config_version\":";  j += g_cfg->config_version;
+    j += "\"config_version\":";  j += g_cfg->config_version; j += ",";
+    j += "\"wifi_sleep_in_s\":"; j += webserver_wifi_sleep_in_s();
     j += "}";
     send_json(200, j);
 }
@@ -560,6 +561,7 @@ void webserver_init(DeviceConfig *cfg, AppState *state) {
 
     server.onNotFound(handle_not_found);
     server.begin();
+    g_last_activity_ms = millis();   // start idle clock from boot
 }
 
 void webserver_handle() {

@@ -82,6 +82,10 @@ function ingestEvent(payload) {
     notificationService.publishNotification('DANGER_CONFIRMED', event);
   }
 
+  if (event.event_type === 'ALERT_CONFIRMED') {
+    notificationService.publishNotification('ALERT_ORANGE', event);
+  }
+
   if (event.event_type === 'DANGER_AUTO_CLEARED') {
     incident = incidentService.closeIncidentAuto({
       locationId: event.location_id,

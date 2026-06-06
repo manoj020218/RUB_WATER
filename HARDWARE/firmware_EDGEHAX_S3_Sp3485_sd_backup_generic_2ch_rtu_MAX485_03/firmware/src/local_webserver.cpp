@@ -35,6 +35,14 @@ uint16_t genericRelayFirstCoilFromModel(uint8_t model) {
     return model >= kGenericRelayModel4Ch ? 0x0001 : 0x0000;
 }
 
+uint16_t genericRelayPrimaryOnValueFromModel(uint8_t model) {
+    return model >= kGenericRelayModel4Ch ? 0x0100 : 0xFF00;
+}
+
+uint16_t genericRelayAlternateOnValueFromModel(uint8_t model) {
+    return model >= kGenericRelayModel4Ch ? 0xFF00 : 0x0100;
+}
+
 uint8_t genericRelayStatusReadCountFromModel(uint8_t model) {
     return model >= kGenericRelayModel4Ch ? 4 : 2;
 }
@@ -120,6 +128,27 @@ RtuResult readGenericRelaySnapshot(RtuBus bus, uint8_t slaveId, uint8_t model, u
         coilBytes, sizeof(coilBytes));
     coilByte = coilBytes[0];
     return result;
+}
+
+struct GenericRelayWriteResult {
+    RtuResult writeResult{false, 0xFC};
+    RtuResult readResult{false, 0xFC};
+    uint8_t coilByte = 0;
+    bool observedOn = false;
+};
+
+bool performGenericRelayWriteAttempt(RtuBus bus, uint8_t slaveId, uint8_t model,
+                                     uint16_t coilAddr, uint8_t logicalBit,
+                                     bool coilOn, uint16_t onValue,
+                                     GenericRelayWriteResult& result) {
+    result.writeResult = Rs485RtuMaster::getInstance().writeCoilValue(
+        bus, slaveId, coilAddr, coilOn ? onValue : 0x0000);
+    delay(kGenericRelayReadbackDelayMs);
+    result.coilByte = 0;
+    result.readResult = readGenericRelaySnapshot(bus, slaveId, model, result.coilByte);
+    const uint8_t mask = (uint8_t)(1U << logicalBit);
+    result.observedOn = (result.coilByte & mask) != 0;
+    return result.writeResult.ok || (result.readResult.ok && result.observedOn == coilOn);
 }
 
 GenericRelayStatusSnapshot g_genericRelayStatus;
@@ -371,7 +400,27 @@ void LocalWebserver::handleStatus() {
     const auto& left = RemoteBoxManager::getInstance().leftStatus();
     const auto& right= RemoteBoxManager::getInstance().rightStatus();
 
+    const bool wifiOk = WifiManager::getInstance().isConnected();
+    const bool netOk  = WifiManager::getInstance().hasInternet();
+    const bool mqttOk = MqttManager::getInstance().isConnected();
+
     String html = htmlHeader("Status") + navBar("status");
+
+    // Internet / cloud status banner
+    if (wifiOk && mqttOk) {
+        html += "<div style='background:#2e7d32;color:#fff;padding:10px 16px;text-align:center'>"
+                "Cloud connected — device reporting to FloodGuard server</div>";
+    } else if (wifiOk && !netOk) {
+        html += "<div style='background:#f57c00;color:#fff;padding:10px 16px;text-align:center'>"
+                "No internet — running in local mode. Checking every 60s...</div>";
+    } else if (wifiOk && netOk && !mqttOk) {
+        html += "<div style='background:#f57c00;color:#fff;padding:10px 16px;text-align:center'>"
+                "Internet available but cloud not yet connected — retrying...</div>";
+    } else if (!wifiOk) {
+        html += "<div style='background:#b71c1c;color:#fff;padding:10px 16px;text-align:center'>"
+                "WiFi disconnected — reconnecting...</div>";
+    }
+
     html += "<div class='card'><h2>Device Status</h2>";
     html += "<table>";
     html += "<tr><th>PID</th><td>" PRODUCT_PID "</td></tr>";
@@ -742,58 +791,67 @@ void LocalWebserver::handleRemoteTestPost() {
             ok = writeResult.ok && readOk && confirmedAddr == newAddr;
         } else {
             const uint16_t firstCoil = genericRelayFirstCoilFromModel(moduleType);
-            uint16_t coilAddr = firstCoil;
+            uint8_t logicalBit = 0;
             bool coilOn = false;
             if (action == "generic_r1_on") {
-                coilAddr = firstCoil + 0;
+                logicalBit = 0;
                 coilOn = true;
             } else if (action == "generic_r1_off") {
-                coilAddr = firstCoil + 0;
+                logicalBit = 0;
                 coilOn = false;
             } else if (action == "generic_r2_on") {
-                coilAddr = firstCoil + 1;
+                logicalBit = 1;
                 coilOn = true;
             } else if (action == "generic_r2_off") {
-                coilAddr = firstCoil + 1;
+                logicalBit = 1;
                 coilOn = false;
             } else if (action == "generic_r3_on") {
-                coilAddr = firstCoil + 2;
+                logicalBit = 2;
                 coilOn = true;
             } else if (action == "generic_r3_off") {
-                coilAddr = firstCoil + 2;
+                logicalBit = 2;
                 coilOn = false;
             } else if (action == "generic_r4_on") {
-                coilAddr = firstCoil + 3;
+                logicalBit = 3;
                 coilOn = true;
             } else if (action == "generic_r4_off") {
-                coilAddr = firstCoil + 3;
+                logicalBit = 3;
                 coilOn = false;
             }
+            const uint16_t coilAddr = firstCoil + logicalBit;
             Serial.printf("[RTU] Generic module test right bus id=%d type=%s coil=%u on=%d\n",
                           (int)slaveId, genericRelayModelLabel(moduleType),
                           (unsigned)coilAddr, coilOn ? 1 : 0);
-            const uint16_t onValue = moduleType >= kGenericRelayModel4Ch ? 0x0100 : 0xFF00;
-            const RtuResult writeResult = Rs485RtuMaster::getInstance().writeCoilValue(
-                RtuBus::RIGHT, slaveId, coilAddr, coilOn ? onValue : 0x0000);
-            delay(kGenericRelayReadbackDelayMs);
-            uint8_t coilByte = 0;
-            const RtuResult readResult = readGenericRelaySnapshot(RtuBus::RIGHT, slaveId, moduleType, coilByte);
-            const bool linkOk = writeResult.ok || readResult.ok;
-            uint8_t effectiveCoilByte = coilByte;
-            if (!readResult.ok) {
+            RemoteBoxManager::getInstance().suspendAutoControl();
+            const uint16_t primaryOnValue = genericRelayPrimaryOnValueFromModel(moduleType);
+            const uint16_t alternateOnValue = genericRelayAlternateOnValueFromModel(moduleType);
+            GenericRelayWriteResult commandResult;
+            bool commandOk = performGenericRelayWriteAttempt(
+                RtuBus::RIGHT, slaveId, moduleType, coilAddr, logicalBit, coilOn, primaryOnValue, commandResult);
+            if (!commandOk && coilOn && alternateOnValue != primaryOnValue) {
+                Serial.printf("[RTU] Generic module retry right bus id=%d coil=%u alt_on=0x%04X\n",
+                              (int)slaveId, (unsigned)coilAddr, (unsigned)alternateOnValue);
+                commandOk = performGenericRelayWriteAttempt(
+                    RtuBus::RIGHT, slaveId, moduleType, coilAddr, logicalBit, coilOn, alternateOnValue, commandResult);
+            }
+            const bool linkOk = commandResult.writeResult.ok || commandResult.readResult.ok;
+            uint8_t effectiveCoilByte = commandResult.coilByte;
+            if (!commandResult.readResult.ok) {
                 effectiveCoilByte = snapshotCoilByte(g_genericRelayStatus);
-                const uint8_t logicalBit = (uint8_t)(coilAddr - firstCoil);
                 const uint8_t mask = (uint8_t)(1U << logicalBit);
-                if (coilOn) effectiveCoilByte |= mask;
-                else        effectiveCoilByte &= (uint8_t)~mask;
+                if (commandResult.writeResult.ok) {
+                    if (coilOn) effectiveCoilByte |= mask;
+                    else        effectiveCoilByte &= (uint8_t)~mask;
+                }
             }
             updateGenericRelaySnapshot(
                 g_genericRelayStatus, slaveId, moduleType,
-                linkOk, writeResult.ok ? readResult.exceptionCode : writeResult.exceptionCode, effectiveCoilByte);
-            const uint8_t logicalBit = (uint8_t)(coilAddr - firstCoil);
+                linkOk,
+                commandResult.writeResult.ok ? commandResult.readResult.exceptionCode : commandResult.writeResult.exceptionCode,
+                effectiveCoilByte);
             const uint8_t mask = (uint8_t)(1U << logicalBit);
             const bool observedState = (effectiveCoilByte & mask) != 0;
-            ok = writeResult.ok || (readResult.ok && observedState == coilOn);
+            ok = commandOk || (commandResult.readResult.ok && observedState == coilOn);
         }
     }
 

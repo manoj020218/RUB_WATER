@@ -2,10 +2,11 @@
 
 #include <Arduino.h>
 
-// Simplified BLE provisioning — WiFi SSID + password ONLY.
+// BLE provisioning — WiFi SSID + password only.
 // Device token is pre-seeded; never exposed over BLE.
-// BLE name: FgMain + 6 hex MAC chars.
-// Same UUID as main firmware for app compatibility.
+// BLE name: JXFG + last 6 hex chars of MAC  (e.g. JXFGBAF968)
+// Characteristic ff01: WRITE — app sends commands (JSON)
+// Characteristic ff02: NOTIFY+READ — device pushes status events (JSON)
 class BleProvisioning {
 public:
     static BleProvisioning& getInstance();
@@ -13,6 +14,7 @@ public:
     void begin();
     void loop();
     void stop();
+    void notify(const String& json);   // push event to subscribed app
 
     bool     isStarted()   const { return _started; }
     const char* bleName()  const { return _bleName; }

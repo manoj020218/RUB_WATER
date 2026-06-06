@@ -14,6 +14,8 @@ public:
     bool connectNow(uint32_t timeoutMs = 20000UL);
     bool isConnected() const;
     bool hasCredentials() const;
+    bool hasInternet() const;
+    void pollInternet();
     int32_t rssi() const;
     String localIp() const;
     String hostname() const;
@@ -24,8 +26,10 @@ private:
     char     _ssid[64]{};
     char     _pass[64]{};
     char     _hostname[64]{};
-    bool     _hasCredentials = false;
-    uint32_t _lastAttemptMs  = 0;
+    bool     _hasCredentials     = false;
+    bool     _internetAvailable  = false;
+    uint32_t _lastAttemptMs      = 0;
+    uint32_t _lastInternetChkMs  = 0;
 
     void loadFromNvs();
     void persistToNvs();

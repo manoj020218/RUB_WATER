@@ -18,15 +18,26 @@
   const IST_TIMEZONE = 'Asia/Kolkata';
   const BLE_SERVICE_UUID = '0000ff00-0000-1000-8000-00805f9b34fb';
   const BLE_CHARACTERISTIC_UUID = '0000ff01-0000-1000-8000-00805f9b34fb';
-  const BLE_NAME_PREFIX = 'JNX-FG';
+  const BLE_NAME_PREFIX = 'JXFG';
   const DEFAULT_VPS_HEALTH_URL = 'https://api.floodguard.iotsoft.in/health';
   const MAX_BOTTOM_PRIMARY_TABS = 6;
+  // Update this object for each shipped APK so users can verify version and release date in-app.
+  const APP_RELEASE_INFO = Object.freeze({
+    version: '1.0.1',
+    versionCode: 2,
+    releasedAt: '2026-06-06',
+    releasedLabel: '06 Jun 2026'
+  });
 
   const state = {
     apiBase: '',
     token: '',
     user: null,
     session: null,
+    appUpdate: {
+      latest: null,
+      lastCheckedAt: ''
+    },
     locations: [],
     selectedLocationId: null,
     selectedDeviceId: null,
@@ -90,6 +101,111 @@
     if (el) {
       el.textContent = text;
     }
+  }
+
+  function renderReleaseInfo() {
+    const versionText = `v${APP_RELEASE_INFO.version}`;
+    const buildCodeText = String(APP_RELEASE_INFO.versionCode);
+    const releaseText = `${APP_RELEASE_INFO.releasedLabel} (${APP_RELEASE_INFO.releasedAt})`;
+
+    setText('login-app-version', versionText);
+    setText('login-app-release-date', `Released ${APP_RELEASE_INFO.releasedLabel}`);
+    setText('settings-app-version', versionText);
+    setText('settings-app-build-code', buildCodeText);
+    setText('settings-app-release-date', releaseText);
+  }
+
+  function compareVersionNumbers(left, right) {
+    const leftParts = String(left || '0').split('.').map((part) => Number.parseInt(part, 10) || 0);
+    const rightParts = String(right || '0').split('.').map((part) => Number.parseInt(part, 10) || 0);
+    const maxLength = Math.max(leftParts.length, rightParts.length);
+    for (let index = 0; index < maxLength; index += 1) {
+      const leftValue = leftParts[index] || 0;
+      const rightValue = rightParts[index] || 0;
+      if (leftValue > rightValue) {
+        return 1;
+      }
+      if (leftValue < rightValue) {
+        return -1;
+      }
+    }
+    return 0;
+  }
+
+  function isReleaseNewer(release) {
+    const currentCode = Number(APP_RELEASE_INFO.versionCode || 0);
+    const latestCode = Number(release?.versionCode || 0);
+    if (latestCode > currentCode) {
+      return true;
+    }
+    if (latestCode < currentCode) {
+      return false;
+    }
+    return compareVersionNumbers(release?.version, APP_RELEASE_INFO.version) > 0;
+  }
+
+  function renderAppUpdateState() {
+    const latest = state.appUpdate.latest;
+    const latestVersion = latest?.version ? `v${latest.version} (build ${latest.versionCode || '--'})` : '--';
+    const latestReleaseDate = latest?.releasedLabel || latest?.releasedAt || '--';
+    const notesWrap = byId('settings-update-notes-wrap');
+    const notesEl = byId('settings-update-notes');
+    const downloadBtn = byId('settings-download-update-btn');
+    const availabilityEl = byId('settings-update-availability');
+
+    setText('settings-latest-version', latestVersion);
+    setText('settings-latest-release-date', latestReleaseDate);
+
+    if (latest && Array.isArray(latest.notes) && latest.notes.length > 0 && notesWrap && notesEl) {
+      notesEl.innerHTML = latest.notes.map((note) => `<div class="build-note-item">${escapeHtml(note)}</div>`).join('');
+      notesWrap.style.display = '';
+    } else if (notesWrap && notesEl) {
+      notesEl.innerHTML = '';
+      notesWrap.style.display = 'none';
+    }
+
+    if (!latest) {
+      if (availabilityEl) {
+        availabilityEl.textContent = 'Not checked yet';
+      }
+      if (downloadBtn) {
+        downloadBtn.style.display = 'none';
+      }
+      return;
+    }
+
+    const updateAvailable = isReleaseNewer(latest);
+    if (availabilityEl) {
+      availabilityEl.textContent = updateAvailable ? 'Update available' : 'You are on the latest version';
+    }
+    if (downloadBtn) {
+      downloadBtn.style.display = updateAvailable && latest.downloadUrl ? 'inline-flex' : 'none';
+    }
+  }
+
+  async function openExternalDownloadUrl(url) {
+    const nextUrl = String(url || '').trim();
+    if (!nextUrl) {
+      throw new Error('Download URL is missing.');
+    }
+
+    try {
+      const browserPlugin = window?.Capacitor?.Plugins?.Browser;
+      if (browserPlugin && typeof browserPlugin.open === 'function') {
+        await browserPlugin.open({ url: nextUrl });
+        return;
+      }
+    } catch (error) {
+      // Fall back to standard browser open below.
+    }
+
+    const link = document.createElement('a');
+    link.href = nextUrl;
+    link.target = '_blank';
+    link.rel = 'noopener';
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
   }
 
   function escapeHtml(value) {
@@ -298,6 +414,10 @@
     if (viewId === 'view-vendors') {
       populateVendorProjectSelects().catch(() => {});
       loadVendorsApp().catch(() => {});
+    }
+    if (viewId === 'view-settings') {
+      renderAppUpdateState();
+      checkForAppUpdateApp(true).catch(() => {});
     }
     renderHeaderMenu();
   }
@@ -3364,7 +3484,7 @@
       const discovered = new Map();
       const isLikelyFloodGuard = (result, name) => {
         const upperName = String(name || '').toUpperCase();
-        if (upperName.startsWith(BLE_NAME_PREFIX) || upperName.includes('JNX-FG') || upperName.includes('FLOODGUARD')) {
+        if (upperName.startsWith(BLE_NAME_PREFIX) || upperName.includes('JXFG') || upperName.includes('FLOODGUARD')) {
           return true;
         }
         const serviceIds = []
@@ -3391,7 +3511,7 @@
           }
           const fallbackName = rawName && rawName !== 'Unknown'
             ? rawName
-            : (likely ? `JNX-FG-${deviceId.slice(-4).toUpperCase()}` : deviceId);
+            : (likely ? `JXFG${deviceId.slice(-4).toUpperCase()}` : deviceId);
           discovered.set(deviceId, {
             deviceId,
             name: fallbackName,
@@ -4214,7 +4334,60 @@
     } catch (_) {}
   }
 
+  function _handleFcmForegroundPayload(title, body, eventName, locationId) {
+    if (eventName === 'DANGER_CONFIRMED') {
+      startFloodAlarm(locationId || state.selectedLocationId || '');
+    }
+    showToast(`${title || 'FloodGuard'}: ${body || ''}`);
+  }
+
   async function initFcm() {
+    // ── Native Capacitor APK path ─────────────────────────────────
+    if (isNativeApp()) {
+      const PushNotifications = window?.Capacitor?.Plugins?.PushNotifications;
+      if (!PushNotifications) return;
+
+      const permResult = await PushNotifications.requestPermissions().catch(() => ({ receive: 'denied' }));
+      if (permResult.receive !== 'granted') return;
+
+      // Create Android notification channel for high-priority flood alerts
+      try {
+        await PushNotifications.createChannel({
+          id: 'flood_danger',
+          name: 'Flood Danger',
+          description: 'Critical flood alert notifications',
+          importance: 5,
+          vibration: true,
+          visibility: 1
+        });
+      } catch (_) {}
+
+      await PushNotifications.register();
+
+      PushNotifications.addListener('registration', async (token) => {
+        console.info('[FCM-native] token received');
+        await _sendFcmTokenToServer(token.value);
+      });
+
+      PushNotifications.addListener('registrationError', (err) => {
+        console.warn('[FCM-native] registration error:', err.error);
+      });
+
+      PushNotifications.addListener('pushNotificationReceived', (notification) => {
+        _handleFcmForegroundPayload(
+          notification.title,
+          notification.body,
+          notification.data?.event || '',
+          notification.data?.location_id || ''
+        );
+      });
+
+      const btn = byId('alarm-enable-btn');
+      if (btn) btn.style.display = '';
+      return;
+    }
+
+    // ── Web / PWA path — Firebase Web SDK ────────────────────────
     if (typeof firebase === 'undefined' || !firebase.messaging) return;
     if (!('Notification' in window)) return;
 
@@ -4235,12 +4408,12 @@
       }
       messaging.onMessage((payload) => {
         const notif = payload.notification || {};
-        const event = payload.data?.event || '';
-        if (event === 'DANGER_CONFIRMED') {
-          const locId = payload.data?.location_id || state.selectedLocationId || '';
-          startFloodAlarm(locId);
-        }
-        showToast(`${notif.title || 'FloodGuard'}: ${notif.body || ''}`);
+        _handleFcmForegroundPayload(
+          notif.title,
+          notif.body,
+          payload.data?.event || '',
+          payload.data?.location_id || ''
+        );
       });
       messaging.onTokenRefresh(async () => {
         const newToken = await messaging.getToken({ vapidKey: FCM_VAPID_KEY });
@@ -5689,6 +5862,61 @@
     }
   }
 
+  async function checkForAppUpdateApp(silent = false) {
+    const statusEl = byId('settings-update-status');
+    if (statusEl && !silent) {
+      statusEl.textContent = 'Checking FloodGuard VPS for the latest published APK...';
+    }
+
+    try {
+      const latest = await apiRequest('/app-release/mobile', { auth: false });
+      state.appUpdate.latest = latest || null;
+      state.appUpdate.lastCheckedAt = new Date().toISOString();
+      renderAppUpdateState();
+
+      const updateAvailable = isReleaseNewer(latest);
+      const publishedOn = latest?.releasedLabel || latest?.releasedAt || '--';
+      if (statusEl) {
+        statusEl.textContent = updateAvailable
+          ? `New APK available: v${latest.version} (build ${latest.versionCode || '--'}) published ${publishedOn}.`
+          : `You already have the latest published APK. Last checked ${formatDateTime(state.appUpdate.lastCheckedAt)}.`;
+      }
+      if (!silent) {
+        showToast(updateAvailable ? 'New app update is available.' : 'This app is already up to date.');
+      }
+    } catch (error) {
+      if (statusEl) {
+        statusEl.textContent = `Update check failed: ${readableActionError(error)}`;
+      }
+      if (!silent) {
+        showToast('Unable to check app updates right now.', true);
+      }
+    }
+  }
+
+  async function downloadLatestAppUpdateApp() {
+    const latest = state.appUpdate.latest;
+    if (!latest?.downloadUrl) {
+      showToast('No downloadable APK is published yet.', true);
+      return;
+    }
+
+    const statusEl = byId('settings-update-status');
+    if (statusEl) {
+      statusEl.textContent = `Opening download link for v${latest.version}...`;
+    }
+
+    try {
+      await openExternalDownloadUrl(latest.downloadUrl);
+      showToast('Download link opened for the latest APK.');
+    } catch (error) {
+      if (statusEl) {
+        statusEl.textContent = `Unable to open the download link: ${readableActionError(error)}`;
+      }
+      showToast('Failed to open the APK download link.', true);
+    }
+  }
+
   function bindHeaderMenuAutoClose() {
     if (bindHeaderMenuAutoClose.bound) {
       return;
@@ -5713,6 +5941,7 @@
     bindHeaderMenuAutoClose();
     applyBrowserModeUi();
     setLoggedInUi(false);
+    renderReleaseInfo();
     openView('view-login');
     applyVendorInstallVisibility();
     applyConfigVisibility();
@@ -5893,6 +6122,8 @@
   window.calSetLevel1App = calSetLevel1App;
   window.calSetLevel2App = calSetLevel2App;
   window.changePasswordApp = changePasswordApp;
+  window.checkForAppUpdateApp = checkForAppUpdateApp;
+  window.downloadLatestAppUpdateApp = downloadLatestAppUpdateApp;
   window.markDeviceFaultyApp = markDeviceFaultyApp;
   window.markDeviceReplacementApp = markDeviceReplacementApp;
   window.recommissionDeviceApp = recommissionDeviceApp;

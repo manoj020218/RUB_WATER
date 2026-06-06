@@ -1,6 +1,7 @@
 #include "ble_provisioning.h"
 
 #include <ArduinoJson.h>
+#include <BLE2902.h>
 #include <BLECharacteristic.h>
 #include <BLEDevice.h>
 #include <BLEServer.h>
@@ -10,11 +11,13 @@
 #include "wifi_manager.h"
 
 namespace {
-constexpr const char* kServiceUuid = "0000ff00-0000-1000-8000-00805f9b34fb";
-constexpr const char* kCharUuid    = "0000ff01-0000-1000-8000-00805f9b34fb";
+constexpr const char* kServiceUuid    = "0000ff00-0000-1000-8000-00805f9b34fb";
+constexpr const char* kCmdCharUuid    = "0000ff01-0000-1000-8000-00805f9b34fb";  // WRITE — app→device
+constexpr const char* kNotifyCharUuid = "0000ff02-0000-1000-8000-00805f9b34fb";  // NOTIFY — device→app
 
-BleProvisioning* gInstance = nullptr;
-BLECharacteristic* gChar   = nullptr;
+BleProvisioning*   gInstance    = nullptr;
+BLECharacteristic* gChar        = nullptr;   // command char (ff01)
+BLECharacteristic* gNotifyChar  = nullptr;   // notify char  (ff02)
 }
 
 class BleProvCharCallbacks final : public BLECharacteristicCallbacks {
@@ -60,21 +63,33 @@ void BleProvisioning::stop() {
 void BleProvisioning::buildName() {
     uint8_t mac[6] = {};
     esp_read_mac(mac, ESP_MAC_WIFI_STA);
-    snprintf(_bleName, sizeof(_bleName), "FgMain%02X%02X%02X", mac[3], mac[4], mac[5]);
+    snprintf(_bleName, sizeof(_bleName), "JXFG%02X%02X%02X", mac[3], mac[4], mac[5]);
 }
 
 void BleProvisioning::startAdvertising() {
     BLEDevice::init(_bleName);
-    BLEServer*  srv   = BLEDevice::createServer();
-    BLEService* svc   = srv->createService(kServiceUuid);
+    BLEServer*  srv = BLEDevice::createServer();
+    BLEService* svc = srv->createService(BLEUUID(kServiceUuid), 8);  // 8 handles for 2 chars + descriptors
+
+    // ff01 — command channel: app writes JSON commands, reads last response
     gChar = svc->createCharacteristic(
-        kCharUuid,
+        kCmdCharUuid,
         BLECharacteristic::PROPERTY_READ |
         BLECharacteristic::PROPERTY_WRITE |
         BLECharacteristic::PROPERTY_WRITE_NR
     );
     gChar->setCallbacks(new BleProvCharCallbacks());
     gChar->setValue("{\"ok\":true,\"cmd\":\"ready\"}");
+
+    // ff02 — notify channel: device pushes status events to app
+    gNotifyChar = svc->createCharacteristic(
+        kNotifyCharUuid,
+        BLECharacteristic::PROPERTY_READ |
+        BLECharacteristic::PROPERTY_NOTIFY
+    );
+    gNotifyChar->addDescriptor(new BLE2902());
+    gNotifyChar->setValue("{\"event\":\"ready\"}");
+
     svc->start();
 
     BLEAdvertising* adv = BLEDevice::getAdvertising();
@@ -86,6 +101,12 @@ void BleProvisioning::startAdvertising() {
         _started = true;
         Serial.printf("[BLE] Advertising as '%s'\n", _bleName);
     }
+}
+
+void BleProvisioning::notify(const String& json) {
+    if (!_started || !gNotifyChar) return;
+    gNotifyChar->setValue(json.c_str());
+    gNotifyChar->notify();
 }
 
 void BleProvisioning::processCommand(const String& json) {
@@ -101,7 +122,7 @@ void BleProvisioning::processCommand(const String& json) {
     res["ok"]  = true;
     res["cmd"] = cmd;
 
-    if (cmd == "hello" || cmd == "h") {
+    if (cmd == "hello" || cmd == "h" || cmd == "health") {
         res["ble_name"]       = _bleName;
         res["wifi_connected"] = WifiManager::getInstance().isConnected();
         res["ssid"]           = WifiManager::getInstance().configuredSsid();
@@ -114,8 +135,14 @@ void BleProvisioning::processCommand(const String& json) {
             if (gChar) gChar->setValue("{\"ok\":false,\"error\":\"ssid_required\"}");
             return;
         }
+        notify("{\"event\":\"wifi_connecting\",\"ssid\":\"" + ssid + "\"}");
         WifiManager::getInstance().setCredentials(ssid.c_str(), pass.c_str(), true);
         const bool connected = WifiManager::getInstance().connectNow(20000UL);
+        if (connected) {
+            notify("{\"event\":\"wifi_connected\",\"ip\":\"" + WifiManager::getInstance().localIp() + "\"}");
+        } else {
+            notify("{\"event\":\"wifi_failed\",\"reason\":\"timeout\"}");
+        }
         res["wifi_connected"] = connected;
         res["ip"]             = WifiManager::getInstance().localIp();
         Serial.printf("[BLE] WiFi provisioned: ssid=%s connected=%d\n",

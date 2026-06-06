@@ -96,6 +96,7 @@ bool DypSensor::readFrame(int32_t& distOut) {
             dypSerial.read();
             continue;
         }
+        // DYP-A01 frame: FF HH LL CS  (4 bytes, CS = (FF+HH+LL) & 0xFF)
         if (dypSerial.available() < 4) {
             const uint32_t t0 = millis();
             while (dypSerial.available() < 4 && (millis() - t0) < 300UL) { yield(); }
@@ -106,8 +107,8 @@ bool DypSensor::readFrame(int32_t& distOut) {
         const uint8_t csum = (b[0] + b[1] + b[2]) & 0xFF;
 #ifdef SENSOR_TEST_MODE
         const int32_t dRaw = (int32_t)b[1] * 256 + b[2];
-        Serial.printf("[DYP_FRAME] %02X %02X %02X %02X  csum_ok=%c  d=%dmm\n",
-                      b[0], b[1], b[2], b[3], csum == b[3] ? 'Y' : 'N', (int)dRaw);
+        Serial.printf("[DYP_FRAME] %02X %02X %02X %02X  csum=%s  d=%dmm\n",
+                      b[0], b[1], b[2], b[3], csum == b[3] ? "OK" : "BAD", (int)dRaw);
 #endif
         if (csum != b[3]) continue;
         const int32_t d = (int32_t)b[1] * 256 + b[2];

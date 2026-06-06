@@ -77,7 +77,31 @@ bool WifiManager::connectNow(uint32_t timeoutMs) {
         delay(200);
         yield();
     }
+    if (WiFi.status() == WL_CONNECTED) {
+        _lastInternetChkMs = 0;  // force internet check on next pollInternet()
+    }
     return WiFi.status() == WL_CONNECTED;
+}
+
+bool WifiManager::hasInternet() const { return _internetAvailable; }
+
+void WifiManager::pollInternet() {
+    if (!isConnected()) {
+        _internetAvailable = false;
+        return;
+    }
+    const uint32_t now = millis();
+    if (_lastInternetChkMs > 0 && (now - _lastInternetChkMs) < 60000UL) return;
+    _lastInternetChkMs = now;
+
+    WiFiClient client;
+    const bool ok = client.connect(IPAddress(8, 8, 8, 8), 53, 3000);
+    if (ok) client.stop();
+
+    if (ok != _internetAvailable) {
+        _internetAvailable = ok;
+        Serial.printf("[WIFI] Internet: %s\n", ok ? "AVAILABLE" : "NOT AVAILABLE");
+    }
 }
 
 bool WifiManager::isConnected() const { return WiFi.status() == WL_CONNECTED; }

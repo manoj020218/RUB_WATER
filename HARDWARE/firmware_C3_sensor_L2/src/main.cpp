@@ -103,7 +103,30 @@ void loop() {
     g_state.uptime_s        = millis() / 1000UL;
 
     led_update(r1, r2);
-    webserver_handle();
+
+    // ─── WiFi idle sleep / BOOT wake ─────────────────────────────────────────
+    static bool     g_wifi_sleeping = false;
+    static uint32_t g_boot_held_ms  = 0;
+
+    if (!g_wifi_sleeping) {
+        webserver_handle();
+        if (webserver_wifi_should_sleep()) {
+            Serial.println("[WiFi] Idle timeout — WiFi off. Hold BOOT 3 s to wake.");
+            WiFi.mode(WIFI_OFF);
+            g_wifi_sleeping = true;
+        }
+    } else {
+        if (digitalRead(9) == LOW) {
+            if (g_boot_held_ms == 0) g_boot_held_ms = millis();
+            else if (millis() - g_boot_held_ms >= WIFI_WAKE_HOLD_MS) {
+                Serial.println("[WiFi] BOOT held — restarting to wake WiFi");
+                delay(200);
+                ESP.restart();
+            }
+        } else {
+            g_boot_held_ms = 0;
+        }
+    }
 
     delay(10);
 }

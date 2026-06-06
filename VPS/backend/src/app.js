@@ -65,6 +65,8 @@ function createApp(options = {}) {
 
   const vendorMgmtDir = path.resolve(__dirname, '..', '..', 'vendor-mgmt');
   app.use('/vendors', express.static(vendorMgmtDir));
+  const mobileDownloadsDir = path.resolve(process.cwd(), 'downloads');
+  app.use('/downloads', express.static(mobileDownloadsDir));
   app.get('/vendors', (req, res) => {
     res.sendFile(path.join(vendorMgmtDir, 'index.html'));
   });
