@@ -346,6 +346,20 @@ String LocalWebserver::navBar(const char* active) {
         nav += ">"; nav += p[1]; nav += "</a>";
     }
     nav += "</nav>";
+
+    // Connection status banner — shown on every page
+    const bool wifiOk = WifiManager::getInstance().isConnected();
+    const bool mqttOk = MqttManager::getInstance().isConnected();
+    if (wifiOk && mqttOk) {
+        nav += "<div style='background:#2e7d32;color:#fff;padding:6px 16px;"
+               "text-align:center;font-size:13px'>"
+               "&#x2705; Cloud connected</div>";
+    } else if (wifiOk) {
+        nav += "<div style='background:#f57c00;color:#fff;padding:6px 16px;"
+               "text-align:center;font-size:13px'>"
+               "&#x26A0; No internet &mdash; running in local mode. "
+               "Cloud features unavailable. Checking every 60s...</div>";
+    }
     return nav;
 }
 
