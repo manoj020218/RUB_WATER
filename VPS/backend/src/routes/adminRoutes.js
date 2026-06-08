@@ -12,6 +12,7 @@ router.post('/jobs/no-water-compaction', adminController.runNoWaterCompaction);
 router.get('/users', adminController.listUsers);
 router.post('/users', adminController.createUser);
 router.patch('/users/:userId/access', adminController.setUserAccess);
+router.patch('/users/:userId/locations', adminController.updateUserLocations);
 router.post('/users/:userId/reset-password', adminController.resetUserPassword);
 
 // Locations

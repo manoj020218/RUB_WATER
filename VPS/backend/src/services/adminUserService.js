@@ -238,8 +238,44 @@ function setManagedUserAccess({
   };
 }
 
+function updateManagedUserLocations({ userId, locationIds, authContext, ipAddress }) {
+  assertPermission(authContext.user.role, 'MANAGE_USER_ACCESS');
+
+  const actor = authContext.user;
+  const target = userRepository.findById(userId);
+  if (!target) throw notFound('User not found');
+  if (!canManageUser(actor, target)) throw forbidden('You cannot manage this user');
+
+  const locs = Array.isArray(locationIds)
+    ? locationIds.map((id) => normalizeString(id)).filter(Boolean)
+    : [];
+
+  const updated = userRepository.update(target._id, {
+    assigned_location_ids: [...new Set(locs)],
+    updated_at: nowIso()
+  });
+
+  auditService.writeAuditLog({
+    locationId: null,
+    eventType: 'USER_LOCATIONS_UPDATED',
+    performedBy: actor._id,
+    loginId: actor.login_id,
+    sessionId: authContext.session._id,
+    deviceName: authContext.session.device_name,
+    ipAddress,
+    details: {
+      target_user_id: updated._id,
+      target_login_id: updated.login_id,
+      assigned_location_ids: updated.assigned_location_ids
+    }
+  });
+
+  return sanitizeAdminUser(updated);
+}
+
 module.exports = {
   listManagedUsers,
   createManagedUser,
-  setManagedUserAccess
+  setManagedUserAccess,
+  updateManagedUserLocations
 };

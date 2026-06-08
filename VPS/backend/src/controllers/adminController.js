@@ -52,6 +52,18 @@ async function createUser(req, res, next) {
   } catch (error) { next(error); }
 }
 
+function updateUserLocations(req, res, next) {
+  try {
+    const data = adminUserService.updateManagedUserLocations({
+      userId: req.params.userId,
+      locationIds: req.body?.location_ids,
+      authContext: req.auth,
+      ipAddress: req.ip
+    });
+    res.json({ ok: true, data });
+  } catch (error) { next(error); }
+}
+
 function setUserAccess(req, res, next) {
   try {
     const data = adminUserService.setManagedUserAccess({
@@ -85,7 +97,13 @@ async function resetUserPassword(req, res, next) {
 function listAllLocations(req, res, next) {
   try {
     requireSuperAdmin(req);
-    const locations = locationRepo.listAll().map((loc) => {
+    const user = req.auth.user;
+    let allLocs = locationRepo.listAll();
+    if (user.role === 'DEPARTMENT_SUPER_ADMIN') {
+      const allowed = new Set(Array.isArray(user.assigned_location_ids) ? user.assigned_location_ids : []);
+      allLocs = allLocs.filter((l) => allowed.has(l._id));
+    }
+    const locations = allLocs.map((loc) => {
       const device = deviceRepo.findByLocation(loc._id);
       return { ...loc, location_id: loc._id, location_name: loc.name, bound_device_id: device?._id || null };
     });
@@ -144,7 +162,13 @@ function deleteLocation(req, res, next) {
 function listAllDevices(req, res, next) {
   try {
     requireSuperAdmin(req);
-    const devices = deviceRepo.listAll().map((d) => ({
+    const user = req.auth.user;
+    let allDevices = deviceRepo.listAll();
+    if (user.role === 'DEPARTMENT_SUPER_ADMIN') {
+      const allowed = new Set(Array.isArray(user.assigned_location_ids) ? user.assigned_location_ids : []);
+      allDevices = allDevices.filter((d) => d.location_id && allowed.has(d.location_id));
+    }
+    const devices = allDevices.map((d) => ({
       device_id: d._id,
       location_id: d.location_id,
       device_type: d.device_type,
@@ -320,6 +344,7 @@ module.exports = {
   listUsers,
   createUser,
   setUserAccess,
+  updateUserLocations,
   resetUserPassword,
   listAllLocations,
   createLocation,

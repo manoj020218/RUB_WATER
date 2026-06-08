@@ -3434,9 +3434,20 @@
       const roleClass = String(user.role || '').toLowerCase().replace(/_/g, '-');
       const isActive = Boolean(user.is_active);
       const sessions = Number(user.active_session_count ?? 0);
-      const locs = Array.isArray(user.assigned_locations) && user.assigned_locations.length
-        ? user.assigned_locations.map((l) => `<span class="user-loc-pill">${escapeHtml(l)}</span>`).join('')
+      const assignedLocIds = Array.isArray(user.assigned_location_ids) ? user.assigned_location_ids : [];
+      const locs = assignedLocIds.length
+        ? assignedLocIds.map((id) => {
+            const locRec = (state.locations || []).find((l) => l.location_id === id);
+            const label = escapeHtml(locRec?.location_name || id);
+            return `<span class="user-loc-pill">${label}</span>`;
+          }).join('')
         : '<span class="user-loc-none">No locations assigned</span>';
+
+      const canManageLocs = userRole() === 'VENDOR_SUPER_ADMIN';
+      const manageLocsBtn = canManageLocs
+        ? `<button class="ghost-btn" style="padding:5px 10px;font-size:11px"
+             onclick="openManageLocationsApp('${userId}')">Manage Locations</button>`
+        : '';
 
       return `
         <div class="user-card">
@@ -3452,6 +3463,7 @@
           </div>
           <div class="user-meta-row">Sessions: ${sessions} · ${locs}</div>
           <div class="row" style="margin-top:8px;justify-content:flex-end;gap:6px">
+            ${manageLocsBtn}
             <button class="ghost-btn" style="padding:5px 10px;font-size:11px"
               onclick="toggleAdminUserAccessApp('${userId}', ${isActive ? 'false' : 'true'})">
               ${isActive ? 'Set Inactive' : 'Set Active'}
@@ -3464,6 +3476,16 @@
               placeholder="New password (min 6 chars)" style="margin-top:6px;font-size:13px">
             <button class="ghost-btn" style="margin-top:4px;width:100%;font-size:12px"
               onclick="submitResetPasswordApp('${userId}')">Confirm Reset Password</button>
+          </div>
+          <div id="manage-locs-wrap-${userId}" style="display:none;margin-top:10px;border-top:1px solid var(--border);padding-top:10px">
+            <div style="font-size:12px;font-weight:600;margin-bottom:6px;color:var(--text-muted)">Assign Locations to this user</div>
+            <div id="manage-locs-list-${userId}" style="display:flex;flex-direction:column;gap:4px;max-height:200px;overflow-y:auto;margin-bottom:8px"></div>
+            <div class="row" style="gap:6px;justify-content:flex-end">
+              <button class="ghost-btn" style="padding:5px 10px;font-size:11px"
+                onclick="closeManageLocationsApp('${userId}')">Cancel</button>
+              <button class="btn" style="padding:5px 14px;font-size:11px"
+                onclick="submitManageLocationsApp('${userId}')">Save</button>
+            </div>
           </div>
         </div>
       `;
@@ -3481,6 +3503,55 @@
       renderAdminUsersApp(state.adminUsers);
     } catch (error) {
       handleApiError(error, 'Failed loading user list');
+    }
+  }
+
+  function openManageLocationsApp(userId) {
+    const wrap = byId(`manage-locs-wrap-${userId}`);
+    const listEl = byId(`manage-locs-list-${userId}`);
+    if (!wrap || !listEl) return;
+
+    const user = (state.adminUsers || []).find((u) => u.user_id === userId);
+    const currentIds = new Set(Array.isArray(user?.assigned_location_ids) ? user.assigned_location_ids : []);
+    const allLocs = state.locations || [];
+
+    if (allLocs.length === 0) {
+      listEl.innerHTML = '<div class="empty" style="font-size:12px">No locations available. Create one first.</div>';
+    } else {
+      listEl.innerHTML = allLocs.map((loc) => {
+        const id = escapeHtml(loc.location_id);
+        const name = escapeHtml(loc.location_name || loc.location_id);
+        const checked = currentIds.has(loc.location_id) ? ' checked' : '';
+        const hasDev = loc.bound_device_id || loc.device_id;
+        const devLabel = hasDev ? ` <span style="font-size:10px;color:var(--ok)">[${escapeHtml(String(hasDev))}]</span>` : '';
+        return `<label style="display:flex;align-items:center;gap:8px;font-size:12px;cursor:pointer;padding:3px 0">
+          <input type="checkbox" value="${id}"${checked} style="margin:0;width:14px;height:14px">
+          <span>${name}${devLabel}</span>
+        </label>`;
+      }).join('');
+    }
+    wrap.style.display = '';
+  }
+
+  function closeManageLocationsApp(userId) {
+    const wrap = byId(`manage-locs-wrap-${userId}`);
+    if (wrap) wrap.style.display = 'none';
+  }
+
+  async function submitManageLocationsApp(userId) {
+    const listEl = byId(`manage-locs-list-${userId}`);
+    if (!listEl) return;
+    const selected = Array.from(listEl.querySelectorAll('input[type=checkbox]:checked')).map((cb) => cb.value);
+    try {
+      await apiRequest(`/admin/users/${encodeURIComponent(userId)}/locations`, {
+        method: 'PATCH',
+        body: { location_ids: selected }
+      });
+      showToast('Locations updated.');
+      closeManageLocationsApp(userId);
+      await refreshAdminUsersApp();
+    } catch (error) {
+      handleApiError(error, 'Failed to update locations');
     }
   }
 
@@ -6235,6 +6306,9 @@
   window.dryRunApp = dryRunApp;
   window.forceClearApp = forceClearApp;
   window.refreshAdminUsersApp = refreshAdminUsersApp;
+  window.openManageLocationsApp = openManageLocationsApp;
+  window.closeManageLocationsApp = closeManageLocationsApp;
+  window.submitManageLocationsApp = submitManageLocationsApp;
   window.createAdminUserApp = createAdminUserApp;
   window.toggleAdminUserAccessApp = toggleAdminUserAccessApp;
   window.selectBleDeviceApp = selectBleDeviceApp;
