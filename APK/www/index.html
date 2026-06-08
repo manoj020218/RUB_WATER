@@ -460,6 +460,56 @@
           </div>
           </div><!-- /ble-content -->
         </div>
+
+        <!-- ── Unassigned Cloud Devices ──────────────────────────────────── -->
+        <div class="card" id="install-unassigned-card" style="display:none;margin-top:0">
+          <div class="row between" style="margin-bottom:4px">
+            <h2 class="view-title" style="font-size:15px;margin:0">Unassigned Cloud Devices</h2>
+            <span id="install-unassigned-count" class="chip" style="background:#e8f5e9;color:#1b5e20;font-size:11px">0</span>
+          </div>
+          <p style="color:#666;font-size:13px;margin:0 0 12px">Devices connected to cloud but not yet linked to a location.</p>
+          <div id="install-unassigned-list"></div>
+
+          <!-- Assign panel — expands inline when a device is selected -->
+          <div id="install-assign-panel" style="display:none;margin-top:12px;background:#f0f4ff;border-radius:8px;padding:14px;border:1px solid #c7d2fe">
+            <div style="font-weight:600;font-size:13px;color:#1e40af;margin-bottom:10px">
+              &#128205; Assign <span id="install-assign-device-label" style="font-family:monospace;background:#dbeafe;padding:1px 6px;border-radius:4px"></span> to Location
+            </div>
+
+            <select class="inp" id="install-assign-location-select" style="margin-bottom:8px">
+              <option value="">&#8212; Select location &#8212;</option>
+            </select>
+
+            <div id="install-assign-no-locations" style="display:none;color:#f57c00;font-size:12px;margin-bottom:8px;padding:6px 8px;background:#fff3e0;border-radius:4px">
+              No locations exist yet. Create one below.
+            </div>
+
+            <!-- Inline new location form -->
+            <div id="install-assign-new-loc-form" style="display:none;margin-bottom:10px;background:#fff;border-radius:6px;padding:10px;border:1px solid #e0e7ff">
+              <input class="inp" id="install-assign-new-loc-name" placeholder="Location name (e.g. RUB Gate A)" style="margin-bottom:6px">
+              <div style="display:flex;gap:8px">
+                <button class="control-btn info" style="flex:1;padding:7px 10px;font-size:12px" onclick="createLocationFromAssignPanelApp()">Create &amp; Select</button>
+                <button class="ghost-btn" style="padding:7px 10px" onclick="byId('install-assign-new-loc-form').style.display='none'">Cancel</button>
+              </div>
+            </div>
+
+            <!-- Faulty device warning -->
+            <div id="install-assign-faulty-warn" style="display:none;background:#fff3e0;border:1px solid #ff9800;border-radius:6px;padding:10px 12px;margin-bottom:10px">
+              <div style="font-weight:600;color:#e65100;margin-bottom:6px">&#9888; Location already has a device</div>
+              <div id="install-assign-faulty-msg" style="color:#5d4037;font-size:13px;margin-bottom:10px"></div>
+              <div style="display:flex;gap:8px">
+                <button class="control-btn" style="flex:1;padding:8px 10px;font-size:12px;background:#e65100" onclick="confirmFaultyReplaceApp()">Yes, it&#39;s faulty &#8212; Replace</button>
+                <button class="ghost-btn" style="padding:8px 12px" onclick="dismissFaultyWarnApp()">No, Cancel</button>
+              </div>
+            </div>
+
+            <div style="display:flex;gap:8px;margin-top:4px;flex-wrap:wrap">
+              <button class="control-btn info" style="flex:1;min-width:90px;padding:8px 10px;font-size:13px" onclick="submitAssignDeviceApp()">Assign</button>
+              <button class="ghost-btn" style="padding:8px 12px" onclick="closeAssignPanelApp()">Cancel</button>
+              <button class="ghost-btn" style="padding:8px 10px;font-size:12px" onclick="showCreateLocationFromAssignApp()">+ New Location</button>
+            </div>
+          </div>
+        </div><!-- /install-unassigned-card -->
       </section>
 
       <section class="view" id="view-config">

@@ -841,7 +841,152 @@
     } else {
       tbody.innerHTML = rows.join('');
     }
+    renderUnassignedDevicesCard();
   }
+
+  // ── Unassigned Cloud Devices card ─────────────────────────────────────────
+  let _assignDeviceId = '';
+  let _assignOldDeviceId = '';
+  let _assignLocationId = '';
+
+  function renderUnassignedDevicesCard() {
+    const card = byId('install-unassigned-card');
+    if (!card || !isSuperAdmin()) return;
+    const adminDevices = state.adminDevices || [];
+    const unassigned = adminDevices.filter(
+      (d) => !d.location_id && String(d.status || '').toUpperCase() === 'ONLINE'
+    );
+    const countEl = byId('install-unassigned-count');
+    if (countEl) countEl.textContent = String(unassigned.length);
+    card.style.display = unassigned.length > 0 ? '' : 'none';
+    const list = byId('install-unassigned-list');
+    if (!list) return;
+    if (unassigned.length === 0) {
+      list.innerHTML = '';
+      return;
+    }
+    list.innerHTML = unassigned.map((d) => {
+      const did = escapeHtml(d.device_id);
+      return `<div style="display:flex;align-items:center;justify-content:space-between;` +
+        `padding:8px 0;border-bottom:1px solid #f0f0f0">` +
+        `<span style="font-family:monospace;font-size:13px;color:#1a237e">${did}</span>` +
+        `<button class="control-btn info" style="padding:6px 14px;font-size:12px;margin:0" ` +
+        `onclick="openAssignPanelApp('${did}')">Assign Location</button>` +
+        `</div>`;
+    }).join('');
+  }
+
+  function _populateAssignLocationSelect() {
+    const sel = byId('install-assign-location-select');
+    if (!sel) return;
+    const locs = state.locations || [];
+    sel.innerHTML = '<option value="">&#8212; Select location &#8212;</option>' +
+      locs.map((l) => {
+        const name = escapeHtml(l.location_name || l.location_id);
+        const tag = l.device_id ? ' ⚠ has device' : '';
+        return `<option value="${escapeHtml(l.location_id)}">${name}${tag}</option>`;
+      }).join('');
+    const noLocs = byId('install-assign-no-locations');
+    if (noLocs) noLocs.style.display = locs.length === 0 ? '' : 'none';
+  }
+
+  function openAssignPanelApp(deviceId) {
+    _assignDeviceId = deviceId;
+    _assignOldDeviceId = '';
+    _assignLocationId = '';
+    const label = byId('install-assign-device-label');
+    if (label) label.textContent = deviceId;
+    _populateAssignLocationSelect();
+    byId('install-assign-faulty-warn').style.display = 'none';
+    byId('install-assign-new-loc-form').style.display = 'none';
+    const panel = byId('install-assign-panel');
+    if (panel) { panel.style.display = ''; panel.scrollIntoView({ behavior: 'smooth', block: 'nearest' }); }
+  }
+
+  function closeAssignPanelApp() {
+    const panel = byId('install-assign-panel');
+    if (panel) panel.style.display = 'none';
+    _assignDeviceId = '';
+    _assignOldDeviceId = '';
+    _assignLocationId = '';
+  }
+
+  function showCreateLocationFromAssignApp() {
+    const form = byId('install-assign-new-loc-form');
+    if (form) { form.style.display = ''; byId('install-assign-new-loc-name')?.focus(); }
+  }
+
+  async function createLocationFromAssignPanelApp() {
+    const name = String(byId('install-assign-new-loc-name')?.value || '').trim();
+    if (!name) { showToast('Enter a location name.', true); return; }
+    try {
+      const result = await apiRequest('/admin/locations', { method: 'POST', body: { location_name: name } });
+      showToast(`Location "${name}" created.`);
+      await refreshAppData();
+      _populateAssignLocationSelect();
+      const newId = result?.location_id || result?.id || '';
+      if (newId) { const sel = byId('install-assign-location-select'); if (sel) sel.value = newId; }
+      byId('install-assign-new-loc-form').style.display = 'none';
+      byId('install-assign-new-loc-name').value = '';
+    } catch (err) {
+      showToast(`Create location failed: ${err.message}`, true);
+    }
+  }
+
+  async function submitAssignDeviceApp() {
+    const locationId = String(byId('install-assign-location-select')?.value || '').trim();
+    if (!locationId) { showToast('Select a location first.', true); return; }
+    if (!_assignDeviceId) return;
+    const loc = (state.locations || []).find((l) => l.location_id === locationId);
+    if (loc?.device_id) {
+      // Location occupied — show faulty warning
+      _assignOldDeviceId = loc.device_id;
+      _assignLocationId = locationId;
+      const msg = byId('install-assign-faulty-msg');
+      if (msg) {
+        msg.textContent = `Device "${loc.device_id}" is already assigned to ` +
+          `"${loc.location_name || locationId}". Is it faulty and needs replacement?`;
+      }
+      byId('install-assign-faulty-warn').style.display = '';
+      return;
+    }
+    await _doAssignDeviceApp(_assignDeviceId, locationId);
+  }
+
+  async function confirmFaultyReplaceApp() {
+    if (!_assignDeviceId || !_assignLocationId) return;
+    byId('install-assign-faulty-warn').style.display = 'none';
+    try {
+      await apiRequest(
+        `/admin/locations/${encodeURIComponent(_assignLocationId)}/bind-device`,
+        { method: 'DELETE' }
+      );
+    } catch (e) { /* ignore — may already be unbound */ }
+    await _doAssignDeviceApp(_assignDeviceId, _assignLocationId);
+  }
+
+  function dismissFaultyWarnApp() {
+    byId('install-assign-faulty-warn').style.display = 'none';
+    _assignOldDeviceId = '';
+    _assignLocationId = '';
+  }
+
+  async function _doAssignDeviceApp(deviceId, locationId) {
+    try {
+      await apiRequest(
+        `/admin/locations/${encodeURIComponent(locationId)}/bind-device`,
+        { method: 'POST', body: { device_id: deviceId } }
+      );
+      const loc = (state.locations || []).find((l) => l.location_id === locationId);
+      showToast(`${deviceId} assigned to "${loc?.location_name || locationId}".`);
+      closeAssignPanelApp();
+      await refreshAdminDevicesApp();
+      await refreshAppData();
+    } catch (err) {
+      showToast(`Assign failed: ${err.message}`, true);
+    }
+  }
+  // ── end Unassigned Cloud Devices ───────────────────────────────────────────
 
   function diagDownDeviceApp(deviceId) {
     if (!deviceId) return;
@@ -5137,7 +5282,7 @@
       const devices = Array.isArray(result?.data) ? result.data : (Array.isArray(result) ? result : []);
       state.adminDevices = devices;
       renderAdminDeviceList(devices);
-      if (isSuperAdmin()) renderInstallDeviceTable();
+      if (isSuperAdmin()) { renderInstallDeviceTable(); renderUnassignedDevicesCard(); }
     } catch (error) {
       showToast(`Failed to load devices: ${error.message}`, true);
     }
