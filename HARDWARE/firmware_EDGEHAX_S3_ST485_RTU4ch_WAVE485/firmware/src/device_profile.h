@@ -131,6 +131,14 @@
 #define NVS_NS_WIFI              "fgcfg"    // wifi_ssid, wifi_pass
 #define NVS_NS_MAIN              "fgmain"   // thresholds, calibration, reboot time
 
+// ── Firmware identity fallbacks (overridden per variant below) ───────────────
+#ifndef FIRMWARE_NAME
+#define FIRMWARE_NAME  "EH-S3-EDGEHAX"
+#endif
+#ifndef FIRMWARE_DATE
+#define FIRMWARE_DATE  "unknown"
+#endif
+
 // ── ST485-C10-05-4CH + Waveshare TTL-to-RS485 (B) variant ────────────────────
 // Both buses use slave ID 1 — no collision because each bus is a dedicated
 // UART2 remap with no electrical connection between left and right.
@@ -141,4 +149,15 @@
 #define RTU_SLAVE_ID_RIGHT_BOX   1
 #undef  PRODUCT_PROFILE
 #define PRODUCT_PROFILE          "FLOODGUARD-S3-EDGEHAX-ST485-01"
+
+// Firmware display name visible in web UI and serial log.
+// Decode: EH-S3=Edgehax ESP32-S3  WSTTL=Waveshare TTL-to-RS485(B)
+//         ST485-RL=ST485 4CH RTU relay  MAX485=MAX485 for DYP RS485 extension
+//         DYP=DYP-A01 ultrasonic sensor  L1L2=Alert+Danger levels
+//         LVT=Low-Voltage-Threshold battery monitoring
+#define FIRMWARE_NAME  "EH-S3-WSTTL-ST485-RL-MAX485-DYP-L1L2-LVT"
+
+#ifndef FIRMWARE_DATE
+#define FIRMWARE_DATE  "unknown"
+#endif
 #endif

@@ -405,7 +405,9 @@ void LocalWebserver::handleStatus() {
     html += "<table>";
     html += "<tr><th>PID</th><td>" PRODUCT_PID "</td></tr>";
     html += "<tr><th>Device ID</th><td>" + String(_deviceId) + "</td></tr>";
-    html += "<tr><th>Firmware</th><td>" FIRMWARE_VERSION "</td></tr>";
+    html += "<tr><th>Firmware</th><td>" FIRMWARE_NAME "</td></tr>";
+    html += "<tr><th>Version</th><td>" FIRMWARE_VERSION "</td></tr>";
+    html += "<tr><th>Release Date</th><td>" FIRMWARE_DATE "</td></tr>";
     html += "<tr><th>Hardware</th><td>" HARDWARE_VERSION "</td></tr>";
     html += "<tr><th>Uptime</th><td>" + String(millis()/1000) + " s</td></tr>";
     html += "<tr><th>Free Heap</th><td>" + String(ESP.getFreeHeap()/1024) + " KB</td></tr>";

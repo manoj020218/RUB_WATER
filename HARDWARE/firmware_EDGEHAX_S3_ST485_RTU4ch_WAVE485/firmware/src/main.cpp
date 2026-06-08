@@ -65,7 +65,8 @@ void setup() {
     Serial.begin(115200);
     delay(300);
     Serial.println("\n=== FloodGuard Edgehax S3 Firmware ===");
-    Serial.printf("PID=%s HW=%s FW=%s\n", PRODUCT_PID, HARDWARE_VERSION, FIRMWARE_VERSION);
+    Serial.printf("FW=%s  v%s  %s\n", FIRMWARE_NAME, FIRMWARE_VERSION, FIRMWARE_DATE);
+    Serial.printf("PID=%s  HW=%s\n", PRODUCT_PID, HARDWARE_VERSION);
 
     // Relays and RF must be driven OFF before anything else
     OutputController::getInstance().begin();
