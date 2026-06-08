@@ -68,6 +68,7 @@ public:
     void setSirenFlash(bool sirenOn, bool flashOn);
     void setPump(bool on);
     bool manualSetSirenFlash(RtuBus bus, bool sirenOn, bool flashOn);
+    bool manualSetSingleRelay(RtuBus bus, uint8_t coilIdx, bool on);
     void suspendAutoControl(uint32_t durationMs = 900000UL);
 
     const RemoteBoxStatus& leftStatus()  const { return _left; }

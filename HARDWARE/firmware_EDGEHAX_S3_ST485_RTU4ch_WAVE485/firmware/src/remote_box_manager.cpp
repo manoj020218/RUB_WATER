@@ -351,6 +351,33 @@ bool RemoteBoxManager::manualSetSirenFlash(RtuBus bus, bool sirenOn, bool flashO
 #endif
 }
 
+bool RemoteBoxManager::manualSetSingleRelay(RtuBus bus, uint8_t coilIdx, bool on) {
+    suspendAutoControl();
+#ifdef ST485_RTU4CH_WAVE485_MODE
+    const uint8_t slaveId = (bus == RtuBus::LEFT) ? RTU_SLAVE_ID_LEFT_BOX : RTU_SLAVE_ID_RIGHT_BOX;
+    auto& status = (bus == RtuBus::LEFT) ? _left : _right;
+    auto& rtu = Rs485RtuMaster::getInstance();
+    const char* bn = bus == RtuBus::LEFT ? "Left" : "Right";
+    Serial.printf("[RTU] %s ST485 manual coil=%u on=%d\n", bn, (unsigned)coilIdx, on ? 1 : 0);
+    if (!rtu.writeCoil(bus, slaveId, coilIdx, on).ok) {
+        status.online = false;
+        return false;
+    }
+    uint8_t coilBuf[1] = {0};
+    rtu.readCoils(bus, slaveId, 0, 4, coilBuf, 1);
+    status.sirenOn   = (coilBuf[0] & 0x01U) != 0;
+    status.flashOn   = (coilBuf[0] & 0x02U) != 0;
+    status.voiceOn   = (coilBuf[0] & 0x04U) != 0;
+    status.boomOn    = (coilBuf[0] & 0x08U) != 0;
+    status.online    = true;
+    status.lastAckMs = millis();
+    return true;
+#else
+    (void)bus; (void)coilIdx; (void)on;
+    return false;
+#endif
+}
+
 void RemoteBoxManager::processConfirmation(RtuBus bus, RemoteBoxStatus& status,
                                             uint8_t slaveId, ConfirmState& cs)
 {

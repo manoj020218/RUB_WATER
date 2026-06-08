@@ -25,6 +25,10 @@ void ConfigManager::begin() {
     _cfg.rightRemoteEnabled = true;   // right bus GPIO38/39, auto-DE module
     Serial.println("[CFG] DEV: rightRemoteEnabled forced true (GPIO38/39 auto-DE)");
 #endif
+#ifdef ST485_RTU4CH_WAVE485_MODE
+    _cfg.rightRemoteEnabled = true;   // right bus: Waveshare + ST485-4CH always enabled
+    Serial.println("[CFG] ST485: rightRemoteEnabled forced true");
+#endif
 #ifdef GENERIC_REMOTE_RELAY_MODE
     if (!_cfg.leftRemoteEnabled && !_cfg.rightRemoteEnabled) {
         _cfg.rightRemoteEnabled = true;
@@ -157,7 +161,7 @@ void ConfigManager::loadDefaults() {
     _cfg.zeroDistanceMm          = 1200;
     _cfg.batteryAdcDividerRatio  = BATTERY_ADC_DIVIDER_RATIO;
     _cfg.batteryAdcCalibrationFactor = BATTERY_ADC_CALIBRATION;
-#ifdef GENERIC_REMOTE_RELAY_MODE
+#if defined(GENERIC_REMOTE_RELAY_MODE) || defined(ST485_RTU4CH_WAVE485_MODE)
     _cfg.leftRemoteEnabled       = false;
     _cfg.rightRemoteEnabled      = true;
 #else

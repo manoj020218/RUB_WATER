@@ -567,8 +567,120 @@ void LocalWebserver::handleDiagnostics() {
 void LocalWebserver::handleRelayTest() {
     if (!checkAuth()) { sendUnauth(); return; }
     String html = htmlHeader("Relay Test") + navBar("relay-test");
-    html += "<div class='card'><h2>Local Relay Test</h2>"
-            "<p style='color:#f57c00'>Each test runs for a short duration then turns OFF.</p>"
+
+#ifdef ST485_RTU4CH_WAVE485_MODE
+    // ── Bus selector ──────────────────────────────────────────────────────────
+    const bool busIsLeft = (_server.arg("bus") == "left");
+    const RtuBus selBus  = busIsLeft ? RtuBus::LEFT : RtuBus::RIGHT;
+    const auto& bstat    = busIsLeft ? RemoteBoxManager::getInstance().leftStatus()
+                                     : RemoteBoxManager::getInstance().rightStatus();
+    const char* busLabel = busIsLeft ? "LEFT" : "RIGHT";
+
+    html += "<div class='card'><h2>RTU Relay Test — Select Bus</h2>"
+            "<a href='/relay-test?bus=left' class='btn" + String(busIsLeft ? " btn-warn" : "") + "'>LEFT Bus</a>&nbsp;"
+            "<a href='/relay-test?bus=right' class='btn" + String(!busIsLeft ? " btn-warn" : "") + "'>RIGHT Bus</a>"
+            "</div>";
+
+    // ── Selected bus status ───────────────────────────────────────────────────
+    const char* stateStr =
+        bstat.rtuState == RtuState::ONLINE      ? "ONLINE" :
+        bstat.rtuState == RtuState::LOW_BATTERY ? "LOW_BATTERY" :
+        bstat.rtuState == RtuState::LVD_TRIPPED ? "LVD_TRIPPED" : "COMM_LOST";
+    const char* stateCss =
+        bstat.rtuState == RtuState::ONLINE      ? "ok" :
+        bstat.rtuState == RtuState::COMM_LOST   ? "err" : "warn";
+
+    html += "<div class='card'><h2>" + String(busLabel) + " Bus — ST485-4CH Status</h2><table>";
+    html += "<tr><th>State</th><td><span class='" + String(stateCss) + "'>" + String(stateStr) + "</span></td></tr>";
+    html += "<tr><th>Online</th><td>" + String(bstat.online ? "Yes" : "No") + "</td></tr>";
+    html += "<tr><th>R1 Siren</th><td>" + String(bstat.sirenOn ? "<span class='warn'>ON</span>" : "OFF") + "</td></tr>";
+    html += "<tr><th>R2 Flash</th><td>" + String(bstat.flashOn ? "<span class='warn'>ON</span>" : "OFF") + "</td></tr>";
+    html += "<tr><th>R3 Voice</th><td>" + String(bstat.voiceOn ? "<span class='warn'>ON</span>" : "OFF") + "</td></tr>";
+    html += "<tr><th>R4 Boom</th><td>"  + String(bstat.boomOn  ? "<span class='warn'>ON</span>" : "OFF") + "</td></tr>";
+    html += "</table></div>";
+
+    // ── Individual relay control ──────────────────────────────────────────────
+    const String busParam = busIsLeft ? "left" : "right";
+    html += "<div class='card'><h2>" + String(busLabel) + " Bus — Individual Relay Control</h2>";
+    html += "<p style='color:#f57c00'>Commands suspend auto-control for 15 min.</p>";
+
+    // R1
+    html += "<b>R1 — Siren</b><br>"
+            "<form style='display:inline' method='POST' action='/relay-test'>"
+            "<input type='hidden' name='action' value='rtu_on'>"
+            "<input type='hidden' name='coil' value='0'>"
+            "<input type='hidden' name='bus' value='" + busParam + "'>"
+            "<button type='submit' class='btn btn-warn'>ON</button></form> "
+            "<form style='display:inline' method='POST' action='/relay-test'>"
+            "<input type='hidden' name='action' value='rtu_off'>"
+            "<input type='hidden' name='coil' value='0'>"
+            "<input type='hidden' name='bus' value='" + busParam + "'>"
+            "<button type='submit' class='btn'>OFF</button></form><br><br>";
+    // R2
+    html += "<b>R2 — Flash</b><br>"
+            "<form style='display:inline' method='POST' action='/relay-test'>"
+            "<input type='hidden' name='action' value='rtu_on'>"
+            "<input type='hidden' name='coil' value='1'>"
+            "<input type='hidden' name='bus' value='" + busParam + "'>"
+            "<button type='submit' class='btn btn-warn'>ON</button></form> "
+            "<form style='display:inline' method='POST' action='/relay-test'>"
+            "<input type='hidden' name='action' value='rtu_off'>"
+            "<input type='hidden' name='coil' value='1'>"
+            "<input type='hidden' name='bus' value='" + busParam + "'>"
+            "<button type='submit' class='btn'>OFF</button></form><br><br>";
+    // R3
+    html += "<b>R3 — Voice</b><br>"
+            "<form style='display:inline' method='POST' action='/relay-test'>"
+            "<input type='hidden' name='action' value='rtu_on'>"
+            "<input type='hidden' name='coil' value='2'>"
+            "<input type='hidden' name='bus' value='" + busParam + "'>"
+            "<button type='submit' class='btn btn-warn'>ON</button></form> "
+            "<form style='display:inline' method='POST' action='/relay-test'>"
+            "<input type='hidden' name='action' value='rtu_off'>"
+            "<input type='hidden' name='coil' value='2'>"
+            "<input type='hidden' name='bus' value='" + busParam + "'>"
+            "<button type='submit' class='btn'>OFF</button></form><br><br>";
+    // R4
+    html += "<b>R4 — Boom Barrier</b> <span style='color:#888'>(reserved)</span><br>"
+            "<form style='display:inline' method='POST' action='/relay-test'>"
+            "<input type='hidden' name='action' value='rtu_on'>"
+            "<input type='hidden' name='coil' value='3'>"
+            "<input type='hidden' name='bus' value='" + busParam + "'>"
+            "<button type='submit' class='btn btn-danger' onclick=\"return confirm('R4 Boom: are you sure?')\">ON</button></form> "
+            "<form style='display:inline' method='POST' action='/relay-test'>"
+            "<input type='hidden' name='action' value='rtu_off'>"
+            "<input type='hidden' name='coil' value='3'>"
+            "<input type='hidden' name='bus' value='" + busParam + "'>"
+            "<button type='submit' class='btn'>OFF</button></form><br><br>";
+    // All OFF
+    html += "<form method='POST' action='/relay-test'>"
+            "<input type='hidden' name='action' value='rtu_all_off'>"
+            "<input type='hidden' name='bus' value='" + busParam + "'>"
+            "<button type='submit' class='btn btn-danger'>All Relays OFF</button></form>";
+    html += "</div>";
+
+    // ── Local S3 board outputs ────────────────────────────────────────────────
+    html += "<div class='card'><h2>Local S3 Board Outputs</h2>"
+            "<p style='color:#888'>Relays physically on the main Edgehax S3 PCB (not RTU remote box).</p>"
+            "<p style='color:#f57c00'>Page hangs briefly during test — normal.</p>"
+            "<form method='POST' action='/relay-test'>"
+            "<button type='submit' name='relay' value='siren' class='btn btn-warn'>Test Siren (3s)</button><br><br>"
+            "<button type='submit' name='relay' value='flash' class='btn btn-warn'>Test Flash (5s)</button><br><br>"
+            "<button type='submit' name='relay' value='voice' class='btn'>Test Voice (3s)</button><br><br>"
+            "<button type='submit' name='relay' value='pump' class='btn btn-danger' onclick=\"return confirm('Confirm pump test?')\">Test Pump (5s)</button><br><br>"
+            "<button type='submit' name='relay' value='rf_siren' class='btn btn-warn'>Test RF Siren (3s)</button><br><br>"
+            "<button type='submit' name='relay' value='rf_pump' class='btn btn-warn'>Test RF Pump (3s)</button>"
+            "</form></div>";
+
+#else
+    // ── Non-ST485 mode: simple local relay test ───────────────────────────────
+    const bool lastOk = _server.arg("result") == "ok";
+    const String lastRelay = _server.arg("relay");
+    html += "<div class='card'><h2>Local Relay Test</h2>";
+    if (lastOk && lastRelay.length() > 0) {
+        html += "<p style='color:#388e3c'><b>Test complete:</b> " + lastRelay + "</p>";
+    }
+    html += "<p style='color:#f57c00'>Page hangs briefly during test — normal.</p>"
             "<form method='POST' action='/relay-test'>"
             "<button type='submit' name='relay' value='siren' class='btn btn-warn'>Test Siren (3s)</button><br><br>"
             "<button type='submit' name='relay' value='flash' class='btn btn-warn'>Test Flash (5s)</button><br><br>"
@@ -577,12 +689,42 @@ void LocalWebserver::handleRelayTest() {
             "<button type='submit' name='relay' value='rf_siren' class='btn btn-warn'>Test RF Siren (3s)</button><br><br>"
             "<button type='submit' name='relay' value='rf_pump'  class='btn btn-warn'>Test RF Pump (3s)</button>"
             "</form></div>";
+#endif
+
     html += htmlFooter();
     _server.send(200, "text/html", html);
 }
 
 void LocalWebserver::handleRelayTestPost() {
     if (!checkAuth()) { sendUnauth(); return; }
+
+    const String action = _server.arg("action");
+
+#ifdef ST485_RTU4CH_WAVE485_MODE
+    if (action == "rtu_on" || action == "rtu_off" || action == "rtu_all_off") {
+        const bool busLeft = (_server.arg("bus") == "left");
+        const RtuBus bus   = busLeft ? RtuBus::LEFT : RtuBus::RIGHT;
+        const String busParam = busLeft ? "left" : "right";
+        bool ok = false;
+        if (action == "rtu_all_off") {
+            ok = RemoteBoxManager::getInstance().manualSetSirenFlash(bus, false, false);
+        } else {
+            const uint8_t coil = (uint8_t)constrain(_server.arg("coil").toInt(), 0, 3);
+            ok = RemoteBoxManager::getInstance().manualSetSingleRelay(bus, coil, action == "rtu_on");
+        }
+        if (!ok) {
+            _server.send(500, "text/html",
+                htmlHeader("Relay Test") + navBar("relay-test") +
+                "<div class='card'><p class='err'>RTU command failed. Check wiring and slave ID.</p>"
+                "<a href='/relay-test?bus=" + busParam + "'>Back</a></div>" + htmlFooter());
+            return;
+        }
+        _server.sendHeader("Location", "/relay-test?bus=" + busParam);
+        _server.send(302, "text/plain", "");
+        return;
+    }
+#endif
+
     auto& out = OutputController::getInstance();
     const String relay = _server.arg("relay");
     if      (relay == "siren")    { out.setSiren(true);          delay(3000); out.setSiren(false); }
@@ -592,17 +734,96 @@ void LocalWebserver::handleRelayTestPost() {
     else if (relay == "rf_siren") { out.setRfDangerSiren(true);  delay(3000); out.setRfDangerSiren(false); }
     else if (relay == "rf_pump")  { out.setRfSumpPump(true);     delay(3000); out.setRfSumpPump(false); }
     Serial.printf("[WEB] Relay test: %s\n", relay.c_str());
-    _server.sendHeader("Location", "/relay-test");
+#ifdef ST485_RTU4CH_WAVE485_MODE
+    _server.sendHeader("Location", "/relay-test?bus=right&result=ok&relay=" + relay);
+#else
+    _server.sendHeader("Location", "/relay-test?result=ok&relay=" + relay);
+#endif
     _server.send(302, "text/plain", "");
 }
 
 void LocalWebserver::handleRemoteTest() {
     if (!checkAuth()) { sendUnauth(); return; }
+    String html = htmlHeader("Remote Test") + navBar("remote-test");
+
+#ifdef ST485_RTU4CH_WAVE485_MODE
+    const auto& right = RemoteBoxManager::getInstance().rightStatus();
+
+    // ── Status card ─────────────────────────────────────────────────────────
+    const char* rtuStateStr =
+        right.rtuState == RtuState::ONLINE      ? "ONLINE" :
+        right.rtuState == RtuState::LOW_BATTERY ? "LOW_BATTERY" :
+        right.rtuState == RtuState::LVD_TRIPPED ? "LVD_TRIPPED" : "COMM_LOST";
+    const char* rtuStateCss =
+        right.rtuState == RtuState::ONLINE      ? "ok" :
+        right.rtuState == RtuState::COMM_LOST   ? "err" : "warn";
+
+    html += "<div class='card'><h2>ST485-4CH Right Bus Status</h2><table>";
+    html += "<tr><th>RTU State</th><td><span class='" + String(rtuStateCss) + "'>"
+            + String(rtuStateStr) + "</span></td></tr>";
+    html += "<tr><th>Online</th><td>" + String(right.online ? "Yes" : "No") + "</td></tr>";
+    html += "<tr><th>Poll Time</th><td>" + String(right.pollTimeMs) + " ms</td></tr>";
+    html += "<tr><th>R1 Siren (FC1)</th><td>" + String(right.sirenOn ? "<span class='warn'>ON</span>" : "OFF") + "</td></tr>";
+    html += "<tr><th>R2 Flash (FC1)</th><td>" + String(right.flashOn ? "<span class='warn'>ON</span>" : "OFF") + "</td></tr>";
+    html += "<tr><th>R3 Voice (FC1)</th><td>" + String(right.voiceOn ? "<span class='warn'>ON</span>" : "OFF") + "</td></tr>";
+    html += "<tr><th>R4 Boom (FC1)</th><td>" + String(right.boomOn  ? "<span class='warn'>ON</span>" : "OFF") + "</td></tr>";
+    html += "<tr><th>IN1 Siren Conf (DI)</th><td>" + String(right.di_sirenConf ? "<span class='warn'>ACTIVE</span>" : "idle") + "</td></tr>";
+    html += "<tr><th>IN2 Flash Conf (DI)</th><td>" + String(right.di_flashConf ? "<span class='warn'>ACTIVE</span>" : "idle") + "</td></tr>";
+    html += "<tr><th>IN3 Voice Conf (DI)</th><td>" + String(right.di_voiceConf ? "<span class='warn'>ACTIVE</span>" : "idle") + "</td></tr>";
+    html += "<tr><th>IN4 Batt Low (DI)</th><td>" + String(right.di_batteryLow ? "<span class='err'>LOW</span>" : "OK") + "</td></tr>";
+    html += "<tr><th>R1 Faulty</th><td>" + String(right.sirenFaulty ? "<span class='err'>FAULTY</span>" : "OK") + "</td></tr>";
+    html += "<tr><th>R2 Faulty</th><td>" + String(right.flashFaulty ? "<span class='err'>FAULTY</span>" : "OK") + "</td></tr>";
+    html += "<tr><th>R3 Faulty</th><td>" + String(right.voiceFaulty ? "<span class='err'>FAULTY</span>" : "OK") + "</td></tr>";
+    html += "</table></div>";
+
+    // ── Individual relay control ─────────────────────────────────────────────
+    html += "<div class='card'><h2>ST485-4CH Relay Manual Control</h2>";
+    html += "<p style='color:#f57c00'>Manual commands suspend auto-control for 15 minutes.</p>";
+    // R1 Siren
+    html += "<b>R1 — Siren</b><br>"
+            "<form style='display:inline' method='POST' action='/remote-test'>"
+            "<input type='hidden' name='action' value='st485_r1_on'>"
+            "<button type='submit' class='btn btn-warn'>ON</button></form> "
+            "<form style='display:inline' method='POST' action='/remote-test'>"
+            "<input type='hidden' name='action' value='st485_r1_off'>"
+            "<button type='submit' class='btn'>OFF</button></form><br><br>";
+    // R2 Flash
+    html += "<b>R2 — Flash</b><br>"
+            "<form style='display:inline' method='POST' action='/remote-test'>"
+            "<input type='hidden' name='action' value='st485_r2_on'>"
+            "<button type='submit' class='btn btn-warn'>ON</button></form> "
+            "<form style='display:inline' method='POST' action='/remote-test'>"
+            "<input type='hidden' name='action' value='st485_r2_off'>"
+            "<button type='submit' class='btn'>OFF</button></form><br><br>";
+    // R3 Voice
+    html += "<b>R3 — Voice</b><br>"
+            "<form style='display:inline' method='POST' action='/remote-test'>"
+            "<input type='hidden' name='action' value='st485_r3_on'>"
+            "<button type='submit' class='btn btn-warn'>ON</button></form> "
+            "<form style='display:inline' method='POST' action='/remote-test'>"
+            "<input type='hidden' name='action' value='st485_r3_off'>"
+            "<button type='submit' class='btn'>OFF</button></form><br><br>";
+    // R4 Boom — reserved
+    html += "<b>R4 — Boom Barrier</b> <span style='color:#888'>(reserved)</span><br>"
+            "<form style='display:inline' method='POST' action='/remote-test'>"
+            "<input type='hidden' name='action' value='st485_r4_on'>"
+            "<button type='submit' class='btn btn-danger' "
+            "onclick=\"return confirm('R4 Boom: are you sure?')\">ON</button></form> "
+            "<form style='display:inline' method='POST' action='/remote-test'>"
+            "<input type='hidden' name='action' value='st485_r4_off'>"
+            "<button type='submit' class='btn'>OFF</button></form><br><br>";
+    // All OFF
+    html += "<form method='POST' action='/remote-test'>"
+            "<input type='hidden' name='action' value='st485_all_off'>"
+            "<button type='submit' class='btn btn-danger'>All Relays OFF</button></form>";
+    html += "</div>";
+
+#else  // generic / legacy path
     const auto& left  = RemoteBoxManager::getInstance().leftStatus();
     const auto& right = RemoteBoxManager::getInstance().rightStatus();
-    const uint8_t genericAddr = g_genericRelayStatus.slaveId;
+    const uint8_t genericAddr  = g_genericRelayStatus.slaveId;
     const uint8_t genericModel = clampGenericRelayModel(g_genericRelayStatus.moduleType);
-    String html = htmlHeader("Remote Test") + navBar("remote-test");
+
     html += "<div class='card'><h2>Remote Box Status</h2><table>";
     html += "<tr><th>Box</th><th>Online</th><th>Battery</th><th>Siren</th><th>Flash</th><th>Pump</th></tr>";
 #ifdef GENERIC_REMOTE_RELAY_MODE
@@ -621,9 +842,9 @@ void LocalWebserver::handleRemoteTest() {
             + "</td><td>" + String(right.flashOn?"ON":"off") + "</td><td>" + String(right.pumpOn?"ON":"off") + "</td></tr>";
 #endif
     html += "</table></div>";
-#ifndef GENERIC_REMOTE_RELAY_MODE
+
     html += "<div class='card'><h2>Right Box Manual RTU Test</h2>";
-    html += "<p>Send immediate Modbus commands to right remote box slave ID 12.</p>";
+    html += "<p>Send immediate Modbus commands to right remote box.</p>";
     html += "<form method='POST' action='/remote-test'>"
             "<input type='hidden' name='action' value='right_siren_on'>"
             "<button type='submit' class='btn'>Right Siren ON</button></form>";
@@ -639,10 +860,9 @@ void LocalWebserver::handleRemoteTest() {
     html += "<form method='POST' action='/remote-test'>"
             "<input type='hidden' name='action' value='right_all_off'>"
             "<button type='submit' class='btn'>Right All OFF</button></form></div>";
-#endif
+
     html += "<div class='card'><h2>Generic Modbus Relay Module Test</h2>";
-    html += "<p>Use this for standard RTU relay modules on the right bus. Select the correct board type because 2-channel and 4-channel boards use different Modbus maps.</p>";
-    html += "<p>Address read/set works only when one relay module is connected on that bus.</p>";
+    html += "<p>Use this for standard RTU relay modules on the right bus.</p>";
     html += "<form method='POST' action='/remote-test'>"
             + genericRelayConfigFields(genericAddr, genericModel) +
             "<input type='hidden' name='action' value='generic_r1_on'>"
@@ -687,8 +907,8 @@ void LocalWebserver::handleRemoteTest() {
             + genericRelayConfigFields(genericAddr, genericModel) +
             "<label>New Address</label><input type='number' min='1' max='255' name='new_addr' value='" + String(genericAddr) + "'>"
             "<input type='hidden' name='action' value='generic_set_addr'>"
-            "<button type='submit' class='btn btn-warn'>Set Module Address</button></form>";
-    html += "</div>";
+            "<button type='submit' class='btn btn-warn'>Set Module Address</button></form></div>";
+
     html += "<div class='card'><h2>Generic Module Last Read</h2><table>";
     html += "<tr><th>Module Address</th><td>" + String(g_genericRelayStatus.slaveId) + "</td></tr>";
     html += "<tr><th>Module Type</th><td>" + String(genericRelayModelLabel(g_genericRelayStatus.moduleType)) + "</td></tr>";
@@ -704,6 +924,8 @@ void LocalWebserver::handleRemoteTest() {
         html += "<tr><th>Last Error</th><td>0x" + String(g_genericRelayStatus.exceptionCode, HEX) + "</td></tr>";
     }
     html += "</table></div>";
+#endif  // ST485_RTU4CH_WAVE485_MODE
+
     html += htmlFooter();
     _server.send(200, "text/html", html);
 }
@@ -713,6 +935,41 @@ void LocalWebserver::handleRemoteTestPost() {
 
     const String action = _server.arg("action");
     bool ok = false;
+
+#ifdef ST485_RTU4CH_WAVE485_MODE
+    auto& rem = RemoteBoxManager::getInstance();
+    if (action == "st485_r1_on") {
+        ok = rem.manualSetSingleRelay(RtuBus::RIGHT, 0, true);
+    } else if (action == "st485_r1_off") {
+        ok = rem.manualSetSingleRelay(RtuBus::RIGHT, 0, false);
+    } else if (action == "st485_r2_on") {
+        ok = rem.manualSetSingleRelay(RtuBus::RIGHT, 1, true);
+    } else if (action == "st485_r2_off") {
+        ok = rem.manualSetSingleRelay(RtuBus::RIGHT, 1, false);
+    } else if (action == "st485_r3_on") {
+        ok = rem.manualSetSingleRelay(RtuBus::RIGHT, 2, true);
+    } else if (action == "st485_r3_off") {
+        ok = rem.manualSetSingleRelay(RtuBus::RIGHT, 2, false);
+    } else if (action == "st485_r4_on") {
+        ok = rem.manualSetSingleRelay(RtuBus::RIGHT, 3, true);
+    } else if (action == "st485_r4_off") {
+        ok = rem.manualSetSingleRelay(RtuBus::RIGHT, 3, false);
+    } else if (action == "st485_all_off") {
+        ok = rem.manualSetSirenFlash(RtuBus::RIGHT, false, false);
+    }
+    if (!ok) {
+        _server.send(500, "text/html",
+            htmlHeader("Remote Test") + navBar("remote-test") +
+            "<div class='card'><p class='err'>ST485 RTU command failed. "
+            "Check right bus wiring (GPIO39 TX → Waveshare RXD, GPIO38 RX → Waveshare TXD), "
+            "slave ID 1, baud 9600.</p>"
+            "<a href='/remote-test'>Back</a></div>" + htmlFooter());
+        return;
+    }
+    _server.sendHeader("Location", "/remote-test");
+    _server.send(302, "text/plain", "");
+    return;
+#endif  // ST485_RTU4CH_WAVE485_MODE
 
     if (action == "right_siren_on") {
         ok = RemoteBoxManager::getInstance().manualSetSirenFlash(RtuBus::RIGHT, true, false);
@@ -920,6 +1177,11 @@ void LocalWebserver::handleCalibrationPost() {
 void LocalWebserver::handleFirmwareUpload() {
     if (!checkAuth()) { sendUnauth(); return; }
     String html = htmlHeader("Firmware Upload") + navBar("firmware-upload");
+    html += "<div class='card'><h2>Current Firmware</h2><table>";
+    html += "<tr><th>Name</th><td>" FIRMWARE_NAME "</td></tr>";
+    html += "<tr><th>Version</th><td>" FIRMWARE_VERSION "</td></tr>";
+    html += "<tr><th>Release Date</th><td>" FIRMWARE_DATE "</td></tr>";
+    html += "</table></div>";
     html += "<div class='card'><h2>Local OTA Firmware Upload</h2>";
     if (!OtaManager::getInstance().isSafeToOta()) {
         html += "<p class='err'>OTA is blocked while alert/danger/pump is active.</p>";
