@@ -60,7 +60,7 @@ void BleProvisioning::stop() {
 void BleProvisioning::buildName() {
     uint8_t mac[6] = {};
     esp_read_mac(mac, ESP_MAC_WIFI_STA);
-    snprintf(_bleName, sizeof(_bleName), "FgMain%02X%02X%02X", mac[3], mac[4], mac[5]);
+    snprintf(_bleName, sizeof(_bleName), "JXFG%02X%02X%02X", mac[3], mac[4], mac[5]);
 }
 
 void BleProvisioning::startAdvertising() {
