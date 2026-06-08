@@ -2,7 +2,7 @@
 
 Document purpose: this file is no longer only a basic APK to-do list. It is now the current app delivery status plus the integration contract between APK, firmware, MQTT, and VPS so future changes do not break the working system.
 
-Last updated: 2026-06-06
+Last updated: 2026-06-08
 Current signed release target: `1.0.1`
 Current Android build code: `2`
 Primary package id: `in.jenix.floodguard`
@@ -72,9 +72,9 @@ The original file was only a high-level target list. The actual app now includes
 ```text
 FloodGuard APK
   |
-  | 1) BLE during first-time install
+  | 1) BLE during first-time install (JXFG prefix, service 0000ff00...)
   v
-ESP32-S3 Firmware
+ESP32-S3 Firmware (EH-S3-WSTTL-ST485-RL-MAX485-DYP-L1L2-LVT v0.2.0)
   |
   | 2) Wi-Fi + MQTT primary uplink
   v
@@ -104,22 +104,43 @@ Important architectural rule:
 |---|---|---|
 | BLE service UUID | `0000ff00-0000-1000-8000-00805f9b34fb` | Yes |
 | BLE characteristic UUID | `0000ff01-0000-1000-8000-00805f9b34fb` | Yes |
-| BLE scan name prefix expected by app | `JXFG` in provisioning standard, app code scans FloodGuard BLE devices by configured prefix logic | Keep aligned between firmware and app |
+| BLE device name prefix | `JXFG` + last 6 hex MAC digits (e.g. `JXFGBAF968`) | Yes — firmware fixed 2026-06-08 |
 | Core BLE command | `hello` | Yes |
 | Wi-Fi scan command | `scan_wifi` | Yes |
-| Provision command | `set_wifi` / `provision_wifi` / short alias `w` | Yes |
-| Voltage config commands | `voltage_config_get`, `voltage_config_set` and ADC aliases | Yes |
+| Provision command | `set_wifi` / short alias `w` | Yes |
+| Voltage config commands | `voltage_config_get`, `voltage_config_set` | Yes |
 
-### 4.2 Local LAN / Device HTTP Contract
+**Note:** Before 2026-06-08 the BLE name was `FgMain{MAC}`. It is now `JXFG{MAC}`.
+If the app scans by prefix, confirm the app filter is set to `JXFG` (not `FgMain`).
 
-| Purpose | Firmware Route / Contract | APK Usage |
+### 4.2 Provisioning Flow (Production Device)
+
+The production firmware (`floodguard_edgehax_s3_st485_wave485` env) contains **no hardcoded WiFi**.
+First-boot provisioning sequence:
+
+```
+1. Device powers on → no WiFi in NVS
+2. BLE starts advertising as JXFG{MAC}
+3. App scans BLE → finds device → user enters WiFi credentials
+4. App sends {"cmd":"set_wifi","ssid":"...","password":"..."} over BLE
+5. Firmware connects WiFi → saves to NVS → replies with IP
+6. App gets IP → BLE can stop → device runs full stack
+7. mDNS: http://fg-main-edgehax-01.local/  (maintenance WebUI)
+```
+
+AP fallback (CONFIG button held 5s): opens `JXFG{MAC}` AP for 15 min for local WebUI access.
+Factory reset (CONFIG button held 5s at power-on): clears WiFi NVS → reboots to BLE provisioning.
+
+### 4.3 Local LAN / Device HTTP Contract
+
+| Purpose | Firmware Route | APK Usage |
 |---|---|---|
 | Device live status | `GET /status` | App checks whether local device is reachable and cloud-connected |
-| Cloud provision/local cloud config | `GET /cloud?pin=...` and `POST /cloud?pin=...` | App saves VPS URL, MQTT host, provision key locally when needed |
 | Local admin PIN | Default `654321` | App shows local PIN field in config screen |
-| mDNS/local mode | Device serves local web/config endpoints after Wi-Fi join | App uses local reachability for install and config fallback |
+| mDNS hostname | `fg-main-edgehax-01.local` | App uses local reachability for install and config fallback |
+| Local WebUI | `http://fg-main-edgehax-01.local/` | All maintenance pages (config, relay test, OTA upload) |
 
-### 4.3 What Firmware Changes Must Not Break
+### 4.4 What Firmware Changes Must Not Break
 
 | If Firmware Changes | Keep This Stable |
 |---|---|
@@ -127,26 +148,74 @@ Important architectural rule:
 | Provisioning logic changes | App must still be able to request Wi-Fi scan and send Wi-Fi credentials |
 | Local web server changes | `/status` and `/cloud` behavior must remain available or APK must be updated together |
 | Config payload shape changes | Device config response and ACK path must stay aligned with APK config screen |
-| Device naming changes | BLE/device ID mapping must still allow installers to identify and bind correct device |
+| BLE name prefix changes | Update app BLE scan filter to match — currently `JXFG` |
 
-## 5. Firmware to MQTT / VPS Connection Contract
+## 5. Active Firmware — Production Delivery
 
-### 5.1 MQTT Topic Contract
+### 5.1 Firmware Identity
 
-The current firmware code uses `rub/{deviceId}/...` topics. This is the active contract in `HARDWARE/firmware/src/mqtt_client.cpp` and in the VPS MQTT bridge.
+| Field | Value |
+|---|---|
+| Firmware name | `EH-S3-WSTTL-ST485-RL-MAX485-DYP-L1L2-LVT` |
+| Version | `0.2.0` |
+| Release date | `2026-06-08` |
+| PlatformIO env (prod) | `floodguard_edgehax_s3_st485_wave485` |
+| PlatformIO env (bench) | `floodguard_edgehax_s3_st485_wave485_dev` — **never flash to field device** |
+| Hardware | Edgehax ESP32-S3-WROOM-1 N16R8 |
+| Hardware version | `EH-S3-02` |
+
+### 5.2 Hardware Architecture
+
+| Component | Detail |
+|---|---|
+| MCU | ESP32-S3-WROOM-1 N16R8 (16 MB flash, 8 MB PSRAM) |
+| Flood sensor | DYP-A01 ultrasonic (TTL direct, GPIO21 RX, GPIO20 TX) |
+| RS485 interface | Waveshare TTL-to-RS485 (B) — auto-direction, no DE/RE |
+| Remote relay | ST485-C10-05-4CH Modbus RTU (R1=siren, R2=flash, R3=voice, R4=boom) |
+| RS485 bus (right) | GPIO39 TX → Waveshare RXD, GPIO38 RX → Waveshare TXD |
+| RS485 slave ID | 1 (both buses) |
+| Baud rate | 9600, 8N1 |
+| Relay confirmation | NC feedback via DI1–DI3 (IN1–IN3), LM393 via DI4 (IN4) |
+
+### 5.3 Provisioning Method (Production)
+
+- **WiFi:** BLE provisioning only — no hardcoded credentials in production build
+- **BLE name:** `JXFG{6-hex-MAC}` (e.g. `JXFGBAF968`)
+- **BLE service:** `0000ff00-0000-1000-8000-00805f9b34fb`
+- **BLE char:** `0000ff01-0000-1000-8000-00805f9b34fb`
+- **AP fallback:** `JXFG{6-hex-MAC}` maintenance AP (CONFIG button 5s)
+- **Factory reset:** CONFIG button held at power-on 5s → clears WiFi NVS → BLE mode
+
+### 5.4 Local WebUI Pages (ST485 mode)
+
+| Route | Purpose |
+|---|---|
+| `/status` | Live sensor, FSM, battery, right bus ST485 status |
+| `/config` | Flood thresholds, pump config, reboot schedule |
+| `/calibration` | Sensor zero, battery ADC calibration |
+| `/relay-test` | LEFT/RIGHT bus selector → R1–R4 individual ON/OFF + local S3 relay test |
+| `/remote-test` | Right bus ST485 4CH status + R1–R4 manual control |
+| `/diagnostics` | Heap, PSRAM, WiFi RSSI, SD |
+| `/firmware-upload` | Local OTA — shows current name/version/date, blocked during alarm/pump |
+| `/reboot` | Reboot device |
+| `/factory-reset-confirm` | Erase WiFi, reboot to BLE mode |
+
+## 6. Firmware to MQTT / VPS Connection Contract
+
+### 6.1 MQTT Topic Contract
 
 | Direction | Topic | Purpose |
 |---|---|---|
-| Firmware -> MQTT | `rub/{deviceId}/telemetry` | Live telemetry payload |
-| Firmware -> MQTT | `rub/{deviceId}/event` | State/event payloads |
-| Firmware -> MQTT | `rub/{deviceId}/heartbeat` | Online heartbeat |
-| Firmware -> MQTT | `rub/{deviceId}/command_ack` | Command acknowledgement |
-| Firmware -> MQTT | `rub/{deviceId}/config_ack` | Config acknowledgement |
-| VPS -> Firmware | `rub/{deviceId}/command` | Remote commands |
-| VPS -> Firmware | `rub/{deviceId}/config` | Remote config push |
-| VPS -> Firmware | `rub/{deviceId}/ota` | OTA commands |
+| Firmware → MQTT | `rub/{deviceId}/telemetry` | Live telemetry payload |
+| Firmware → MQTT | `rub/{deviceId}/event` | State/event payloads |
+| Firmware → MQTT | `rub/{deviceId}/heartbeat` | Online heartbeat |
+| Firmware → MQTT | `rub/{deviceId}/command_ack` | Command acknowledgement |
+| Firmware → MQTT | `rub/{deviceId}/config_ack` | Config acknowledgement |
+| VPS → Firmware | `rub/{deviceId}/command` | Remote commands |
+| VPS → Firmware | `rub/{deviceId}/config` | Remote config push |
+| VPS → Firmware | `rub/{deviceId}/ota` | OTA commands |
 
-### 5.2 MQTT Parsing Rule in VPS
+### 6.2 MQTT Parsing Rule in VPS
 
 | Item | Current Rule |
 |---|---|
@@ -155,9 +224,7 @@ The current firmware code uses `rub/{deviceId}/...` topics. This is the active c
 | Topic base | `rub` |
 | VPS subscriptions | `rub/+/telemetry`, `rub/+/event`, `rub/+/heartbeat`, `rub/+/command_ack` |
 
-If MQTT base or topic shape changes, VPS backend and firmware must be updated together. The APK itself does not consume MQTT directly, but app live data depends on these topics reaching VPS correctly.
-
-### 5.3 HTTP Fallback Contract Used by Firmware
+### 6.3 HTTP Fallback Contract Used by Firmware
 
 | Firmware Fallback API | Purpose |
 |---|---|
@@ -169,11 +236,9 @@ If MQTT base or topic shape changes, VPS backend and firmware must be updated to
 | `GET /api/device/:deviceId/firmware/latest` | Firmware metadata |
 | `POST /api/device/register` | Provision/register device |
 
-## 6. APK to VPS API Contract
+## 7. APK to VPS API Contract
 
-The APK runtime app primarily depends on VPS HTTP APIs. These are the main active contracts that must remain stable or be versioned carefully.
-
-### 6.1 Auth and Session APIs
+### 7.1 Auth and Session APIs
 
 | API | Used For |
 |---|---|
@@ -185,7 +250,7 @@ The APK runtime app primarily depends on VPS HTTP APIs. These are the main activ
 | `POST /api/auth/reset-password` | Admin reset password |
 | `PUT /api/auth/fcm-token` | Push token registration |
 
-### 6.2 Core App Data APIs
+### 7.2 Core App Data APIs
 
 | API | Used For |
 |---|---|
@@ -194,7 +259,7 @@ The APK runtime app primarily depends on VPS HTTP APIs. These are the main activ
 | `GET /api/incidents` | Incident list/state |
 | `GET /api/audit-logs` | Audit timeline |
 
-### 6.3 Command APIs
+### 7.3 Command APIs
 
 | API | Used For |
 |---|---|
@@ -202,7 +267,7 @@ The APK runtime app primarily depends on VPS HTTP APIs. These are the main activ
 | `POST /api/commands/dry-run` | Dry-run trigger |
 | `POST /api/commands/force-clear` | Manual incident force clear |
 
-### 6.4 Device Provision / Config / Lifecycle APIs
+### 7.4 Device Provision / Config / Lifecycle APIs
 
 | API | Used For |
 |---|---|
@@ -216,7 +281,7 @@ The APK runtime app primarily depends on VPS HTTP APIs. These are the main activ
 | `PATCH /api/devices/:deviceId/lifecycle` | Lifecycle transition |
 | `GET /api/devices/:deviceId/lifecycle/history` | Lifecycle history |
 
-### 6.5 Admin / Complaints / Reports / Vendor APIs
+### 7.5 Admin / Complaints / Reports / Vendor APIs
 
 | API Group | Used For |
 |---|---|
@@ -225,9 +290,9 @@ The APK runtime app primarily depends on VPS HTTP APIs. These are the main activ
 | `/api/reports/...` | Reports and exports |
 | `/api/vendor-mgmt/...` | Vendor management |
 
-## 7. APK Release Tracking and Update Pipeline
+## 8. APK Release Tracking and Update Pipeline
 
-### 7.1 Current Release Tracking Contract
+### 8.1 Current Release Tracking Contract
 
 | Item | Current Value |
 |---|---|
@@ -237,7 +302,7 @@ The APK runtime app primarily depends on VPS HTTP APIs. These are the main activ
 | Public manifest API | `GET /api/app-release/mobile` |
 | Public APK download base | `/downloads/floodguard/android/` |
 
-### 7.2 VPS Update Channel Contract
+### 8.2 VPS Update Channel Contract
 
 | Component | Current Contract |
 |---|---|
@@ -246,7 +311,7 @@ The APK runtime app primarily depends on VPS HTTP APIs. These are the main activ
 | APK hosting path | `VPS/backend/downloads/floodguard/android/` |
 | Current hosted APK name | `FloodGuard-v1.0.1-release.apk` |
 
-### 7.3 Release Process to Follow
+### 8.3 Release Process to Follow
 
 | Step | Action |
 |---|---|
@@ -258,53 +323,58 @@ The APK runtime app primarily depends on VPS HTTP APIs. These are the main activ
 | 6 | Verify `https://api.floodguard.iotsoft.in/api/app-release/mobile` |
 | 7 | Verify public APK URL returns `200` |
 
-## 8. Compatibility Rules for Future Engineers
+## 9. Compatibility Rules for Future Engineers
 
-### 8.1 If You Change Firmware
+### 9.1 If You Change Firmware
 
 - Keep BLE UUIDs and provisioning JSON commands aligned with APK install flow.
+- BLE device name prefix is `JXFG` — app scan filter must match.
+- Production build (`floodguard_edgehax_s3_st485_wave485`) must never have hardcoded WiFi.
 - Keep `/status` and `/cloud` routes stable unless APK is updated together.
 - Keep MQTT topic base `rub/{deviceId}/...` stable unless VPS is changed together.
 - Keep command ACK and config ACK behavior stable.
+- Dev bench env (`_dev`) has hardcoded WiFi — never flash to field device.
 
-### 8.2 If You Change MQTT
+### 9.2 If You Change MQTT
 
 - Do not change topic segment count or base from `rub` without updating firmware and VPS together.
 - APK runtime does not use MQTT directly, but live dashboard and command visibility depend on MQTT data reaching VPS.
 - If MQTT auth model changes, firmware provisioning/profile generation must also change.
 
-### 8.3 If You Change VPS
+### 9.3 If You Change VPS
 
 - Preserve auth APIs, dashboard APIs, config APIs, and app-release manifest API.
 - Preserve device fallback APIs used by firmware.
 - Preserve app-release manifest shape or ship APK changes together.
 - Preserve FCM token update and notification path if push should continue working.
 
-## 9. Remaining / Optional Work
+## 10. Remaining / Optional Work
 
 | Item | Priority | Notes |
 |---|---|---|
 | Play Store publishing flow | Medium | Current distribution is VPS APK |
 | Forced update policy | Medium | Backend manifest already supports `forceUpdate` field |
 | Automatic APK install helper flow | Low | Current app opens download URL; manual install still expected |
-| Deeper release notes/history screen | Low | Current app shows latest version and notes only |
-| BLE naming standard cleanup | Medium | Firmware and provisioning docs should stay aligned on final name convention |
+| Internet-offline banner in WebUI | Low | Documented in PROVISIONING.md §4; not yet implemented in firmware |
+| BLE NOTIFY characteristic | Low | App polls; push events not implemented yet — see PROVISIONING.md §6.1 |
+| IN4 LM393 hardware (battery low) | Hardware | LM393 circuit not yet installed; IN4 floating = always reports batt_low |
+| R4 boom barrier activation | Future | R4 always OFF in firmware; one-line enable + OTA when hardware arrives |
 
-## 10. Reference Files
+## 11. Reference Files
 
 | File | Why It Matters |
 |---|---|
 | `APK/www/app.js` | Main app runtime logic |
 | `APK/www/index.html` | Screen structure |
 | `APK/android/app/build.gradle` | Android version code and version name |
-| `HARDWARE/firmware/src/mqtt_client.cpp` | MQTT topic contract |
-| `HARDWARE/firmware/src/http_fallback.cpp` | Firmware fallback APIs |
-| `HARDWARE/firmware/src/ble_provisioning.cpp` | BLE provisioning contract |
-| `HARDWARE/firmware/src/local_config_server.cpp` | Local `/status` and `/cloud` routes |
+| `HARDWARE/firmware_EDGEHAX_S3_ST485_RTU4ch_WAVE485/firmware/src/ble_provisioning.cpp` | BLE provisioning contract (JXFG prefix) |
+| `HARDWARE/firmware_EDGEHAX_S3_ST485_RTU4ch_WAVE485/firmware/src/mqtt_manager.cpp` | MQTT topic contract |
+| `HARDWARE/firmware_EDGEHAX_S3_ST485_RTU4ch_WAVE485/firmware/src/http_fallback.cpp` | Firmware fallback APIs |
+| `HARDWARE/firmware_EDGEHAX_S3_ST485_RTU4ch_WAVE485/firmware/src/local_webserver.cpp` | Local WebUI routes |
+| `HARDWARE/firmware_EDGEHAX_S3_ST485_RTU4ch_WAVE485/firmware/platformio.ini` | Build environments (prod vs dev bench) |
+| `HARDWARE/firmware_EDGEHAX_S3_ST485_RTU4ch_WAVE485/firmware/FIRMWARE_NOTES.md` | Full hardware/software design reference |
+| `HARDWARE/PROVISIONING.md` | Provisioning standard (BLE flow, naming, AP fallback) |
 | `VPS/backend/src/routes/index.js` | Main API mount map |
 | `VPS/backend/src/routes/deviceRoutes.js` | Firmware-facing routes |
-| `VPS/backend/src/routes/deviceConfigRoutes.js` | App config/lifecycle routes |
 | `VPS/backend/src/mqtt/mqttBridge.js` | MQTT subscription contract |
-| `VPS/backend/src/mqtt/topicParser.js` | Topic shape contract |
 | `VPS/backend/app-release.json` | APK release manifest |
-
