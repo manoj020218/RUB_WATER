@@ -3,7 +3,7 @@
 // ── Product identity ─────────────────────────────────────────────────────────
 // CANDIDATE mapping — becomes FLOODGUARD-S3-EDGEHAX-N16R8-02 after full bench pass
 #define PRODUCT_PID              "FLOODGUARD_MAIN_S3_EDGEHAX"
-#define PRODUCT_PROFILE          "FLOODGUARD-S3-EDGEHAX-01"
+#define PRODUCT_PROFILE          "FLOODGUARD-S3-EH-01"
 
 #ifndef FIRMWARE_VERSION
 #define FIRMWARE_VERSION         "0.1.0"
@@ -12,7 +12,7 @@
 #define HARDWARE_VERSION         "EH-S3-01"
 #endif
 #ifndef DEVICE_ID_SEED
-#define DEVICE_ID_SEED           "FG-MAIN-EDGEHAX-01"
+#define DEVICE_ID_SEED           "FG-MAIN-EH-01"
 #endif
 #ifndef DEVICE_TOKEN_SEED
 #define DEVICE_TOKEN_SEED        "change_me_before_flash"
@@ -148,7 +148,7 @@
 #define RTU_SLAVE_ID_LEFT_BOX    1
 #define RTU_SLAVE_ID_RIGHT_BOX   1
 #undef  PRODUCT_PROFILE
-#define PRODUCT_PROFILE          "FLOODGUARD-S3-EDGEHAX-ST485-01"
+#define PRODUCT_PROFILE          "FLOODGUARD-S3-EH-ST485-01"
 
 // Firmware display name visible in web UI and serial log.
 // Decode: EH-S3=Edgehax ESP32-S3  WSTTL=Waveshare TTL-to-RS485(B)
