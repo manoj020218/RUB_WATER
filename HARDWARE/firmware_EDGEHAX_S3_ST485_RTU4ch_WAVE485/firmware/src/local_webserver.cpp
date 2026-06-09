@@ -453,12 +453,14 @@ void LocalWebserver::handleStatus() {
     html += "<tr><th>RF Siren</th><td>" + String(out.rfDangerSirenOn ? "<span class='err'>ON</span>" : "off") + "</td></tr>";
     html += "</table></div>";
 
-    html += "<div class='card'><h2>Battery</h2><table>";
+    html += "<div class='card'><h2>Battery (INA219)</h2><table>";
     html += "<tr><th>Voltage</th><td>" + String(vmon.voltage, 2) + " V</td></tr>";
-    html += "<tr><th>ADC Raw</th><td>" + String(vmon.adcRaw) + "</td></tr>";
+    html += "<tr><th>Current</th><td>" + String(vmon.currentMa, 1) + " mA</td></tr>";
+    html += "<tr><th>Power</th><td>" + String(vmon.powerMw, 0) + " mW</td></tr>";
     html += "<tr><th>Status</th><td>" + String(vmon.criticalBattery ? "<span class='err'>CRITICAL</span>"
             : vmon.lowBattery ? "<span class='badge' style='background:#f57c00'>LOW</span>"
             : "<span class='ok'>OK</span>") + "</td></tr>";
+    if (!vmon.ready) html += "<tr><td colspan='2'><span class='err'>INA219 not detected</span></td></tr>";
     html += "</table></div>";
 
     html += "<div class='card'><h2>Remote Boxes</h2><table>";
@@ -1139,13 +1141,11 @@ void LocalWebserver::handleCalibration() {
             "<input type='hidden' name='action' value='zero'>"
             "<button type='submit' class='btn'>Set Current Reading as Ground Zero</button></form>";
 
-    html += "<h2>Battery ADC Calibration</h2>";
-    html += "<p>Reported voltage: <b>" + String(vmon.voltage, 3) + " V</b></p>";
-    html += "<form method='POST' action='/calibration'>"
-            "<label>Actual Multimeter Voltage (V)</label>"
-            "<input type='number' step='0.01' name='actual_v' placeholder='e.g. 12.56'>"
-            "<input type='hidden' name='action' value='batt'>"
-            "<button type='submit' class='btn'>Apply Battery Calibration</button></form></div>";
+    html += "<h2>Battery Monitor (INA219)</h2>";
+    html += "<p>Voltage: <b>" + String(vmon.voltage, 3) + " V</b> &nbsp; "
+            "Current: <b>" + String(vmon.currentMa, 1) + " mA</b> &nbsp; "
+            "Power: <b>" + String(vmon.powerMw, 0) + " mW</b></p>";
+    html += "<p class='hint'>INA219 is self-calibrated — no manual calibration required.</p></div>";
     html += htmlFooter();
     _server.send(200, "text/html", html);
 }
@@ -1161,18 +1161,6 @@ void LocalWebserver::handleCalibrationPost() {
         if (ok) {
             const uint16_t z = (uint16_t)DypSensor::getInstance().zeroDistanceMm();
             ConfigManager::getInstance().setZeroDistance(z, reason);
-        }
-    } else if (action == "batt") {
-        const float actual = _server.arg("actual_v").toFloat();
-        const float reported = VoltageMonitor::getInstance().snapshot().voltage;
-        if (reported > 0.5f && actual > 5.0f && actual < 20.0f) {
-            const float newCal = (VoltageMonitor::getInstance().calibrationFactor() * actual) / reported;
-            ok = ConfigManager::getInstance().setBatteryCalibration(
-                VoltageMonitor::getInstance().dividerRatio(), newCal, reason);
-            if (ok) VoltageMonitor::getInstance().setCalibration(
-                VoltageMonitor::getInstance().dividerRatio(), newCal);
-        } else {
-            reason = "invalid_actual_voltage";
         }
     }
 

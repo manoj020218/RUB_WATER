@@ -1,15 +1,17 @@
 #include "voltage_monitor.h"
 
-#include "config_manager.h"
+#include <Wire.h>
+#include <Adafruit_INA219.h>
+
 #include "device_profile.h"
 
 namespace {
-constexpr uint32_t kReadIntervalMs = 10000UL;  // read every 10 s
-constexpr float kAdcMaxVoltage     = 3.3f;
-constexpr uint16_t kAdcMax         = 4095;
-constexpr float kLowBattThreshold  = 11.5f;
-constexpr float kCritThreshold     = 10.5f;
+constexpr uint32_t kReadIntervalMs  = 10000UL;
+constexpr float    kLowBattV        = 11.5f;
+constexpr float    kCritBattV       = 10.5f;
 }
+
+static Adafruit_INA219 sIna(INA219_I2C_ADDR);
 
 VoltageMonitor& VoltageMonitor::getInstance() {
     static VoltageMonitor inst;
@@ -17,37 +19,36 @@ VoltageMonitor& VoltageMonitor::getInstance() {
 }
 
 void VoltageMonitor::begin() {
-    const auto& cfg = ConfigManager::getInstance().get();
-    _divider   = cfg.batteryAdcDividerRatio;
-    _calFactor = cfg.batteryAdcCalibrationFactor;
-    analogReadResolution(12);
-    analogSetAttenuation(ADC_11db);
-    _snap.adcReady = true;
-    Serial.printf("[VMON] ADC=GPIO%d divider=%.2f cal=%.3f\n",
-                  PIN_MAIN_BATTERY_ADC, _divider, _calFactor);
+    Wire.begin(PIN_INA219_SDA, PIN_INA219_SCL);
+    if (!sIna.begin(&Wire)) {
+        Serial.println("[VMON] INA219 not found — check SDA=GPIO47 SCL=GPIO46 wiring");
+        _snap.ready = false;
+        return;
+    }
+    // 32 V bus range, ±2 A / 0.1 Ω shunt → ±320 mV shunt range, 0.1 mA resolution.
+    // Covers 12 V lead-acid (max ~14.4 V charge) and 1 A max load comfortably.
+    sIna.setCalibration_32V_2A();
+    _snap.ready = true;
+    Serial.printf("[VMON] INA219 OK — SDA=GPIO%d SCL=GPIO%d addr=0x%02X  32V/2A cal\n",
+                  PIN_INA219_SDA, PIN_INA219_SCL, INA219_I2C_ADDR);
 }
 
 void VoltageMonitor::loop() {
+    if (!_snap.ready) return;
     const uint32_t now = millis();
     if ((now - _lastReadMs) < kReadIntervalMs) return;
     _lastReadMs = now;
 
-    uint32_t sum = 0;
-    for (uint8_t i = 0; i < BATTERY_ADC_SAMPLES; i++) {
-        sum += analogRead(PIN_MAIN_BATTERY_ADC);
-    }
-    const uint16_t raw = (uint16_t)(sum / BATTERY_ADC_SAMPLES);
-    const float adcV   = (raw / (float)kAdcMax) * kAdcMaxVoltage;
-    const float v      = adcV * _divider * _calFactor;
+    // Bus voltage = load-side terminal; add shunt drop for true battery voltage.
+    const float busV   = sIna.getBusVoltage_V();
+    const float shuntV = sIna.getShuntVoltage_mV() / 1000.0f;
+    const float v      = busV + shuntV;
+    const float mA     = sIna.getCurrent_mA();
+    const float mW     = sIna.getPower_mW();
 
-    _snap.adcRaw         = raw;
-    _snap.voltage        = v;
-    _snap.adcReady       = true;
-    _snap.lowBattery     = v < kLowBattThreshold && v > 1.0f;
-    _snap.criticalBattery= v < kCritThreshold && v > 1.0f;
-}
-
-void VoltageMonitor::setCalibration(float divider, float calFactor) {
-    _divider   = divider;
-    _calFactor = calFactor;
+    _snap.voltage         = v;
+    _snap.currentMa       = mA;
+    _snap.powerMw         = mW;
+    _snap.lowBattery      = v < kLowBattV  && v > 1.0f;
+    _snap.criticalBattery = v < kCritBattV && v > 1.0f;
 }

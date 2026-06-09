@@ -88,6 +88,7 @@ void TelemetryManager::buildTelemetryJson(char* out, size_t outSize) const {
 
     const auto& vmon = VoltageMonitor::getInstance().snapshot();
     doc["battery_v"]    = serialized(String(vmon.voltage, 2));
+    doc["battery_ma"]   = serialized(String(vmon.currentMa, 0));
     doc["batt_low"]     = vmon.lowBattery;
 
     const auto& left  = RemoteBoxManager::getInstance().leftStatus();

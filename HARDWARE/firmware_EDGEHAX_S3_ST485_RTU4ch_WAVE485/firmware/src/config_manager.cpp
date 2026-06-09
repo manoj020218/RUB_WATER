@@ -6,7 +6,7 @@
 #include "device_profile.h"
 
 namespace {
-constexpr uint32_t kConfigMagic = 0xFEED0002UL;
+constexpr uint32_t kConfigMagic = 0xFEED0003UL;  // bumped: removed ADC battery fields
 }
 
 ConfigManager& ConfigManager::getInstance() {
@@ -82,6 +82,7 @@ bool ConfigManager::applyJson(const char* json, String& reason) {
     OPT_U16(alarmClearDelaySeconds, "alarm_clear_delay_seconds")
     OPT_U16(pumpLowStopDelaySeconds,"pump_low_level_stop_delay_seconds")
     OPT_U16(pumpMaxRuntimeMinutes,  "pump_max_runtime_minutes")
+    // battery_adc_divider_ratio / battery_adc_calibration_factor removed — INA219 used
     OPT_BOOL(leftRemoteEnabled,     "left_remote_enabled")
     OPT_BOOL(rightRemoteEnabled,    "right_remote_enabled")
     OPT_BOOL(dailyRebootEnabled,    "daily_reboot_enabled")
@@ -112,21 +113,6 @@ bool ConfigManager::setZeroDistance(uint16_t mm, String& reason) {
     return true;
 }
 
-bool ConfigManager::setBatteryCalibration(float divider, float factor, String& reason) {
-    if (divider < 1.0f || divider > 20.0f) {
-        reason = "divider_ratio_out_of_range_1_20";
-        return false;
-    }
-    if (factor < 0.5f || factor > 2.0f) {
-        reason = "calibration_factor_out_of_range_0.5_2.0";
-        return false;
-    }
-    _cfg.batteryAdcDividerRatio = divider;
-    _cfg.batteryAdcCalibrationFactor = factor;
-    save();
-    return true;
-}
-
 bool ConfigManager::buildJson(char* out, size_t outSize) const {
     StaticJsonDocument<512> doc;
     doc["alert_level_mm"]                    = _cfg.alertLevelMm;
@@ -139,8 +125,6 @@ bool ConfigManager::buildJson(char* out, size_t outSize) const {
     doc["pump_low_level_stop_delay_seconds"] = _cfg.pumpLowStopDelaySeconds;
     doc["pump_max_runtime_minutes"]          = _cfg.pumpMaxRuntimeMinutes;
     doc["zero_distance_mm"]                  = _cfg.zeroDistanceMm;
-    doc["battery_adc_divider_ratio"]         = _cfg.batteryAdcDividerRatio;
-    doc["battery_adc_calibration_factor"]    = _cfg.batteryAdcCalibrationFactor;
     doc["left_remote_enabled"]               = _cfg.leftRemoteEnabled;
     doc["right_remote_enabled"]              = _cfg.rightRemoteEnabled;
     doc["daily_reboot_enabled"]              = _cfg.dailyRebootEnabled;
@@ -160,8 +144,6 @@ void ConfigManager::loadDefaults() {
     _cfg.pumpLowStopDelaySeconds = 30;
     _cfg.pumpMaxRuntimeMinutes   = 30;
     _cfg.zeroDistanceMm          = 1200;
-    _cfg.batteryAdcDividerRatio  = BATTERY_ADC_DIVIDER_RATIO;
-    _cfg.batteryAdcCalibrationFactor = BATTERY_ADC_CALIBRATION;
 #if defined(ST485_RTU4CH_WAVE485_MODE)
     _cfg.leftRemoteEnabled       = true;   // both buses active in ST485 mode
     _cfg.rightRemoteEnabled      = true;

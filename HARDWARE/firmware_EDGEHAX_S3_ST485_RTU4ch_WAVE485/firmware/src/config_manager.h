@@ -13,8 +13,6 @@ struct MainConfig {
     uint16_t pumpLowStopDelaySeconds;
     uint16_t pumpMaxRuntimeMinutes;
     uint16_t zeroDistanceMm;
-    float    batteryAdcDividerRatio;
-    float    batteryAdcCalibrationFactor;
     bool     leftRemoteEnabled;
     bool     rightRemoteEnabled;
     bool     dailyRebootEnabled;
@@ -32,7 +30,6 @@ public:
 
     bool applyJson(const char* json, String& reason);
     bool setZeroDistance(uint16_t mm, String& reason);
-    bool setBatteryCalibration(float divider, float factor, String& reason);
     bool buildJson(char* out, size_t outSize) const;
 
     bool save();

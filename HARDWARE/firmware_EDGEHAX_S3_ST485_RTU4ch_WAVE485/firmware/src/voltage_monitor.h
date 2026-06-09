@@ -3,11 +3,12 @@
 #include <Arduino.h>
 
 struct VoltageSnapshot {
-    float    voltage;
-    uint16_t adcRaw;
-    bool     adcReady;
-    bool     lowBattery;
-    bool     criticalBattery;
+    float voltage;       // bus voltage in V (battery terminal)
+    float currentMa;     // load current in mA (positive = discharging)
+    float powerMw;       // power in mW
+    bool  ready;         // INA219 initialised successfully
+    bool  lowBattery;    // voltage < 11.5 V
+    bool  criticalBattery; // voltage < 10.5 V
 };
 
 class VoltageMonitor {
@@ -18,15 +19,9 @@ public:
     void loop();
 
     const VoltageSnapshot& snapshot() const { return _snap; }
-    float dividerRatio()     const { return _divider; }
-    float calibrationFactor() const { return _calFactor; }
-
-    void setCalibration(float divider, float calFactor);
 
 private:
     VoltageMonitor() = default;
     VoltageSnapshot _snap{};
-    float _divider   = 5.0f;
-    float _calFactor = 1.0f;
     uint32_t _lastReadMs = 0;
 };

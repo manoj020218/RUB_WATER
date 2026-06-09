@@ -52,11 +52,13 @@
 #define RF_ACTIVE_LEVEL          LOW
 #define RF_IDLE_LEVEL            HIGH
 
-// ── Main battery ADC ─────────────────────────────────────────────────────────
-#define PIN_MAIN_BATTERY_ADC     1
-#define BATTERY_ADC_DIVIDER_RATIO  5.0f
-#define BATTERY_ADC_CALIBRATION    1.0f
-#define BATTERY_ADC_SAMPLES        12
+// ── INA219 current/voltage monitor — I2C ─────────────────────────────────────
+// GPIO47 (SDA) and GPIO46 (SCL): both free in production (RTS=-1, USB CDC off).
+// GPIO46 is a strapping pin (ROM log enable) — I2C pull-up holds it HIGH at
+// boot which only enables ROM bootloader output; harmless in the field.
+#define PIN_INA219_SDA           47
+#define PIN_INA219_SCL           46
+#define INA219_I2C_ADDR          0x40  // A0=GND, A1=GND (default breakout)
 
 // ── External CONFIG button ───────────────────────────────────────────────────
 #define PIN_CONFIG_BUTTON        48     // INPUT_PULLUP, LOW = pressed
@@ -64,7 +66,8 @@
 // ── Left remote RTU bus — UART2 ──────────────────────────────────────────────
 // CANDIDATE pins — confirmed safe after full GPIO analysis 2026-05-30:
 //   GPIO35/36/37 blocked (OPI PSRAM on N16R8).
-//   GPIO0/3/45/46 blocked (boot/strapping per spec §2.1).
+//   GPIO0/3/45 blocked (boot/strapping per spec §2.1).
+//   GPIO46 used for INA219 SCL — see INA219 section above.
 //   Only 2 free pads from Edgehax pinout list: GPIO2, GPIO15.
 //   GPIO19 (USB D-) used for RTS — native USB intentionally unavailable
 //   in field profile; device uses Wi-Fi + OTA only.
