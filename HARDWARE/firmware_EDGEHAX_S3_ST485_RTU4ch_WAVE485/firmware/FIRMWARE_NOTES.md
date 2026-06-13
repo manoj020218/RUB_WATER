@@ -4,7 +4,8 @@
 **Firmware name:** `EH-S3-WSTTL-ST485-RL-MAX485-DYP-L1L2-LVT`  
 **Active build flag:** `ST485_RTU4CH_WAVE485_MODE`  
 **Version:** 0.2.0  &nbsp;|&nbsp; **Release date:** 2026-06-08  
-**MCU board:** Edgehax ESP32-S3-WROOM-1 N16R8 (16 MB flash, 8 MB OPI PSRAM)
+**MCU board:** Edgehax ESP32-S3-WROOM-1 N16R8 (16 MB flash, 8 MB OPI PSRAM)  
+**Last flashed:** 2026-06-12 — COM3, MAC `9c:13:9e:ba:f9:68` — INA219 wiring confirmed (SDA=GPIO47, SCL=GPIO46), webserver UI verified, delivered to client
 
 This document is the single source of truth for anyone working on this firmware. Read it before touching any file.
 
@@ -109,7 +110,8 @@ DYP-A01 sensor           │                                          │
 | Confirm Level 2 (dry contact input) | 5 |
 | Local relay: siren | 6 |
 | Local relay: flash | 7 |
-| Main battery ADC | 1 |
+| INA219 SDA | 47 |
+| INA219 SCL | 46 |
 | Config button | 48 |
 | LED orange | 40 |
 | LED white | 41 |
@@ -236,7 +238,34 @@ status.di_batteryLow = (diBuf[0] & 0x08U) != 0;     // bit=1 → low
 
 ---
 
-## 9. R4 Boom Barrier — Reserved
+## 9. INA219 — Main Panel Battery Monitor
+
+**Hardware:** Adafruit INA219 breakout (I2C, address `0x40` — A0=GND, A1=GND)  
+**Connected to:** GPIO47 (SDA), GPIO46 (SCL) — confirmed wired and working 2026-06-12
+
+| Measurement | Webserver UI label | Source |
+|------------|-------------------|--------|
+| Bus voltage | Voltage (V) | INA219 bus voltage register |
+| Load current | Current (mA) | INA219 shunt voltage ÷ shunt resistance |
+| Power | Power (mW) | Computed: voltage × current |
+| Status | OK / LOW / CRITICAL | Firmware thresholds in `voltage_monitor.cpp` |
+
+**Thresholds:**
+- `lowBattery` — voltage < 11.5 V
+- `criticalBattery` — voltage < 10.5 V
+
+**Where it appears in the UI:**
+- Dashboard: **Battery (INA219)** card — shows Voltage, Current, Power, Status badge
+- Diagnostics page: **Battery Monitor (INA219)** section
+
+**Replaces:** The original `Main battery ADC` on GPIO1 is no longer used. The INA219 provides accurate current and power readings in addition to voltage, and is self-calibrating.
+
+**Library:** `Adafruit INA219 @ 1.2.3` (auto-installed by PlatformIO)  
+**Code:** `voltage_monitor.h / voltage_monitor.cpp` → `VoltageMonitor::getInstance().snapshot()`
+
+---
+
+## 10. R4 Boom Barrier — Reserved
 
 R4 is the 4th relay on the ST485 board. It is wired to a boom barrier (vehicle gate) at the site. The barrier hardware has **not yet been approved or installed**. R4 is always commanded OFF in the current firmware.
 
@@ -251,11 +280,11 @@ R4 is the 4th relay on the ST485 board. It is wired to a boom barrier (vehicle g
    if (!writeST485Outputs(bus, slaveId, sirenOn, flashOn, voiceOn, fsm.state == FloodState::DANGER)) {
    ```
 3. Rebuild firmware (bump version + date in `platformio.ini`)
-4. Deploy via OTA (see Section 11) — no physical access needed
+4. Deploy via OTA (see Section 12) — no physical access needed
 
 ---
 
-## 10. RTU State Machine
+## 11. RTU State Machine
 
 Each remote box (left and right) independently tracks a health state in `RemoteBoxStatus::rtuState`:
 
@@ -280,7 +309,7 @@ State is in-memory only (not NVS-persisted). All boxes restart as COMM_LOST on S
 
 ---
 
-## 11. OTA Firmware Update
+## 12. OTA Firmware Update
 
 ### Local web UI OTA — Available Now
 
@@ -297,7 +326,7 @@ State is in-memory only (not NVS-persisted). All boxes restart as COMM_LOST on S
 
 ---
 
-## 12. Key Source Files
+## 13. Key Source Files
 
 | File | Role |
 |------|------|
@@ -309,11 +338,11 @@ State is in-memory only (not NVS-persisted). All boxes restart as COMM_LOST on S
 | `local_webserver.cpp` | Web UI: status page, config, calibration, relay test, OTA upload. |
 | `config_manager.h/cpp` | NVS-persisted config (WiFi, thresholds, calibration). |
 | `mqtt_manager.h/cpp` | Cloud telemetry and alarm publishing. |
-| `platformio.ini` | Build environments — see Section 13. |
+| `platformio.ini` | Build environments — see Section 14. |
 
 ---
 
-## 13. Build Environments
+## 14. Build Environments
 
 | Environment | Use for |
 |---|---|
@@ -337,7 +366,7 @@ pio device monitor --baud 115200
 
 ---
 
-## 14. 120 Ω Termination Checklist
+## 15. 120 Ω Termination Checklist
 
 Required at **both ends** of each 500 m cable. Missing termination causes reflections — symptom is intermittent `[RTU] RX: 0 bytes (timeout)` in serial log.
 
@@ -350,10 +379,10 @@ Required at **both ends** of each 500 m cable. Missing termination causes reflec
 
 ---
 
-## 15. Adding New Features
+## 16. Adding New Features
 
 ### Activate boom barrier (R4)
-See Section 9 — one line change in `sendCommands()`, then OTA update.
+See Section 10 — one line change in `sendCommands()`, then OTA update.
 
 ### Change relay mapping
 Edit only `sendCommands()` in `remote_box_manager.cpp` inside `#ifdef ST485_RTU4CH_WAVE485_MODE`.
@@ -373,7 +402,7 @@ In `processConfirmation()`: `millis() + 5000UL` = retry check after 5 s
 
 ---
 
-## 16. Known Limitations / Future Work
+## 17. Known Limitations / Future Work
 
 | Item | Status |
 |------|--------|
