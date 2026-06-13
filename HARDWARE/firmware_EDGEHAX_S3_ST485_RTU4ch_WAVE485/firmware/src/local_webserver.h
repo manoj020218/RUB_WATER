@@ -54,6 +54,9 @@ private:
     void handleFirmwareUploadPost();
     void handleReboot();
     void handleRebootPost();
+    void handleApiStatus();
+    void handleWifi();
+    void handleWifiPost();
     void handleFactoryReset();
     void handleFactoryResetPost();
     void handleNotFound();

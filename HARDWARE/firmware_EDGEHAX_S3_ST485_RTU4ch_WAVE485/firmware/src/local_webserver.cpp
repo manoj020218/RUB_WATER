@@ -251,6 +251,9 @@ void LocalWebserver::updateMdns() {
 
 void LocalWebserver::setupRoutes() {
     _server.on("/",                    HTTP_GET,  [this]{ handleRoot(); });
+    _server.on("/api/status",           HTTP_GET,  [this]{ handleApiStatus(); });
+    _server.on("/wifi",                HTTP_GET,  [this]{ handleWifi(); });
+    _server.on("/wifi",                HTTP_POST, [this]{ handleWifiPost(); });
     _server.on("/login",               HTTP_GET,  [this]{ handleLogin(); });
     _server.on("/login",               HTTP_POST, [this]{ handleLoginPost(); });
     _server.on("/logout",              HTTP_GET,  [this]{ handleLogout(); });
@@ -334,7 +337,7 @@ String LocalWebserver::htmlFooter() {
 
 String LocalWebserver::navBar(const char* active) {
     const char* pages[][2] = {
-        {"/status","Status"},{"/config","Config"},{"/calibration","Calibrate"},
+        {"/status","Status"},{"/wifi","WiFi Setup"},{"/config","Config"},{"/calibration","Calibrate"},
         {"/relay-test","Relay Test"},{"/remote-test","Remote"},
         {"/diagnostics","Diagnostics"},{"/firmware-upload","OTA"},
         {"/reboot","Reboot"},{"/logout","Logout"}
@@ -366,7 +369,13 @@ String LocalWebserver::navBar(const char* active) {
 // Page handlers
 
 void LocalWebserver::handleRoot() {
-    _server.sendHeader("Location", checkAuth() ? "/status" : "/login");
+    if (checkAuth()) {
+        _server.sendHeader("Location", "/status");
+    } else if (_apActive) {
+        _server.sendHeader("Location", "/wifi");
+    } else {
+        _server.sendHeader("Location", "/login");
+    }
     _server.send(302, "text/plain", "");
 }
 
@@ -1249,6 +1258,76 @@ void LocalWebserver::handleFactoryResetPost() {
     _server.send(200, "text/html",
         htmlHeader("Reset") + "</nav><div class='card'>"
         "<p>WiFi credentials erased. Rebooting into provisioning mode...</p></div>" + htmlFooter());
+    delay(1000);
+    ESP.restart();
+}
+
+void LocalWebserver::handleApiStatus() {
+    StaticJsonDocument<256> doc;
+    doc["device_id"]      = _deviceId;
+    doc["firmware"]       = FIRMWARE_VERSION;
+    doc["wifi_connected"] = WifiManager::getInstance().isConnected();
+    doc["ip"]             = WifiManager::getInstance().localIp();
+    doc["mqtt_connected"] = MqttManager::getInstance().isConnected();
+    doc["uptime_s"]       = (uint32_t)(millis() / 1000UL);
+    char buf[256];
+    serializeJson(doc, buf, sizeof(buf));
+    _server.sendHeader("Access-Control-Allow-Origin", "*");
+    _server.send(200, "application/json", buf);
+}
+
+void LocalWebserver::handleWifi() {
+    const bool hasCreds  = WifiManager::getInstance().hasCredentials();
+    const String curSsid = hasCreds ? WifiManager::getInstance().configuredSsid() : "";
+
+    String html = htmlHeader("WiFi Setup");
+    html += "<a href='/wifi' style='color:#fff;text-decoration:underline'>WiFi Setup</a>"
+            "&nbsp;&nbsp;<a href='/login' style='color:#fff'>Login</a></nav>";
+
+    if (_apActive) {
+        html += "<div style='background:#1565c0;color:#fff;padding:6px 16px;"
+                "text-align:center;font-size:13px'>"
+                "AP mode active &#8212; enter WiFi credentials below to connect to the cloud</div>";
+    }
+
+    html += "<div class='card' style='max-width:440px;margin:40px auto'><h2>WiFi Setup</h2>";
+    if (hasCreds && WifiManager::getInstance().isConnected()) {
+        html += "<p><span class='ok'>&#x2713; Connected:</span> <b>" + curSsid + "</b> &mdash; "
+                + WifiManager::getInstance().localIp() + "</p>";
+    } else if (hasCreds) {
+        html += "<p><span class='err'>Saved SSID: <b>" + curSsid + "</b> (not connected)</span></p>";
+    }
+    html += "<form method='POST' action='/wifi'>"
+            "<label>WiFi SSID</label>"
+            "<input type='text' name='ssid' placeholder='Network name' value='" + curSsid + "' autofocus required>"
+            "<label>Password</label>"
+            "<input type='password' name='pass' placeholder='WiFi password (blank for open networks)'>"
+            "<button type='submit'>Save &amp; Connect</button></form>"
+            "<p style='margin-top:16px;font-size:12px;color:#888'>"
+            "Device reboots after saving. Reconnect to your WiFi then access the device at its local IP.</p>"
+            "</div>";
+    html += htmlFooter();
+    _server.send(200, "text/html", html);
+}
+
+void LocalWebserver::handleWifiPost() {
+    String ssid = _server.arg("ssid");
+    String pass = _server.arg("pass");
+    ssid.trim();
+    if (ssid.length() == 0) {
+        String html = htmlHeader("WiFi Setup") + "</nav>";
+        html += "<div class='card' style='max-width:440px;margin:40px auto'>"
+                "<p class='err'>SSID cannot be empty.</p><a href='/wifi'>Back</a></div>";
+        html += htmlFooter();
+        _server.send(400, "text/html", html);
+        return;
+    }
+    WifiManager::getInstance().setCredentials(ssid.c_str(), pass.c_str(), true);
+    Serial.printf("[WEB] WiFi credentials saved via web UI: ssid=%s\n", ssid.c_str());
+    _server.send(200, "text/html",
+        htmlHeader("WiFi Setup") + "</nav>"
+        "<div class='card' style='max-width:440px;margin:40px auto'>"
+        "<p class='ok'>&#x2713; Credentials saved. Rebooting now...</p></div>" + htmlFooter());
     delay(1000);
     ESP.restart();
 }

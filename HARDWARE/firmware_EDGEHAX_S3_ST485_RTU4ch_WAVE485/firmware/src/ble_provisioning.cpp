@@ -7,6 +7,7 @@
 #include <WiFi.h>
 #include <esp_mac.h>
 
+#include "mqtt_manager.h"
 #include "wifi_manager.h"
 
 namespace {
@@ -23,10 +24,28 @@ public:
         if (!gInstance || !c) return;
         const std::string v = c->getValue();
         if (v.empty()) return;
-        String s;
-        for (char ch : v) { if (ch == '\0') break; s += ch; }
-        gInstance->_pendingCmd = s;
-        gInstance->_pending    = true;
+        String chunk;
+        for (char ch : v) { if (ch == '\0') break; chunk += ch; }
+        // Accumulate chunks until we have a complete JSON object
+        gInstance->_pendingCmd += chunk;
+        // Check if accumulated buffer looks like a complete JSON object
+        const String& buf = gInstance->_pendingCmd;
+        int depth = 0;
+        bool inStr = false;
+        bool escape = false;
+        bool complete = false;
+        for (int i = 0; i < (int)buf.length(); i++) {
+            char ch = buf[i];
+            if (escape) { escape = false; continue; }
+            if (ch == '\\' && inStr) { escape = true; continue; }
+            if (ch == '"') { inStr = !inStr; continue; }
+            if (inStr) continue;
+            if (ch == '{') depth++;
+            else if (ch == '}') { if (--depth == 0) { complete = true; break; } }
+        }
+        if (complete) {
+            gInstance->_pending = true;
+        }
     }
 };
 
@@ -46,7 +65,7 @@ void BleProvisioning::loop() {
     if (!_started || !_pending) return;
     _pending = false;
     const String cmd = _pendingCmd;
-    _pendingCmd = "";
+    _pendingCmd = "";  // clear accumulated buffer for next command
     processCommand(cmd);
 }
 
@@ -65,6 +84,7 @@ void BleProvisioning::buildName() {
 
 void BleProvisioning::startAdvertising() {
     BLEDevice::init(_bleName);
+    BLEDevice::setMTU(512);
     BLEServer*  srv   = BLEDevice::createServer();
     BLEService* svc   = srv->createService(kServiceUuid);
     gChar = svc->createCharacteristic(
@@ -89,7 +109,7 @@ void BleProvisioning::startAdvertising() {
 }
 
 void BleProvisioning::processCommand(const String& json) {
-    StaticJsonDocument<256> doc;
+    StaticJsonDocument<512> doc;
     if (deserializeJson(doc, json) != DeserializationError::Ok) {
         if (gChar) gChar->setValue("{\"ok\":false,\"error\":\"invalid_json\"}");
         return;
@@ -129,6 +149,16 @@ void BleProvisioning::processCommand(const String& json) {
             o["rssi"] = WiFi.RSSI(i);
         }
         WiFi.scanDelete();
+    } else if (cmd == "c") {
+        // Cloud/MQTT config step from provisioning app.
+        // MQTT host is hardcoded in firmware; credentials from payload are ignored.
+        // Report current connectivity status so the app can proceed.
+        const bool wifiOk = WifiManager::getInstance().isConnected();
+        const bool mqttOk = MqttManager::getInstance().isConnected();
+        res["wifi_connected"] = wifiOk;
+        res["mqtt_connected"] = mqttOk;
+        res["ip"]             = WifiManager::getInstance().localIp();
+        Serial.printf("[BLE] Cloud step: wifi=%d mqtt=%d\n", wifiOk ? 1 : 0, mqttOk ? 1 : 0);
     } else {
         if (gChar) gChar->setValue("{\"ok\":false,\"error\":\"unknown_cmd\"}");
         return;

@@ -77,6 +77,15 @@
       audioCtx: null,
       beepStep: 0
     },
+    fcm: {
+      initializing: false,
+      nativeListenersBound: false,
+      webInitialized: false,
+      knownToken: '',
+      lastUploadedToken: '',
+      lastUploadedUserKey: '',
+      pendingLocationId: ''
+    },
     ble: {
       initialized: false,
       scanResults: [],
@@ -1008,6 +1017,7 @@
     setInstallMetric('ble-device-cloud-status', effectiveCloudUp ? 'UP' : 'DOWN', effectiveCloudUp ? 'good' : 'bad');
     updateBleStatusLabel();
     updateBleProvisionSectionVisibility();
+    renderKnownDeviceSection();
   }
 
   function statusMeta(rawStatus) {
@@ -1308,6 +1318,58 @@
     return normalizedCandidates[0] || '';
   }
 
+  function renderKnownDeviceSection() {
+    const section = byId('known-device-section');
+    if (!section) return;
+    const localUrl = state.install.localUrl || '';
+    const localIp  = state.install.localIp  || '';
+    if (!localUrl && !localIp) {
+      section.style.display = 'none';
+      return;
+    }
+    section.style.display = 'block';
+    setText('known-device-ip',   `IP: ${localIp || localUrl}`);
+    const mqttOk = state.install.deviceCloudReachable === true;
+    const mqttEl = byId('known-device-mqtt');
+    if (mqttEl) {
+      mqttEl.textContent = mqttOk ? 'VPS/MQTT: ✅ Connected' : 'VPS/MQTT: checking...';
+      mqttEl.style.color = mqttOk ? '#2e7d32' : '#777';
+    }
+    const scanBtn = byId('ble-scan-btn');
+    if (scanBtn) {
+      scanBtn.style.opacity = '0.55';
+      scanBtn.title = 'Device already provisioned — use Check VPS/MQTT or clear to scan a new device';
+    }
+  }
+
+  async function checkKnownDeviceVpsApp() {
+    if (!canVendorInstall()) return;
+    const mqttEl = byId('known-device-mqtt');
+    if (mqttEl) { mqttEl.textContent = 'VPS/MQTT: checking...'; mqttEl.style.color = '#777'; }
+    const ok = await refreshLocalDeviceStatusApp();
+    if (mqttEl) {
+      const connected = state.install.deviceCloudReachable === true;
+      mqttEl.textContent = connected ? 'VPS/MQTT: ✅ Connected' : 'VPS/MQTT: ❌ Not connected';
+      mqttEl.style.color = connected ? '#2e7d32' : '#c62828';
+    }
+    if (ok) showToast('Device reachable on local network.');
+  }
+
+  function clearKnownDeviceApp() {
+    state.install.localUrl = '';
+    state.install.localIp  = '';
+    state.install.localReachable = false;
+    state.install.deviceCloudReachable = false;
+    const urlInput = byId('ble-local-url');
+    if (urlInput) urlInput.value = '';
+    const scanBtn = byId('ble-scan-btn');
+    if (scanBtn) { scanBtn.style.opacity = ''; scanBtn.title = ''; }
+    saveSession();
+    renderKnownDeviceSection();
+    renderBleDeviceList();
+    showToast('Known device cleared. Scan BLE to provision a new device.');
+  }
+
   function renderBleDeviceList() {
     const list = byId('ble-device-list');
     if (!list) {
@@ -1315,8 +1377,10 @@
     }
 
     if (state.ble.provisioningComplete) {
-      list.innerHTML = '<div class="empty">Provisioning complete. BLE device picker is hidden.</div>';
+      const doneIp = state.install.localIp || state.install.localUrl || '';
+      list.innerHTML = `<div class="empty">&#x2713; Provisioned. Device at <b>${escapeHtml(doneIp || 'unknown IP')}</b>. Use <b>Check VPS/MQTT</b> above.</div>`;
       setText('ble-selected-device', 'Selected: hidden after successful apply');
+      renderKnownDeviceSection();
       return;
     }
 
@@ -1665,8 +1729,9 @@
   }
 
   async function fetchLocalDeviceStatus(localUrl) {
+    const apiUrl = `${localUrl}/api/status`;
     const nativeResponse = await requestViaNativeHttp({
-      url: `${localUrl}/status`,
+      url: apiUrl,
       method: 'GET',
       connectTimeout: 5000,
       readTimeout: 5000,
@@ -1683,7 +1748,7 @@
 
     const t = withTimeoutMs(5000);
     try {
-      const res = await fetch(`${localUrl}/status`, { signal: t.controller.signal });
+      const res = await fetch(apiUrl, { signal: t.controller.signal });
       t.clear();
       if (!res.ok) {
         throw new Error(`HTTP ${res.status}`);
@@ -2101,6 +2166,104 @@
 
   function isNativeApp() {
     return Boolean(window?.Capacitor?.isNativePlatform?.() || window?.Capacitor?.isNative);
+  }
+
+  function currentFcmUserKey() {
+    return String(
+      state.user?.user_id
+      || state.user?.id
+      || state.user?._id
+      || state.user?.login_id
+      || ''
+    ).trim();
+  }
+
+  async function openFcmNotificationTarget(locationId) {
+    const targetLocationId = String(locationId || '').trim();
+    if (!state.token) {
+      if (targetLocationId) state.fcm.pendingLocationId = targetLocationId;
+      return;
+    }
+
+    if (!state.locations.length) {
+      await fetchLocations();
+      renderLocations();
+    }
+
+    if (targetLocationId) {
+      const match = state.locations.find((item) => String(item.location_id) === targetLocationId) || null;
+      if (match) {
+        state.selectedLocationId = match.location_id;
+        state.selectedDeviceId = match.device_id || null;
+      }
+    }
+
+    if (state.selectedLocationId) {
+      openView('view-dashboard');
+      await refreshAppData();
+    } else {
+      openView('view-locations');
+    }
+  }
+
+  async function flushPendingFcmAction() {
+    if (!state.fcm.pendingLocationId || !state.token) {
+      return;
+    }
+    const pendingLocationId = state.fcm.pendingLocationId;
+    state.fcm.pendingLocationId = '';
+    try {
+      await openFcmNotificationTarget(pendingLocationId);
+    } catch (_) {
+      state.fcm.pendingLocationId = pendingLocationId;
+    }
+  }
+
+  async function ensureNativeFcmListeners() {
+    if (!isNativeApp() || state.fcm.nativeListenersBound) {
+      return;
+    }
+
+    const PushNotifications = window?.Capacitor?.Plugins?.PushNotifications;
+    if (!PushNotifications) {
+      return;
+    }
+
+    PushNotifications.addListener('registration', async (token) => {
+      const tokenValue = String(token?.value || '').trim();
+      if (!tokenValue) {
+        return;
+      }
+      console.info('[FCM-native] token received');
+      await _sendFcmTokenToServer(tokenValue);
+    });
+
+    PushNotifications.addListener('registrationError', (err) => {
+      console.warn('[FCM-native] registration error:', err?.error || err);
+    });
+
+    PushNotifications.addListener('pushNotificationReceived', (notification) => {
+      _handleFcmForegroundPayload(
+        notification?.title,
+        notification?.body,
+        notification?.data?.event || '',
+        notification?.data?.location_id || notification?.data?.locationId || ''
+      );
+    });
+
+    PushNotifications.addListener('pushNotificationActionPerformed', (action) => {
+      const locationId = String(
+        action?.notification?.data?.location_id
+        || action?.notification?.data?.locationId
+        || ''
+      ).trim();
+      if (locationId) {
+        state.fcm.pendingLocationId = locationId;
+      }
+      flushPendingFcmAction().catch(() => {});
+    });
+
+    state.fcm.nativeListenersBound = true;
   }
 
   function applyBrowserModeUi() {
@@ -4540,13 +4703,22 @@
 
   // ── Firebase Cloud Messaging ──────────────────────────────────────
   async function _sendFcmTokenToServer(token) {
-    if (!state.token || !state.apiBase) return;
+    const normalizedToken = String(token || '').trim();
+    if (!normalizedToken) return;
+    state.fcm.knownToken = normalizedToken;
+
+    const userKey = currentFcmUserKey();
+    if (!state.token || !state.apiBase || !userKey) return;
+    if (state.fcm.lastUploadedToken === normalizedToken && state.fcm.lastUploadedUserKey === userKey) return;
+
     try {
       await apiRequest('/auth/fcm-token', {
         auth: true,
         method: 'PUT',
-        body: { fcm_token: token }
+        body: { fcm_token: normalizedToken }
       });
+      state.fcm.lastUploadedToken = normalizedToken;
+      state.fcm.lastUploadedUserKey = userKey;
     } catch (_) {}
   }
 
@@ -6234,8 +6406,10 @@
     }
 
     if (state.ble.provisioningComplete) {
-      list.innerHTML = '<div class="empty">Provisioning complete. BLE device picker is hidden.</div>';
+      const doneIp = state.install.localIp || state.install.localUrl || '';
+      list.innerHTML = `<div class="empty">&#x2713; Provisioned. Device at <b>${escapeHtml(doneIp || 'unknown IP')}</b>. Use <b>Check VPS/MQTT</b> above.</div>`;
       setText('ble-selected-device', 'Selected: hidden after successful apply');
+      renderKnownDeviceSection();
       return;
     }
 
