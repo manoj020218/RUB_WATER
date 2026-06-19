@@ -266,6 +266,42 @@
               <button class="ghost-btn" onclick="unbindDeviceFromLocationApp()">Unbind</button>
             </div>
             <div class="meta" id="dash-bind-status"></div>
+
+            <div id="dash-transfer-panel" style="display:none">
+              <p class="section-sep">Transfer Pipeline</p>
+              <div class="meta" id="dash-transfer-device-info">Transfer target: --</div>
+              <label class="lbl" style="margin-top:8px">Sender</label>
+              <input class="inp" id="dash-transfer-sender" readonly>
+              <label class="lbl">Receiver User ID / Login ID</label>
+              <input class="inp" id="dash-transfer-receiver" placeholder="user_vendor_001 or vendor_admin">
+              <label class="lbl">Rights</label>
+              <select class="inp" id="dash-transfer-rights">
+                <option value="MOVE">MOVE: grant receiver + revoke sender</option>
+                <option value="SHARE">SHARE: grant receiver + keep sender</option>
+                <option value="GRANT_RECEIVER">GRANT_RECEIVER: grant receiver only</option>
+                <option value="REVOKE_SENDER">REVOKE_SENDER: revoke sender only</option>
+              </select>
+              <button class="control-btn info" style="margin-top:8px" onclick="transferLocationToExistingUserApp()">Transfer to Existing User</button>
+
+              <p class="section-sep">Create User + Transfer</p>
+              <label class="lbl">New User Role</label>
+              <select class="inp" id="dash-transfer-new-role">
+                <option value="VENDOR_SUPER_ADMIN">Vendor Super Admin</option>
+                <option value="DEPARTMENT_SUPER_ADMIN">Dept Super Admin</option>
+                <option value="DEPARTMENT_ADMIN">Department Admin</option>
+                <option value="LOCATION_ADMIN">Location Admin</option>
+                <option value="OPERATOR">Operator</option>
+                <option value="VIEWER">Viewer</option>
+                <option value="AUDITOR">Auditor</option>
+                <option value="VENDOR_MONITORING_USER">Vendor Monitoring</option>
+              </select>
+              <input class="inp" id="dash-transfer-new-login" placeholder="New login ID">
+              <input class="inp" id="dash-transfer-new-name" placeholder="Full name">
+              <input class="inp" id="dash-transfer-new-password" type="password" placeholder="Temporary password (min 6 chars)">
+              <div class="meta" id="dash-transfer-role-hint">Choose the role to create before transfer.</div>
+              <button class="control-btn info" style="margin-top:8px" onclick="createUserAndTransferLocationApp()">Create User &amp; Transfer</button>
+              <div class="meta" id="dash-transfer-status"></div>
+            </div>
           </div>
 
           <!-- Quick controls (OPERATOR+ only, shown by JS) -->
@@ -397,6 +433,19 @@
             </button>
             <button class="ghost-btn" id="ble-local-check-btn" onclick="refreshLocalDeviceStatusApp()">Check Local Device</button>
             <button class="ghost-btn" onclick="bleDisconnectApp()">Disconnect</button>
+          </div>
+
+          <div class="row install-actions" style="margin-top:8px">
+            <button class="ghost-btn" style="margin-top:0" id="wifi-discovery-btn" onclick="wifiDiscoverDevicesApp()">
+              <span id="wifi-discovery-label">Find S3 On Wi-Fi</span>
+              <span class="scan-spinner" id="wifi-discovery-spinner" aria-hidden="true"></span>
+            </button>
+          </div>
+          <div class="meta" id="wifi-discovery-summary" style="margin-top:8px">
+            No same-network scan yet. Tap "Find S3 On Wi-Fi".
+          </div>
+          <div class="timeline" id="wifi-discovery-list" style="margin-top:8px">
+            <div class="empty">Tap "Find S3 On Wi-Fi" to scan the current network.</div>
           </div>
 
           <div class="timeline" id="ble-device-list" style="margin-top:10px">
@@ -830,43 +879,6 @@
         </div>
       </section>
 
-      <section class="view" id="view-vendors">
-        <div class="card">
-          <div class="row between">
-            <div>
-              <h2 class="view-title">Vendor Management</h2>
-              <p class="view-subtitle">Manage client vendors and project access</p>
-            </div>
-            <button class="ghost-btn" style="padding:6px 10px" onclick="loadVendorsApp()">Refresh</button>
-          </div>
-
-          <div class="vendor-filter-row">
-            <input class="inp" id="vendor-search" placeholder="Search by company, mobile, login ID..." oninput="filterVendorListApp()">
-            <select class="inp" id="vendor-filter-project" onchange="filterVendorListApp()">
-              <option value="">All Projects</option>
-            </select>
-          </div>
-
-          <div class="timeline" id="vendor-list">
-            <div class="empty">No vendors loaded yet.</div>
-          </div>
-
-          <p class="section-sep">Add New Vendor</p>
-          <div class="vendor-create-grid">
-            <input class="inp" id="vc-company" placeholder="Company Name *">
-            <input class="inp" id="vc-contact" placeholder="Contact Person Name">
-            <input class="inp" id="vc-mobile" placeholder="Mobile Number *">
-            <input class="inp" id="vc-email" placeholder="Email Address">
-          </div>
-          <div id="vc-projects-wrap" style="margin-top:8px">
-            <label class="lbl">Assign Project(s)</label>
-            <div id="vc-project-checkboxes" class="vendor-project-checks"></div>
-          </div>
-          <button class="control-btn info" style="margin-top:8px" onclick="createVendorApp()">Create Vendor</button>
-          <div class="meta" id="vc-create-status"></div>
-        </div>
-      </section>
-
       <section class="view" id="view-settings">
         <div class="card">
           <h2 class="view-title">Settings</h2>
@@ -940,7 +952,6 @@
       <button class="nav-btn" id="config-tab" data-view="view-config" onclick="openView('view-config')">Config</button>
       <button class="nav-btn" data-view="view-audit" onclick="openView('view-audit')">Audit</button>
       <button class="nav-btn" id="reports-tab" data-view="view-reports" onclick="openView('view-reports')" style="display:none">Reports</button>
-      <button class="nav-btn" id="vendors-tab" data-view="view-vendors" onclick="openView('view-vendors')" style="display:none">Vendors</button>
       <button class="nav-btn" id="settings-tab" data-view="view-settings" onclick="openView('view-settings')" style="display:none">Settings</button>
     </nav>
   </div>

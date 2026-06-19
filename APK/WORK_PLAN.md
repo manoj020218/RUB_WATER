@@ -2,10 +2,65 @@
 
 Document purpose: this file is no longer only a basic APK to-do list. It is now the current app delivery status plus the integration contract between APK, firmware, MQTT, and VPS so future changes do not break the working system.
 
-Last updated: 2026-06-08
-Current signed release target: `1.0.1`
+Last updated: 2026-06-19
+Current signed release target: `1.0.1` (existing signed APK)
 Current Android build code: `2`
 Primary package id: `in.jenix.floodguard`
+
+## 0. Latest Completed Work Snapshot (2026-06-19)
+
+This section reflects the real current codebase state after the latest APK and backend work. Some older sections below remain useful as reference, but this snapshot is the authoritative status for recent changes.
+
+### 0.1 Completed in This Round
+
+| Work Item | Status | Notes |
+|---|---|---|
+| Demo role separation | Done | `demo` is no longer treated as a normal global `VENDOR_SUPER_ADMIN`; it now has demo-only scoped visibility |
+| Demo location ownership model | Done | Demo can see only locations/devices created by demo until transferred |
+| Location + device transfer pipeline | Done | Separate sender/receiver/rights pipeline added so location transfer logic can be reused later |
+| Demo transfer restriction | Done | Demo can transfer to existing user or create only `VENDOR_SUPER_ADMIN` during transfer |
+| Vendor to department assignment model | Done | Vendor can share location/device to one specific `DEPARTMENT_SUPER_ADMIN` without exposing it to all department admins |
+| Department downstream user creation | Done | Department super admin can create subordinate users only within assigned location scope |
+| Vendor tab removal from APK | Done | Mistakenly shipped vendor-management UI removed from APK and preserved separately |
+| Preserved vendor-management code | Done | Extracted copy saved under `APK/extracted/vendor-management-from-apk/`; VPS-side vendor tool kept separately |
+| Same-network Wi-Fi S3 discovery | Done | New APK button scans current subnet via `GET /api/status`, filters `product` starting with `FLOODGUARD`, and supports one-tap local URL selection |
+| Android Wi-Fi subnet bridge | Done | Native bridge now returns SSID, IP, gateway, and netmask for LAN scan planning |
+
+### 0.2 Verification Done
+
+| Verification | Status | Notes |
+|---|---|---|
+| APK JS syntax check | Done | `node --check www/app.js` passed |
+| Android native compile check | Done | `gradlew.bat compileDebugJavaWithJavac` passed |
+| Demo scoped visibility behavior | Done | Verified in backend smoke flow during transfer-role work |
+| Demo transfer behavior | Done | Verified demo loses access after `MOVE` transfer |
+| Vendor to department targeted assignment | Done | Verified assigned department user sees location/device, other department users do not |
+
+### 0.3 Important Current Notes
+
+- The latest code changes are in the workspace, but a fresh signed APK has **not** yet been rebuilt after the Wi-Fi discovery addition.
+- Vendor management is now treated as a VPS/developer-side tool, not a shipped APK feature.
+- The new same-network scan relies on the device local endpoint returning `/api/status` with `device_id`, `product`, `mac`, `firmware`, Wi-Fi state, IP, and MQTT state.
+
+### 0.4 Quick Release Build Command
+
+Use this from `D:\IOT Device\RUB\FloodGuard\APK` to make a signed release APK with the existing keystore setup:
+
+```powershell
+npx cap sync android; Set-Location .\android; .\gradlew.bat assembleRelease
+```
+
+Output APK:
+
+```text
+D:\IOT Device\RUB\FloodGuard\APK\android\app\build\outputs\apk\release\app-release.apk
+```
+
+Notes:
+
+- No manual signing step is needed as long as `android\keystore.properties` is present and valid.
+- This is the normal release build command. No `clean` is needed for regular app changes.
+- If only APK install is needed after build, use the generated `app-release.apk` above.
 
 ## 1. Current Delivery Status
 
@@ -24,11 +79,13 @@ Primary package id: `in.jenix.floodguard`
 | Complaints module | Done | Raise, view, status handling |
 | Reports export | Done | Audit report filters and CSV export |
 | User management | Done | Create users, filter users, access control, reset password |
-| Vendor management | Done | Vendor listing and creation in app |
+| Transfer pipeline | Done | Sender/receiver/rights location transfer flow with demo/vendor restrictions |
+| Same-network Wi-Fi discovery | Done | Install screen can scan current subnet for local FloodGuard S3 devices |
+| Vendor management in APK | Removed | APK vendor tab removed; preserved separately for VPS/developer use only |
 | FCM integration | Done | Firebase config, foreground/background notification handling |
 | Version visibility in app | Done | Login and Settings show current version and release date |
 | VPS-hosted app update check | Done | Settings page can check latest APK from VPS |
-| Signed release APK | Done | Fresh signed release built as `1.0.1` / build `2` |
+| Signed release APK | Done | Existing signed release built as `1.0.1` / build `2`; latest code changes are pending rebuild |
 | Play Store pipeline | Pending | Current release channel is VPS-hosted APK, not Play Store |
 
 ### 1.2 Screens and Functional Modules Completed
@@ -39,12 +96,12 @@ Primary package id: `in.jenix.floodguard`
 | Locations | Done | Location cards, online state, bind/unbind flows, admin helpers |
 | Live Dashboard | Done | Water level, distance, incident state, relay state, sensor status |
 | Controls | Done | Alarm mute, dry run, force clear |
-| Install | Done | BLE onboarding, Wi-Fi provisioning, local/cloud verification, bind flow |
+| Install | Done | BLE onboarding, Wi-Fi provisioning, local/cloud verification, bind flow, same-network Wi-Fi scan |
 | Device Config | Done | Thresholds, calibration values, cloud push, local LAN save |
 | Audit | Done | Timeline view |
 | Complaints | Done | Complaint raise and history |
-| Users | Done | Create/filter/manage users |
-| Vendors | Done | Vendor management for vendor super admin |
+| Users | Done | Create/filter/manage users, transfer flow support, role-scoped assignment behavior |
+| Vendors | Removed | Vendor tab/code moved out of APK and preserved separately |
 | Reports | Done | Filtered audit export |
 | Settings | Done | Password change, version info, release tracking, update check |
 
@@ -60,7 +117,9 @@ The original file was only a high-level target list. The actual app now includes
 | Device lifecycle operations | Done | Operational status is managed from app |
 | Complaint workflow | Done | Not part of original basic APK plan |
 | Reports export | Done | Not part of original basic APK plan |
-| Vendor management | Done | Not part of original basic APK plan |
+| Vendor management | Moved out of APK | Preserved separately for VPS/developer-side use; no longer shipped in mobile UI |
+| Demo/vendor transfer access model | Done | Added after original APK plan |
+| Same-network Wi-Fi discovery | Done | Added after original APK plan |
 | Password management | Done | Change/reset support |
 | Session revoke handling | Done | Super admin revoke flow forces logout on next request |
 | FCM push token registration | Done | App sends/updates FCM token to backend |
@@ -288,7 +347,7 @@ Factory reset (CONFIG button held 5s at power-on): clears WiFi NVS → reboots t
 | `/api/admin/users` | User creation and access revoke/grant |
 | `/api/complaints/...` | Complaint workflow |
 | `/api/reports/...` | Reports and exports |
-| `/api/vendor-mgmt/...` | Vendor management |
+| `/api/vendor-mgmt/...` | Preserved for VPS/developer-side vendor tool, not current shipped APK UI |
 
 ## 8. APK Release Tracking and Update Pipeline
 

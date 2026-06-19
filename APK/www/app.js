@@ -1,7 +1,7 @@
-(function () {
+﻿(function () {
   const STORAGE_KEY = 'fg_mobile_session_v1';
 
-  // ── Firebase / FCM ──────────────────────────────────────────────
+  // â”€â”€ Firebase / FCM â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
   const FCM_CONFIG = {
     apiKey: 'AIzaSyDNLaSUaBiC52mFrHsOIwkmahJbAtK2E-U',
     authDomain: 'floodguard-f84ac.firebaseapp.com',
@@ -12,7 +12,7 @@
     measurementId: 'G-7JVD25ZNN5'
   };
   const FCM_VAPID_KEY = 'BEKxuTUJtugFJheypzEVBZhs1HSs7FXDoC0NcHLCEvo98g0e9qKOL0695JHebudeoovV1b5_yOSTb9obkIcRoqU';
-  // ────────────────────────────────────────────────────────────────
+  // â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
   const REFRESH_INTERVAL_MS = 10000;
   const REQUEST_TIMEOUT_MS = 12000;
   const IST_TIMEZONE = 'Asia/Kolkata';
@@ -21,6 +21,9 @@
   const BLE_NAME_PREFIX = 'JXFG';
   const DEFAULT_VPS_HEALTH_URL = 'https://api.floodguard.iotsoft.in/health';
   const MAX_BOTTOM_PRIMARY_TABS = 6;
+  const WIFI_DISCOVERY_TIMEOUT_MS = 900;
+  const WIFI_DISCOVERY_BATCH_SIZE = 14;
+  const MAX_WIFI_DISCOVERY_HOSTS = 254;
   // Update this object for each shipped APK so users can verify version and release date in-app.
   const APP_RELEASE_INFO = Object.freeze({
     version: '1.0.1',
@@ -50,8 +53,6 @@
     complaints: [],
     complaintsLocationId: null,
     report: { rows: [], loaded: false },
-    vendors: [],
-    vendorsFiltered: [],
     refreshTimer: null,
     incidentTimer: null,
     loading: false,
@@ -68,7 +69,15 @@
       adcDividerRatio: 5.0,
       adcCalibrationFactor: 1.0,
       pendingBindDeviceId: '',
-      bleTargetLocationId: ''
+      bleTargetLocationId: '',
+      wifiDiscovery: {
+        running: false,
+        scanned: 0,
+        total: 0,
+        networkLabel: '',
+        summary: '',
+        results: []
+      }
     },
     alarm: {
       enabled: false,
@@ -76,15 +85,6 @@
       intervalId: null,
       audioCtx: null,
       beepStep: 0
-    },
-    fcm: {
-      initializing: false,
-      nativeListenersBound: false,
-      webInitialized: false,
-      knownToken: '',
-      lastUploadedToken: '',
-      lastUploadedUserKey: '',
-      pendingLocationId: ''
     },
     ble: {
       initialized: false,
@@ -378,10 +378,6 @@
       showToast('User management is only available for super admins.', true);
       return;
     }
-    if (viewId === 'view-vendors' && userRole() !== 'VENDOR_SUPER_ADMIN') {
-      showToast('Vendor management is only available for Vendor Super Admin.', true);
-      return;
-    }
     closeHeaderMenu();
 
     document.querySelectorAll('.view').forEach((view) => {
@@ -395,6 +391,7 @@
     if (viewId === 'view-install') {
       renderInstallDeviceTable();
       populateBleTargetLocationSection();
+      renderWifiDiscoveryList();
       if (isSuperAdmin()) refreshAdminDevicesApp().catch(() => {});
       refreshVendorInstallStatus().catch(() => {
         // handled internally
@@ -419,10 +416,6 @@
     if (viewId === 'view-locations' && isSuperAdmin()) {
       populateDeviceLocationSelect();
       refreshAdminDevicesApp().catch(() => {});
-    }
-    if (viewId === 'view-vendors') {
-      populateVendorProjectSelects().catch(() => {});
-      loadVendorsApp().catch(() => {});
     }
     if (viewId === 'view-settings') {
       renderAppUpdateState();
@@ -778,11 +771,11 @@
     const adminDevices = state.adminDevices || [];
     const locs = state.locations || [];
 
-    // Build a map of locationId → location for quick lookup
+    // Build a map of locationId â†’ location for quick lookup
     const locMap = {};
     locs.forEach((l) => { locMap[l.location_id] = l; });
 
-    // Unbound VPS devices: registered but no location assigned — newest first
+    // Unbound VPS devices: registered but no location assigned â€” newest first
     const unbound = adminDevices
       .filter((d) => !d.location_id)
       .sort((a, b) => new Date(b.created_at || 0) - new Date(a.created_at || 0));
@@ -814,10 +807,10 @@
         <td style="padding:8px 10px;color:#9e9e9e">${idx++}</td>
         <td style="padding:8px 10px;font-family:monospace;font-size:12px">
           <span class="install-dev-link" onclick="openLocationViewWithDevice('${escapeHtml(deviceId)}')" title="Go to Locations to bind this device">${escapeHtml(deviceId)}</span>
-          <span style="font-size:10px;color:#1565c0;margin-left:4px">↑ not bound</span>
+          <span style="font-size:10px;color:#1565c0;margin-left:4px">â†‘ not bound</span>
         </td>
         <td style="padding:8px 10px">
-          <span class="install-dev-link" onclick="openLocationViewWithDevice('${escapeHtml(deviceId)}')" style="color:#1565c0;font-size:12px">Connect to Location →</span>
+          <span class="install-dev-link" onclick="openLocationViewWithDevice('${escapeHtml(deviceId)}')" style="color:#1565c0;font-size:12px">Connect to Location â†’</span>
         </td>
         <td style="padding:8px 10px">${statusBadge}</td>
         <td style="padding:8px 10px;text-align:right">${diagBtn}</td>
@@ -827,7 +820,7 @@
     // --- BOUND DEVICES ---
     bound.forEach((loc) => {
       const deviceId = loc.device_id || '';
-      const locationName = loc.location_name || loc.name || '—';
+      const locationName = loc.location_name || loc.name || 'â€”';
       const isOnline = String(loc.device_status || '').toUpperCase() === 'ONLINE';
       const statusBadge = isOnline
         ? '<span style="color:#2e7d32;font-weight:600;background:#e8f5e9;padding:2px 8px;border-radius:10px;font-size:11px">UP / Bound</span>'
@@ -853,7 +846,7 @@
     renderUnassignedDevicesCard();
   }
 
-  // ── Unassigned Cloud Devices card ─────────────────────────────────────────
+  // â”€â”€ Unassigned Cloud Devices card â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
   let _assignDeviceId = '';
   let _assignOldDeviceId = '';
   let _assignLocationId = '';
@@ -892,7 +885,7 @@
     sel.innerHTML = '<option value="">&#8212; Select location &#8212;</option>' +
       locs.map((l) => {
         const name = escapeHtml(l.location_name || l.location_id);
-        const tag = l.device_id ? ' ⚠ has device' : '';
+        const tag = l.device_id ? ' âš  has device' : '';
         return `<option value="${escapeHtml(l.location_id)}">${name}${tag}</option>`;
       }).join('');
     const noLocs = byId('install-assign-no-locations');
@@ -948,7 +941,7 @@
     if (!_assignDeviceId) return;
     const loc = (state.locations || []).find((l) => l.location_id === locationId);
     if (loc?.device_id) {
-      // Location occupied — show faulty warning
+      // Location occupied â€” show faulty warning
       _assignOldDeviceId = loc.device_id;
       _assignLocationId = locationId;
       const msg = byId('install-assign-faulty-msg');
@@ -970,7 +963,7 @@
         `/admin/locations/${encodeURIComponent(_assignLocationId)}/bind-device`,
         { method: 'DELETE' }
       );
-    } catch (e) { /* ignore — may already be unbound */ }
+    } catch (e) { /* ignore â€” may already be unbound */ }
     await _doAssignDeviceApp(_assignDeviceId, _assignLocationId);
   }
 
@@ -995,14 +988,14 @@
       showToast(`Assign failed: ${err.message}`, true);
     }
   }
-  // ── end Unassigned Cloud Devices ───────────────────────────────────────────
+  // â”€â”€ end Unassigned Cloud Devices â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 
   function diagDownDeviceApp(deviceId) {
     if (!deviceId) return;
     const bleSection = byId('ble-content');
     if (bleSection) bleSection.scrollIntoView({ behavior: 'smooth', block: 'start' });
     const selectedEl = byId('ble-selected-device');
-    if (selectedEl) selectedEl.textContent = `Diagnosing: ${deviceId} — scan BLE, connect, then tap "Check Device Health + VPS"`;
+    if (selectedEl) selectedEl.textContent = `Diagnosing: ${deviceId} â€” scan BLE, connect, then tap "Check Device Health + VPS"`;
     showToast(`Scan BLE to connect to ${deviceId}, then tap "Check Device Health + VPS" to diagnose.`);
   }
 
@@ -1274,6 +1267,442 @@
     }
   }
 
+  function normalizeIpv4(value) {
+    const raw = String(value || '').trim();
+    if (!raw || !/^\d{1,3}(?:\.\d{1,3}){3}$/.test(raw)) {
+      return '';
+    }
+    const parts = raw.split('.').map((part) => Number.parseInt(part, 10));
+    if (parts.some((part) => !Number.isFinite(part) || part < 0 || part > 255)) {
+      return '';
+    }
+    return parts.join('.');
+  }
+
+  function normalizeMacAddress(value) {
+    const clean = String(value || '').trim().toUpperCase().replace(/[^0-9A-F]/g, '');
+    if (clean.length !== 12) {
+      return '';
+    }
+    return clean.match(/.{2}/g).join(':');
+  }
+
+  function ipv4ToInt(value) {
+    const ip = normalizeIpv4(value);
+    if (!ip) {
+      return null;
+    }
+    const parts = ip.split('.').map((part) => Number.parseInt(part, 10));
+    return ((((parts[0] * 256) + parts[1]) * 256 + parts[2]) * 256 + parts[3]) >>> 0;
+  }
+
+  function intToIpv4(value) {
+    const next = Number(value);
+    if (!Number.isFinite(next) || next < 0) {
+      return '';
+    }
+    return [
+      (next >>> 24) & 255,
+      (next >>> 16) & 255,
+      (next >>> 8) & 255,
+      next & 255
+    ].join('.');
+  }
+
+  function prefixLengthFromNetmask(netmask) {
+    const maskInt = ipv4ToInt(netmask);
+    if (maskInt === null) {
+      return null;
+    }
+    return maskInt.toString(2).replace(/0/g, '').length;
+  }
+
+  function prefixToMaskInt(prefixLength) {
+    const prefix = Number(prefixLength);
+    if (!Number.isFinite(prefix) || prefix <= 0) {
+      return 0;
+    }
+    if (prefix >= 32) {
+      return 0xFFFFFFFF;
+    }
+    return (0xFFFFFFFF << (32 - prefix)) >>> 0;
+  }
+
+  function readPhoneWifiInfo() {
+    const bridge = nativeBridge();
+    const fallbackHost = normalizeIpv4(hostFromUrl(byId('ble-local-url')?.value || state.install.localUrl || ''));
+    const info = {
+      ssid: '',
+      ip: '',
+      gateway: '',
+      netmask: '',
+      prefixLength: null
+    };
+
+    if (bridge && typeof bridge.getCurrentWifiInfo === 'function') {
+      try {
+        const raw = String(bridge.getCurrentWifiInfo() || '').trim();
+        if (raw) {
+          const parsed = JSON.parse(raw);
+          info.ssid = String(parsed?.ssid || '').trim().replace(/^"+|"+$/g, '');
+          info.ip = normalizeIpv4(parsed?.ip || '');
+          info.gateway = normalizeIpv4(parsed?.gateway || '');
+          info.netmask = normalizeIpv4(parsed?.netmask || '');
+          const prefix = Number(parsed?.prefixLength);
+          info.prefixLength = Number.isFinite(prefix) && prefix > 0 && prefix <= 32 ? prefix : null;
+        }
+      } catch (error) {
+        // ignore bridge parse failures and fall back below
+      }
+    }
+
+    if (!info.ssid) {
+      info.ssid = readPhoneWifiSsid();
+    }
+    if (!info.ip && fallbackHost) {
+      info.ip = fallbackHost;
+    }
+    if (!info.prefixLength && info.netmask) {
+      info.prefixLength = prefixLengthFromNetmask(info.netmask);
+    }
+    return info;
+  }
+
+  function resolveExpectedWifiDiscoveryIdentity() {
+    const location = selectedLocationRecord();
+    return {
+      deviceId: String(selectedProvisionDeviceId() || '').trim().toUpperCase(),
+      locationId: String(location?.location_id || '').trim(),
+      locationName: String(location?.location_name || '').trim()
+    };
+  }
+
+  function buildWifiDiscoveryPlan(networkInfo = {}) {
+    const phoneIp = normalizeIpv4(networkInfo.ip || '');
+    const fallbackIp = normalizeIpv4(state.install.localIp || '');
+    const baseIp = phoneIp || fallbackIp;
+    if (!baseIp) {
+      return { candidates: [], networkLabel: 'current Wi-Fi' };
+    }
+
+    let prefixLength = Number(networkInfo.prefixLength);
+    if (!Number.isFinite(prefixLength) || prefixLength <= 0 || prefixLength > 32) {
+      prefixLength = prefixLengthFromNetmask(networkInfo.netmask || '');
+    }
+    // Cap broad networks to /24 so a single tap does not start an unbounded LAN sweep.
+    if (!Number.isFinite(prefixLength) || prefixLength < 24) {
+      prefixLength = 24;
+    }
+    if (prefixLength > 30) {
+      prefixLength = 24;
+    }
+
+    const baseIpInt = ipv4ToInt(baseIp);
+    const maskInt = prefixToMaskInt(prefixLength);
+    if (baseIpInt === null || maskInt === 0) {
+      return { candidates: [], networkLabel: 'current Wi-Fi' };
+    }
+
+    const networkInt = baseIpInt & maskInt;
+    const broadcastInt = networkInt | (~maskInt >>> 0);
+    const priorityIps = [
+      normalizeIpv4(state.install.localIp || ''),
+      normalizeIpv4(hostFromUrl(state.install.localUrl || ''))
+    ].filter(Boolean);
+    const skipIps = new Set([baseIp]);
+    const ordered = [];
+    const seen = new Set();
+
+    for (const ip of priorityIps) {
+      const ipInt = ipv4ToInt(ip);
+      if (ipInt === null || ipInt <= networkInt || ipInt >= broadcastInt || seen.has(ip) || skipIps.has(ip)) {
+        continue;
+      }
+      seen.add(ip);
+      ordered.push(ip);
+    }
+
+    for (let host = networkInt + 1; host < broadcastInt && ordered.length < MAX_WIFI_DISCOVERY_HOSTS; host += 1) {
+      const ip = intToIpv4(host >>> 0);
+      if (!ip || seen.has(ip) || skipIps.has(ip)) {
+        continue;
+      }
+      seen.add(ip);
+      ordered.push(ip);
+    }
+
+    const ssid = String(networkInfo.ssid || '').trim();
+    const networkLabel = `${intToIpv4(networkInt)}/${prefixLength}${ssid ? ` on ${ssid}` : ''}`;
+    return {
+      candidates: ordered,
+      networkLabel,
+      phoneIp: baseIp
+    };
+  }
+
+  function normalizeWifiDiscoveryResult(payload, ip, expectedIdentity) {
+    const product = String(payload?.product || '').trim();
+    const deviceId = String(payload?.device_id || '').trim().toUpperCase();
+    if (!product || !/^FLOODGUARD/i.test(product) || !deviceId) {
+      return null;
+    }
+
+    const matchDeviceId = String(expectedIdentity?.deviceId || '').trim().toUpperCase();
+    const boundLocation = state.locations.find((item) => String(item?.device_id || '').trim().toUpperCase() === deviceId) || null;
+    return {
+      ip: normalizeIpv4(payload?.ip || ip) || normalizeIpv4(ip),
+      device_id: deviceId,
+      product,
+      mac: normalizeMacAddress(payload?.mac || ''),
+      firmware: String(payload?.firmware || '').trim(),
+      wifi_connected: payload?.wifi_connected === true,
+      mqtt_connected: payload?.mqtt_connected === true,
+      uptime_s: Number(payload?.uptime_s || 0),
+      identityMatch: Boolean(matchDeviceId && deviceId === matchDeviceId),
+      matchedLocationId: String(boundLocation?.location_id || '').trim(),
+      matchedLocationName: String(boundLocation?.location_name || '').trim()
+    };
+  }
+
+  function setWifiDiscoveryProgress(active, label = '') {
+    const running = Boolean(active);
+    state.install.wifiDiscovery.running = running;
+    const btn = byId('wifi-discovery-btn');
+    const spinner = byId('wifi-discovery-spinner');
+    const labelEl = byId('wifi-discovery-label');
+    if (btn) {
+      btn.disabled = running;
+    }
+    if (spinner) {
+      spinner.classList.toggle('on', running);
+    }
+    if (labelEl) {
+      labelEl.textContent = label || (running ? 'Scanning Wi-Fi...' : 'Find S3 On Wi-Fi');
+    }
+  }
+
+  function renderWifiDiscoveryList() {
+    const discovery = state.install.wifiDiscovery || {};
+    const list = byId('wifi-discovery-list');
+    const summaryEl = byId('wifi-discovery-summary');
+    if (!list || !summaryEl) {
+      return;
+    }
+
+    const expected = resolveExpectedWifiDiscoveryIdentity();
+    const results = Array.isArray(discovery.results) ? discovery.results.slice() : [];
+    if (discovery.running) {
+      summaryEl.textContent = `Scanning ${discovery.networkLabel || 'current Wi-Fi'} (${discovery.scanned || 0}/${discovery.total || 0})${expected.deviceId ? ` | expected ${expected.deviceId}` : ''}`;
+    } else if (results.length > 0) {
+      summaryEl.textContent = discovery.summary || `Found ${results.length} FloodGuard device(s) on ${discovery.networkLabel || 'current Wi-Fi'}.`;
+    } else {
+      summaryEl.textContent = discovery.summary || 'No same-network scan yet. Tap "Find S3 On Wi-Fi".';
+    }
+
+    if (discovery.running && results.length === 0) {
+      list.innerHTML = '<div class="empty scan-empty"><span class="scan-spinner on" aria-hidden="true"></span>Scanning current Wi-Fi for FloodGuard S3 devices...</div>';
+      return;
+    }
+
+    if (results.length === 0) {
+      list.innerHTML = `<div class="empty">${escapeHtml(discovery.summary || 'Tap "Find S3 On Wi-Fi" to scan the current network.')}</div>`;
+      return;
+    }
+
+    list.innerHTML = results.map((device) => {
+      const chips = [];
+      if (device.identityMatch) {
+        chips.push('<span class="chip">IDENTITY MATCH</span>');
+      }
+      if (device.mqtt_connected) {
+        chips.push('<span class="chip">MQTT UP</span>');
+      }
+      const locationLabel = device.matchedLocationName || device.matchedLocationId;
+      const meta = [
+        device.ip || '--',
+        device.mac || 'MAC --',
+        device.firmware ? `FW ${device.firmware}` : 'FW --',
+        device.product || '--'
+      ].join(' | ');
+      const secondary = [
+        device.wifi_connected ? 'Wi-Fi UP' : 'Wi-Fi DOWN',
+        Number.isFinite(device.uptime_s) && device.uptime_s > 0 ? `Uptime ${device.uptime_s}s` : '',
+        locationLabel ? `Location ${locationLabel}` : ''
+      ].filter(Boolean).join(' | ');
+      return `
+        <div class="ble-device-row">
+          <div class="ble-device-name">${escapeHtml(device.device_id || 'Unknown')} ${chips.join(' ')}</div>
+          <div class="ble-device-meta">${escapeHtml(meta)}</div>
+          <div class="meta" style="margin-top:6px">${escapeHtml(secondary || 'FloodGuard S3 discovered on local network.')}</div>
+          <div class="row" style="margin-top:8px;justify-content:flex-end">
+            <button class="ghost-btn" style="padding:6px 10px" onclick="useWifiDiscoveredDeviceApp('${encodeURIComponent(device.ip || '')}','${encodeURIComponent(device.device_id || '')}')">Use Local URL</button>
+          </div>
+        </div>
+      `;
+    }).join('');
+  }
+
+  function parseJsonResponseData(response) {
+    if (!response || Number(response.status || 0) < 200 || Number(response.status || 0) >= 300) {
+      return null;
+    }
+    if (response.data && typeof response.data === 'object') {
+      return response.data;
+    }
+    if (typeof response.data === 'string' && response.data.trim()) {
+      try {
+        return JSON.parse(response.data);
+      } catch (error) {
+        return null;
+      }
+    }
+    return null;
+  }
+
+  async function probeWifiDiscoveryIp(ip, expectedIdentity) {
+    const normalizedIp = normalizeIpv4(ip);
+    if (!normalizedIp) {
+      return null;
+    }
+    const statusUrl = `http://${normalizedIp}/api/status`;
+    let payload = parseJsonResponseData(await requestViaNativeHttp({
+      url: statusUrl,
+      method: 'GET',
+      connectTimeout: WIFI_DISCOVERY_TIMEOUT_MS,
+      readTimeout: WIFI_DISCOVERY_TIMEOUT_MS,
+      responseType: 'json'
+    }));
+
+    if (!payload && !getCapacitorHttpPlugin()) {
+      const timeout = withTimeoutMs(WIFI_DISCOVERY_TIMEOUT_MS);
+      try {
+        const res = await fetch(statusUrl, { signal: timeout.controller.signal });
+        timeout.clear();
+        if (res.ok) {
+          payload = await res.json();
+        }
+      } catch (error) {
+        timeout.clear();
+      }
+    }
+
+    return normalizeWifiDiscoveryResult(payload, normalizedIp, expectedIdentity);
+  }
+
+  function useWifiDiscoveredDeviceApp(encodedIp, encodedDeviceId = '') {
+    const ip = decodeURIComponent(String(encodedIp || ''));
+    const deviceId = decodeURIComponent(String(encodedDeviceId || ''));
+    const localUrl = updateLocalUrlFromState(ip);
+    if (!localUrl) {
+      showToast('Unable to set local URL from Wi-Fi discovery result.', true);
+      return;
+    }
+
+    const discovered = (state.install.wifiDiscovery?.results || []).find((item) => String(item?.ip || '') === ip) || null;
+    if (discovered) {
+      applyLocalStatus(discovered, localUrl);
+    } else {
+      state.install.localIp = ip;
+      state.install.localUrl = localUrl;
+      saveSession();
+    }
+    renderKnownDeviceSection();
+    showToast(deviceId ? `Local URL set to ${localUrl} for ${deviceId}.` : `Local URL set to ${localUrl}.`);
+    refreshLocalDeviceStatusApp(true).catch(() => {
+      // best effort refresh after selection
+    });
+  }
+
+  async function wifiDiscoverDevicesApp() {
+    if (!canVendorInstall()) {
+      showToast('Vendor login is required for local network discovery.', true);
+      return;
+    }
+
+    const networkInfo = readPhoneWifiInfo();
+    state.ble.phoneWifiSsid = String(networkInfo.ssid || '').trim();
+    renderPhoneWifiSsid();
+
+    const plan = buildWifiDiscoveryPlan(networkInfo);
+    const discovery = state.install.wifiDiscovery;
+    discovery.results = [];
+    discovery.scanned = 0;
+    discovery.total = plan.candidates.length;
+    discovery.networkLabel = plan.networkLabel || 'current Wi-Fi';
+
+    if (!plan.candidates.length) {
+      discovery.summary = 'Current Wi-Fi subnet could not be determined. Connect phone to site Wi-Fi or set a local device URL first.';
+      renderWifiDiscoveryList();
+      showToast(discovery.summary, true);
+      return;
+    }
+
+    const expectedIdentity = resolveExpectedWifiDiscoveryIdentity();
+    discovery.summary = `Scanning ${plan.networkLabel} for FloodGuard S3 devices...`;
+    renderWifiDiscoveryList();
+    setWifiDiscoveryProgress(true, 'Scanning Wi-Fi...');
+
+    const results = [];
+    let cursor = 0;
+    let nextPaintAt = 1;
+    const total = plan.candidates.length;
+
+    const pushRenderProgress = (force = false) => {
+      discovery.results = results.slice().sort((left, right) => {
+        if (left.identityMatch !== right.identityMatch) {
+          return Number(right.identityMatch) - Number(left.identityMatch);
+        }
+        return String(left.ip || '').localeCompare(String(right.ip || ''), undefined, { numeric: true });
+      });
+      if (!force && discovery.scanned < nextPaintAt) {
+        return;
+      }
+      nextPaintAt = discovery.scanned + 10;
+      renderWifiDiscoveryList();
+      setWifiDiscoveryProgress(true, `Scanning Wi-Fi... ${discovery.scanned}/${total}`);
+    };
+
+    try {
+      const workers = Array.from({ length: Math.min(WIFI_DISCOVERY_BATCH_SIZE, total) }, async () => {
+        while (cursor < total) {
+          const currentIndex = cursor;
+          cursor += 1;
+          const ip = plan.candidates[currentIndex];
+          try {
+            const result = await probeWifiDiscoveryIp(ip, expectedIdentity);
+            if (result) {
+              results.push(result);
+            }
+          } finally {
+            discovery.scanned += 1;
+            pushRenderProgress(results.length > 0 || discovery.scanned === total);
+          }
+        }
+      });
+      await Promise.all(workers);
+
+      discovery.results = results.slice().sort((left, right) => {
+        if (left.identityMatch !== right.identityMatch) {
+          return Number(right.identityMatch) - Number(left.identityMatch);
+        }
+        return String(left.ip || '').localeCompare(String(right.ip || ''), undefined, { numeric: true });
+      });
+      discovery.summary = discovery.results.length > 0
+        ? `Found ${discovery.results.length} FloodGuard device(s) on ${plan.networkLabel}.${expectedIdentity.deviceId ? ` Expected device ${expectedIdentity.deviceId}${discovery.results.some((item) => item.identityMatch) ? ' matched.' : ' not found in scan results.'}` : ''}`
+        : `No FloodGuard device found on ${plan.networkLabel}.`;
+      renderWifiDiscoveryList();
+      showToast(discovery.results.length > 0 ? discovery.summary : 'No FloodGuard device found on current Wi-Fi.', discovery.results.length === 0);
+    } catch (error) {
+      discovery.summary = `Wi-Fi discovery failed: ${error.message}`;
+      renderWifiDiscoveryList();
+      showToast(discovery.summary, true);
+    } finally {
+      discovery.running = false;
+      setWifiDiscoveryProgress(false);
+      renderWifiDiscoveryList();
+    }
+  }
+
   function renderPhoneWifiSsid() {
     const el = byId('ble-phone-wifi-ssid');
     if (!el) {
@@ -1332,13 +1761,13 @@
     const mqttOk = state.install.deviceCloudReachable === true;
     const mqttEl = byId('known-device-mqtt');
     if (mqttEl) {
-      mqttEl.textContent = mqttOk ? 'VPS/MQTT: ✅ Connected' : 'VPS/MQTT: checking...';
+      mqttEl.textContent = mqttOk ? 'VPS/MQTT: âœ… Connected' : 'VPS/MQTT: checking...';
       mqttEl.style.color = mqttOk ? '#2e7d32' : '#777';
     }
     const scanBtn = byId('ble-scan-btn');
     if (scanBtn) {
       scanBtn.style.opacity = '0.55';
-      scanBtn.title = 'Device already provisioned — use Check VPS/MQTT or clear to scan a new device';
+      scanBtn.title = 'Device already provisioned â€” use Check VPS/MQTT or clear to scan a new device';
     }
   }
 
@@ -1349,7 +1778,7 @@
     const ok = await refreshLocalDeviceStatusApp();
     if (mqttEl) {
       const connected = state.install.deviceCloudReachable === true;
-      mqttEl.textContent = connected ? 'VPS/MQTT: ✅ Connected' : 'VPS/MQTT: ❌ Not connected';
+      mqttEl.textContent = connected ? 'VPS/MQTT: âœ… Connected' : 'VPS/MQTT: âŒ Not connected';
       mqttEl.style.color = connected ? '#2e7d32' : '#c62828';
     }
     if (ok) showToast('Device reachable on local network.');
@@ -1404,8 +1833,8 @@
       ].filter(Boolean).join(' ');
       return `
         <div class="${rowClass}" onclick="selectBleDeviceApp('${escapeHtml(device.deviceId)}')">
-          <div class="ble-device-name">${escapeHtml(device.name || 'Unknown')} ${selected ? '• Selected' : ''}</div>
-          <div class="ble-device-meta">${escapeHtml(device.deviceId)} · RSSI ${escapeHtml(String(device.rssi ?? '--'))}</div>
+          <div class="ble-device-name">${escapeHtml(device.name || 'Unknown')} ${selected ? 'â€¢ Selected' : ''}</div>
+          <div class="ble-device-meta">${escapeHtml(device.deviceId)} Â· RSSI ${escapeHtml(String(device.rssi ?? '--'))}</div>
           <div class="row" style="margin-top:8px;justify-content:flex-end">
             <button class="ghost-btn" style="padding:6px 10px" onclick="selectBleDeviceApp('${escapeHtml(device.deviceId)}')">
               ${selected ? 'Selected' : 'Use Device'}
@@ -1432,7 +1861,7 @@
     list.innerHTML = state.ble.wifiNetworks.map((network) => `
       <div class="ble-wifi-row">
         <div class="ble-wifi-name">${escapeHtml(network.ssid || '--')}</div>
-        <div class="ble-wifi-meta">RSSI ${escapeHtml(String(network.rssi ?? '--'))} · ${escapeHtml(network.auth || 'UNKNOWN')} · CH ${escapeHtml(String(network.channel ?? '--'))}</div>
+        <div class="ble-wifi-meta">RSSI ${escapeHtml(String(network.rssi ?? '--'))} Â· ${escapeHtml(network.auth || 'UNKNOWN')} Â· CH ${escapeHtml(String(network.channel ?? '--'))}</div>
         <div class="row" style="margin-top:8px;justify-content:flex-end">
           <button class="ghost-btn" style="padding:6px 10px" onclick="pickBleWifiSsidApp('${escapeHtml(network.ssid || '')}')">Use SSID</button>
         </div>
@@ -2141,8 +2570,8 @@
     if (!canVendorInstall()) {
       return;
     }
-    const phoneSsid = readPhoneWifiSsid();
-    state.ble.phoneWifiSsid = phoneSsid;
+    const phoneInfo = readPhoneWifiInfo();
+    state.ble.phoneWifiSsid = String(phoneInfo.ssid || '').trim();
     renderPhoneWifiSsid();
     syncVoltageInputsFromState();
     updateVpsUrlInput();
@@ -2155,115 +2584,27 @@
     renderBleDeviceList();
     renderBleWifiList();
     renderBleWifiSelect();
+    renderWifiDiscoveryList();
     updateBleProvisionSectionVisibility();
     updateBleStatusLabel();
   }
 
   function isSuperAdmin() {
     const role = String(state.user?.role || '').toUpperCase();
-    return role === 'VENDOR_SUPER_ADMIN' || role === 'DEPARTMENT_SUPER_ADMIN';
+    return role === 'VENDOR_SUPER_ADMIN' || role === 'DEPARTMENT_SUPER_ADMIN' || role === 'DEMO_SUPER_ADMIN';
+  }
+
+  function isDemoSuperAdmin() {
+    return userRole() === 'DEMO_SUPER_ADMIN';
+  }
+
+  function canUseTransferPipeline() {
+    const role = userRole();
+    return role === 'DEMO_SUPER_ADMIN' || role === 'VENDOR_SUPER_ADMIN';
   }
 
   function isNativeApp() {
     return Boolean(window?.Capacitor?.isNativePlatform?.() || window?.Capacitor?.isNative);
-  }
-
-  function currentFcmUserKey() {
-    return String(
-      state.user?.user_id
-      || state.user?.id
-      || state.user?._id
-      || state.user?.login_id
-      || ''
-    ).trim();
-  }
-
-  async function openFcmNotificationTarget(locationId) {
-    const targetLocationId = String(locationId || '').trim();
-    if (!state.token) {
-      if (targetLocationId) state.fcm.pendingLocationId = targetLocationId;
-      return;
-    }
-
-    if (!state.locations.length) {
-      await fetchLocations();
-      renderLocations();
-    }
-
-    if (targetLocationId) {
-      const match = state.locations.find((item) => String(item.location_id) === targetLocationId) || null;
-      if (match) {
-        state.selectedLocationId = match.location_id;
-        state.selectedDeviceId = match.device_id || null;
-      }
-    }
-
-    if (state.selectedLocationId) {
-      openView('view-dashboard');
-      await refreshAppData();
-    } else {
-      openView('view-locations');
-    }
-  }
-
-  async function flushPendingFcmAction() {
-    if (!state.fcm.pendingLocationId || !state.token) {
-      return;
-    }
-    const pendingLocationId = state.fcm.pendingLocationId;
-    state.fcm.pendingLocationId = '';
-    try {
-      await openFcmNotificationTarget(pendingLocationId);
-    } catch (_) {
-      state.fcm.pendingLocationId = pendingLocationId;
-    }
-  }
-
-  async function ensureNativeFcmListeners() {
-    if (!isNativeApp() || state.fcm.nativeListenersBound) {
-      return;
-    }
-
-    const PushNotifications = window?.Capacitor?.Plugins?.PushNotifications;
-    if (!PushNotifications) {
-      return;
-    }
-
-    PushNotifications.addListener('registration', async (token) => {
-      const tokenValue = String(token?.value || '').trim();
-      if (!tokenValue) {
-        return;
-      }
-      console.info('[FCM-native] token received');
-      await _sendFcmTokenToServer(tokenValue);
-    });
-
-    PushNotifications.addListener('registrationError', (err) => {
-      console.warn('[FCM-native] registration error:', err?.error || err);
-    });
-
-    PushNotifications.addListener('pushNotificationReceived', (notification) => {
-      _handleFcmForegroundPayload(
-        notification?.title,
-        notification?.body,
-        notification?.data?.event || '',
-        notification?.data?.location_id || notification?.data?.locationId || ''
-      );
-    });
-
-    PushNotifications.addListener('pushNotificationActionPerformed', (action) => {
-      const locationId = String(
-        action?.notification?.data?.location_id
-        || action?.notification?.data?.locationId
-        || ''
-      ).trim();
-      if (locationId) {
-        state.fcm.pendingLocationId = locationId;
-      }
-      flushPendingFcmAction().catch(() => {});
-    });
-
-    state.fcm.nativeListenersBound = true;
   }
 
   function applyBrowserModeUi() {
@@ -2284,7 +2625,7 @@
   }
 
   function canEditConfig() {
-    return ['VENDOR_SUPER_ADMIN', 'DEPARTMENT_SUPER_ADMIN', 'DEPARTMENT_ADMIN'].includes(userRole());
+    return ['VENDOR_SUPER_ADMIN', 'DEMO_SUPER_ADMIN', 'DEPARTMENT_SUPER_ADMIN', 'DEPARTMENT_ADMIN'].includes(userRole());
   }
 
   function selectedConfigDeviceId() {
@@ -2381,10 +2722,10 @@
 
       return `
         <div class="audit-item">
-          <div class="audit-event">V${escapeHtml(String(entry.config_version ?? '--'))} · ${escapeHtml(stateLabel)}</div>
+          <div class="audit-event">V${escapeHtml(String(entry.config_version ?? '--'))} Â· ${escapeHtml(stateLabel)}</div>
           <div class="audit-detail">${escapeHtml(summary)}</div>
-          <div class="audit-detail">${escapeHtml(ackStatus)} · ${escapeHtml(entry.command_id || '--')}</div>
-          <div class="audit-time">${escapeHtml(formatDateTime(entry.requested_at))} IST · ${escapeHtml(requestedBy)} · ACK ${escapeHtml(ackAt)}</div>
+          <div class="audit-detail">${escapeHtml(ackStatus)} Â· ${escapeHtml(entry.command_id || '--')}</div>
+          <div class="audit-time">${escapeHtml(formatDateTime(entry.requested_at))} IST Â· ${escapeHtml(requestedBy)} Â· ACK ${escapeHtml(ackAt)}</div>
           ${entry.ack?.message ? `<div class="audit-time">${escapeHtml(String(entry.ack.message))}</div>` : ''}
         </div>
       `;
@@ -2451,7 +2792,7 @@
         reportedNote.style.color = '#2e7d32';
         reportedNote.style.display = '';
       } else {
-        reportedNote.textContent = 'No report from device yet — showing last VPS-stored config. Values update after device connects and sends telemetry.';
+        reportedNote.textContent = 'No report from device yet â€” showing last VPS-stored config. Values update after device connects and sends telemetry.';
         reportedNote.style.background = '#fff3e0';
         reportedNote.style.borderLeftColor = '#f57c00';
         reportedNote.style.color = '#e65100';
@@ -2471,19 +2812,19 @@
     setConfigInputValue('cfg-switch-level-2-mm', src.switch_level_2_mm);
 
     const displayVersion = dr?.config_version ?? config.config_version ?? '--';
-    setText('cfg-meta-version', `Version: ${displayVersion} · State: ${config.state || '--'}`);
+    setText('cfg-meta-version', `Version: ${displayVersion} Â· State: ${config.state || '--'}`);
     const ackStatus = config.last_ack_status || '--';
     const ackTime = config.last_ack_at ? formatDateTime(config.last_ack_at) : '--';
-    const ackMsg = config.last_ack_message ? ` · ${config.last_ack_message}` : '';
+    const ackMsg = config.last_ack_message ? ` Â· ${config.last_ack_message}` : '';
     setText('cfg-meta-ack', `Last ACK: ${ackStatus} at ${ackTime}${ackMsg}`);
 
     if (accessNote) {
       const loc = state.locations.find((l) => l.location_id === state.selectedLocationId);
-      const locLabel = loc ? `${loc.location_name || loc.location_id} · ${deviceId}` : deviceId;
+      const locLabel = loc ? `${loc.location_name || loc.location_id} Â· ${deviceId}` : deviceId;
       if (canEdit) {
-        accessNote.textContent = `Configuring: ${locLabel} · Editable`;
+        accessNote.textContent = `Configuring: ${locLabel} Â· Editable`;
       } else {
-        accessNote.textContent = `Configuring: ${locLabel} · Read only`;
+        accessNote.textContent = `Configuring: ${locLabel} Â· Read only`;
       }
     }
 
@@ -2519,7 +2860,7 @@
         badge.textContent = 'Awaiting data';
         badge.style.background = '#eeeeee'; badge.style.color = '#757575';
       } else if (st === 'OK' || tel?.rs485_detected === true) {
-        badge.textContent = 'Connected ✓';
+        badge.textContent = 'Connected âœ“';
         badge.style.background = '#e8f5e9'; badge.style.color = '#2e7d32';
       } else if (st === 'NOT_DETECTED') {
         badge.textContent = 'Not Detected';
@@ -2569,7 +2910,7 @@
       ? Math.max(0, mountHeight - Math.round(tel.distance_mm))
       : Math.round(tel.water_level_mm ?? 0);
     if (level <= 0) {
-      alert('Calculated water level is 0 mm — raise water to the alert height first, then tap Set Level 1.');
+      alert('Calculated water level is 0 mm â€” raise water to the alert height first, then tap Set Level 1.');
       return;
     }
     const el = byId('cfg-alert-level');
@@ -2588,7 +2929,7 @@
       ? Math.max(0, mountHeight - Math.round(tel.distance_mm))
       : Math.round(tel.water_level_mm ?? 0);
     if (level <= 0) {
-      alert('Calculated water level is 0 mm — raise water to the danger height first, then tap Set Level 2.');
+      alert('Calculated water level is 0 mm â€” raise water to the danger height first, then tap Set Level 2.');
       return;
     }
     const alertLevel = Number(byId('cfg-alert-level')?.value || 0);
@@ -2678,11 +3019,11 @@
       tbody.innerHTML = list.map((c) => {
         const ackBadge = c.last_ack_status === 'ACK'
           ? '<span style="color:#2e7d32;font-size:10px">ACK</span>'
-          : (c.last_ack_status ? `<span style="color:#c62828;font-size:10px">${c.last_ack_status}</span>` : '<span style="color:#9e9e9e;font-size:10px">—</span>');
+          : (c.last_ack_status ? `<span style="color:#c62828;font-size:10px">${c.last_ack_status}</span>` : '<span style="color:#9e9e9e;font-size:10px">â€”</span>');
         return `<tr style="border-bottom:1px solid #f5f5f5">
           <td style="padding:7px 8px;font-family:monospace;font-size:11px">${escapeHtml(c.device_id)}</td>
-          <td style="padding:7px 8px;font-size:11px">${escapeHtml(c.location_name || c.location_id || '—')}</td>
-          <td style="padding:7px 8px">${c.alert_level_mm ?? '—'} / ${c.danger_level_mm ?? '—'}</td>
+          <td style="padding:7px 8px;font-size:11px">${escapeHtml(c.location_name || c.location_id || 'â€”')}</td>
+          <td style="padding:7px 8px">${c.alert_level_mm ?? 'â€”'} / ${c.danger_level_mm ?? 'â€”'}</td>
           <td style="padding:7px 8px;color:#555">v${c.config_version ?? '?'}</td>
           <td style="padding:7px 8px">${ackBadge}</td>
           <td style="padding:7px 8px;text-align:right;white-space:nowrap">
@@ -3001,11 +3342,11 @@
 
   function canVendorInstall() {
     const role = userRole();
-    return role === 'VENDOR_SUPER_ADMIN' || role === 'VENDOR_MONITORING_USER';
+    return role === 'VENDOR_SUPER_ADMIN' || role === 'DEMO_SUPER_ADMIN' || role === 'VENDOR_MONITORING_USER';
   }
 
   function canOperate() {
-    return ['VENDOR_SUPER_ADMIN', 'DEPARTMENT_SUPER_ADMIN', 'DEPARTMENT_ADMIN', 'OPERATOR'].includes(userRole());
+    return ['VENDOR_SUPER_ADMIN', 'DEMO_SUPER_ADMIN', 'DEPARTMENT_SUPER_ADMIN', 'DEPARTMENT_ADMIN', 'OPERATOR'].includes(userRole());
   }
 
   function rootUrlFromApiBase() {
@@ -3130,6 +3471,10 @@
     const select = byId('ua-role');
     if (!select) return;
     const role = userRole();
+    if (role === 'DEMO_SUPER_ADMIN') {
+      select.innerHTML = '<option value="VENDOR_SUPER_ADMIN">Vendor Super Admin</option>';
+      return;
+    }
     const vendorOptions = [
       { value: 'DEPARTMENT_SUPER_ADMIN', label: 'Dept Super Admin' },
       { value: 'DEPARTMENT_ADMIN', label: 'Department Admin' },
@@ -3298,11 +3643,11 @@
       // Status chip class
       const chipCls = meta.cls === 'danger' ? ' danger' : meta.cls === 'warn' ? ' warn' : meta.cls === 'off' ? ' off' : '';
 
-      // Device pill — show device ID + status if bound, or bind button if unbound (super admin)
+      // Device pill â€” show device ID + status if bound, or bind button if unbound (super admin)
       const devPillCls = isOnline ? 'loc-dev-pill--online' : 'loc-dev-pill--offline';
       let deviceSection = '';
       if (deviceId) {
-        deviceSection = `<span class="loc-dev-pill ${devPillCls}" title="Device ID: ${escapeHtml(deviceId)}">${escapeHtml(deviceId)} · ${escapeHtml(devStatus)}</span>`;
+        deviceSection = `<span class="loc-dev-pill ${devPillCls}" title="Device ID: ${escapeHtml(deviceId)}">${escapeHtml(deviceId)} Â· ${escapeHtml(devStatus)}</span>`;
       } else if (isSuperAdmin()) {
         deviceSection = `<span class="loc-bind-btn" onclick="event.stopPropagation();toggleInlineBindApp('${escapeHtml(loc.location_id)}')" title="Bind a device to this location">Bind Device</span>`;
       } else {
@@ -3330,11 +3675,11 @@
             <span class="loc-bind-panel-label">Bind device to <strong>${escapeHtml(loc.location_name || loc.location_id)}</strong></span>
             <div class="loc-bind-row">
               <select class="inp loc-bind-select" id="bind-sel-${escapeHtml(loc.location_id)}">
-                <option value="">Select free device…</option>
+                <option value="">Select free deviceâ€¦</option>
                 ${(state.adminDevices || []).filter((d) => !d.location_id).map((d) => `<option value="${escapeHtml(d.device_id)}"${pendingId && d.device_id === pendingId ? ' selected' : ''}>${escapeHtml(d.device_id)}${d.status ? ' (' + String(d.status).toUpperCase() + ')' : ''}</option>`).join('')}
               </select>
               <span class="loc-bind-or">or</span>
-              <input class="inp loc-bind-input" id="bind-inp-${escapeHtml(loc.location_id)}" placeholder="Type Device ID…" value="${escapeHtml(pendingId)}" oninput="document.getElementById('bind-sel-${escapeHtml(loc.location_id)}').value=''">
+              <input class="inp loc-bind-input" id="bind-inp-${escapeHtml(loc.location_id)}" placeholder="Type Device IDâ€¦" value="${escapeHtml(pendingId)}" oninput="document.getElementById('bind-sel-${escapeHtml(loc.location_id)}').value=''">
               <button class="loc-bind-apply-btn" onclick="applyBindFromCardApp('${escapeHtml(loc.location_id)}')">Apply</button>
             </div>
           </div>
@@ -3423,7 +3768,7 @@
     const fillPercent = Math.max(0, Math.min(100, (waterLevel / mountHeight) * 100));
 
     setText('dash-location-name', location?.location_name || location?.location_id || '--');
-    setText('dash-location-sub', `Device: ${location?.device_id || '--'} · Last update ${formatDateTime(latest?.timestamp || location?.last_update)}`);
+    setText('dash-location-sub', `Device: ${location?.device_id || '--'} Â· Last update ${formatDateTime(latest?.timestamp || location?.last_update)}`);
 
     setText('dash-status-note', `Status note: ${latest?.status_note || 'No note available'}`);
 
@@ -3462,6 +3807,28 @@
       setText('dash-device-bound-info', `Bound Device: ${state.selectedDeviceId || 'None'}`);
       setText('dash-bind-status', '');
       setText('dash-loc-save-status', '');
+      const transferPanel = byId('dash-transfer-panel');
+      if (transferPanel) transferPanel.style.display = canUseTransferPipeline() ? 'block' : 'none';
+      const senderEl = byId('dash-transfer-sender');
+      if (senderEl) senderEl.value = state.user?.login_id || '';
+      const newRoleEl = byId('dash-transfer-new-role');
+      if (newRoleEl) {
+        if (isDemoSuperAdmin()) {
+          newRoleEl.value = 'VENDOR_SUPER_ADMIN';
+          newRoleEl.disabled = true;
+        } else {
+          if (!newRoleEl.value) newRoleEl.value = 'DEPARTMENT_SUPER_ADMIN';
+          newRoleEl.disabled = false;
+        }
+      }
+      setText(
+        'dash-transfer-role-hint',
+        isDemoSuperAdmin()
+          ? 'Demo user can create only Vendor Super Admin before transfer.'
+          : 'Vendor Super Admin can create a target user and grant location/device access.'
+      );
+      setText('dash-transfer-device-info', `Transfer target: ${state.selectedLocationId || '--'} Â· Device: ${state.selectedDeviceId || 'None'}`);
+      setText('dash-transfer-status', '');
     }
     applyVendorInstallVisibility();
     applyConfigVisibility();
@@ -3469,7 +3836,6 @@
     applyComplaintsVisibility();
     applyReportsVisibility();
     applyUsersTabVisibility();
-    applyVendorsTabVisibility();
     renderInstallCloudStatuses();
 
     const fill = byId('vessel-fill');
@@ -3560,13 +3926,13 @@
       if (log.details?.level) details.push(`Level: ${log.details.level}`);
       if (log.details?.water_level_mm != null) details.push(`Water: ${Math.round(log.details.water_level_mm)}mm`);
       const deviceId = log.details?.device_id || null;
-      const locationLine = [log.location_id, deviceId].filter(Boolean).join(' · ');
+      const locationLine = [log.location_id, deviceId].filter(Boolean).join(' Â· ');
       return `
         <div class="audit-item">
           <div class="audit-event">${escapeHtml(String(log.event_type || 'EVENT').toUpperCase())}</div>
           ${locationLine ? `<div class="audit-detail" style="color:#3949ab;font-size:12px">${escapeHtml(locationLine)}</div>` : ''}
           <div class="audit-detail">${escapeHtml(details.join(' | ') || 'Action logged')}</div>
-          <div class="audit-time">${escapeHtml(formatDateTime(log.timestamp))} IST · ${escapeHtml(log.login_id || 'System')}</div>
+          <div class="audit-time">${escapeHtml(formatDateTime(log.timestamp))} IST Â· ${escapeHtml(log.login_id || 'System')}</div>
         </div>
       `;
     }).join('');
@@ -3624,7 +3990,7 @@
               <span class="chip ${isActive ? '' : 'danger'}" style="font-size:10px">${isActive ? 'ACTIVE' : 'INACTIVE'}</span>
             </div>
           </div>
-          <div class="user-meta-row">Sessions: ${sessions} · ${locs}</div>
+          <div class="user-meta-row">Sessions: ${sessions} Â· ${locs}</div>
           <div class="row" style="margin-top:8px;justify-content:flex-end;gap:6px">
             ${manageLocsBtn}
             <button class="ghost-btn" style="padding:5px 10px;font-size:11px"
@@ -4141,7 +4507,7 @@
         if (alreadyConnected && sameSsid) {
           reusedWifiSession = true;
           wifiResponse = healthResponse;
-          // WiFi already connected — hide steps 1 & 2 and go straight to cloud step
+          // WiFi already connected â€” hide steps 1 & 2 and go straight to cloud step
           const s1 = byId('prov-step-1');
           const s2 = byId('prov-step-2');
           if (s1) s1.style.display = 'none';
@@ -4339,7 +4705,7 @@
       }
 
       // PRIMARY: Poll device local HTTP for MQTT/cloud status.
-      // After WiFi connects, the device is on the local network — HTTP is faster and
+      // After WiFi connects, the device is on the local network â€” HTTP is faster and
       // more reliable than BLE because ESP32 BLE radio is stressed during WiFi activity.
       const targetLocId = String(byId('ble-target-location-select')?.value || '').trim();
       setProvisionStep(3, 'active', 'Checking cloud via device HTTP (primary)...');
@@ -4347,7 +4713,7 @@
       if (!cloudReachable && localUrlAfterCloud) {
         for (let h = 0; h < 10 && !cloudReachable && !state.loading; h++) {
           await delay(h === 0 ? 1500 : 3000);
-          setProvisionStep(3, 'active', `Device HTTP check ${h + 1}/10 — waiting for cloud...`);
+          setProvisionStep(3, 'active', `Device HTTP check ${h + 1}/10 â€” waiting for cloud...`);
           try {
             const httpSt = await fetchLocalDeviceStatus(localUrlAfterCloud);
             applyLocalStatus(httpSt, localUrlAfterCloud);
@@ -4392,7 +4758,7 @@
         }
       }
 
-      // AUTO-BIND: Always attempt if target location selected — runs even when cloud not yet
+      // AUTO-BIND: Always attempt if target location selected â€” runs even when cloud not yet
       // confirmed, because the device may have registered successfully despite BLE timeout.
       if (targetLocId && isSuperAdmin()) {
         const alreadyBound = (state.locations || []).find((l) => l.location_id === targetLocId && l.device_id);
@@ -4416,7 +4782,7 @@
               await refreshAppData();
               await refreshAdminDevicesApp().catch(() => {});
               populateBleTargetLocationSection();
-              // Re-check cloud via backend after bind — telemetry now flows with valid location
+              // Re-check cloud via backend after bind â€” telemetry now flows with valid location
               if (!cloudReachable) {
                 setProvisionStep(3, 'active', 'Re-checking cloud after bind...');
                 await delay(6000);
@@ -4630,7 +4996,7 @@
     }
   }
 
-  // ── Alarm sound (Web Audio API + Speech) ─────────────────────────
+  // â”€â”€ Alarm sound (Web Audio API + Speech) â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
   function _getAudioCtx() {
     if (!state.alarm.audioCtx) {
       state.alarm.audioCtx = new (window.AudioContext || window.webkitAudioContext)();
@@ -4701,24 +5067,15 @@
     if (window.speechSynthesis) window.speechSynthesis.cancel();
   }
 
-  // ── Firebase Cloud Messaging ──────────────────────────────────────
+  // â”€â”€ Firebase Cloud Messaging â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
   async function _sendFcmTokenToServer(token) {
-    const normalizedToken = String(token || '').trim();
-    if (!normalizedToken) return;
-    state.fcm.knownToken = normalizedToken;
-
-    const userKey = currentFcmUserKey();
-    if (!state.token || !state.apiBase || !userKey) return;
-    if (state.fcm.lastUploadedToken === normalizedToken && state.fcm.lastUploadedUserKey === userKey) return;
-
+    if (!state.token || !state.apiBase) return;
     try {
       await apiRequest('/auth/fcm-token', {
         auth: true,
         method: 'PUT',
-        body: { fcm_token: normalizedToken }
+        body: { fcm_token: token }
       });
-      state.fcm.lastUploadedToken = normalizedToken;
-      state.fcm.lastUploadedUserKey = userKey;
     } catch (_) {}
   }
 
@@ -4730,7 +5087,7 @@
   }
 
   async function initFcm() {
-    // ── Native Capacitor APK path ─────────────────────────────────
+    // â”€â”€ Native Capacitor APK path â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
     if (isNativeApp()) {
       const PushNotifications = window?.Capacitor?.Plugins?.PushNotifications;
       if (!PushNotifications) return;
@@ -4775,14 +5132,14 @@
       return;
     }
 
-    // ── Web / PWA path — Firebase Web SDK ────────────────────────
+    // â”€â”€ Web / PWA path â€” Firebase Web SDK â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
     if (typeof firebase === 'undefined' || !firebase.messaging) return;
     if (!('Notification' in window)) return;
 
     try {
       firebase.initializeApp(FCM_CONFIG);
     } catch (_) {
-      // already initialized — OK
+      // already initialized â€” OK
     }
 
     const permission = await Notification.requestPermission();
@@ -4811,11 +5168,11 @@
       console.warn('[FCM] token error:', err.message);
     }
 
-    // Show "Enable Alarm Sound" prompt — needs user gesture before audio plays
+    // Show "Enable Alarm Sound" prompt â€” needs user gesture before audio plays
     const btn = byId('alarm-enable-btn');
     if (btn) btn.style.display = '';
   }
-  // ─────────────────────────────────────────────────────────────────
+  // â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 
   async function loginApp() {
     const apiBase = normalizeApiBase(byId('login-api-base')?.value || '');
@@ -4859,7 +5216,6 @@
       applyComplaintsVisibility();
       applyReportsVisibility();
       applyUsersTabVisibility();
-      applyVendorsTabVisibility();
       showToast('Login successful');
       await refreshAppData();
       startPolling();
@@ -4891,8 +5247,6 @@
     state.complaints = [];
     state.complaintsLocationId = null;
     state.report = { rows: [], loaded: false };
-    state.vendors = [];
-    state.vendorsFiltered = [];
     state.install.tokenExpiresAt = '';
 
     if (state.refreshTimer) {
@@ -4919,7 +5273,6 @@
     applyComplaintsVisibility();
     applyReportsVisibility();
     applyUsersTabVisibility();
-    applyVendorsTabVisibility();
     renderAdminUsersApp([]);
     renderDeviceConfig(null);
     renderDeviceConfigHistory([]);
@@ -5051,7 +5404,7 @@
           opStatus === 'PENDING_VERIFICATION' ? 'pending' : 'off'
         );
         const bannerLabels = {
-          FAULTY: 'DEVICE FAULTY — Site monitoring may be unavailable',
+          FAULTY: 'DEVICE FAULTY â€” Site monitoring may be unavailable',
           UNDER_REPLACEMENT: 'DEVICE UNDER REPLACEMENT',
           PENDING_VERIFICATION: 'DEVICE PENDING VERIFICATION',
           REPLACED: 'DEVICE REPLACED',
@@ -5163,7 +5516,7 @@
         <div class="lifecycle-history-item">
           <div class="lifecycle-history-action">${action}</div>
           <div class="lifecycle-history-note">${note}</div>
-          <div class="lifecycle-history-meta">${by} · ${at}</div>
+          <div class="lifecycle-history-meta">${by} Â· ${at}</div>
         </div>
       `;
     }).join('');
@@ -5204,7 +5557,7 @@
     const loc = state.locations.find((l) => l.location_id === state.selectedLocationId);
     const locName = loc?.location_name || state.selectedLocationId || '--';
     setText('complaint-location-sub', state.selectedLocationId
-      ? `${locName} · ${state.selectedLocationId}`
+      ? `${locName} Â· ${state.selectedLocationId}`
       : 'Select a location first');
 
     const openCount = Array.isArray(complaints)
@@ -5223,8 +5576,8 @@
     }
 
     const role = userRole();
-    const canAcknowledge = ['VENDOR_SUPER_ADMIN', 'VENDOR_MONITORING_USER', 'DEPARTMENT_SUPER_ADMIN', 'DEPARTMENT_ADMIN'].includes(role);
-    const canResolve = ['VENDOR_SUPER_ADMIN', 'DEPARTMENT_SUPER_ADMIN', 'DEPARTMENT_ADMIN'].includes(role);
+    const canAcknowledge = ['VENDOR_SUPER_ADMIN', 'DEMO_SUPER_ADMIN', 'VENDOR_MONITORING_USER', 'DEPARTMENT_SUPER_ADMIN', 'DEPARTMENT_ADMIN'].includes(role);
+    const canResolve = ['VENDOR_SUPER_ADMIN', 'DEMO_SUPER_ADMIN', 'DEPARTMENT_SUPER_ADMIN', 'DEPARTMENT_ADMIN'].includes(role);
     const canForwardWa = ['DEPARTMENT_SUPER_ADMIN', 'DEPARTMENT_ADMIN'].includes(role);
 
     list.innerHTML = complaints.map((c) => {
@@ -5253,7 +5606,7 @@
         ? buildComplaintWaText(c, locName)
         : '';
       const waBtn = canForwardWa
-        ? `<a class="ghost-btn wa-forward-btn" style="padding:5px 10px;font-size:11px;text-decoration:none" href="https://wa.me/?text=${encodeURIComponent(waText)}" target="_blank" rel="noopener">📲 WhatsApp</a>`
+        ? `<a class="ghost-btn wa-forward-btn" style="padding:5px 10px;font-size:11px;text-decoration:none" href="https://wa.me/?text=${encodeURIComponent(waText)}" target="_blank" rel="noopener">ðŸ“² WhatsApp</a>`
         : '';
 
       const actionRow = (ackBtn || resolveBtn || closeBtn || waBtn)
@@ -5264,7 +5617,7 @@
         <div class="complaint-card">
           <div class="complaint-head">
             <div>
-              <div class="complaint-no">#${no} · ${type}</div>
+              <div class="complaint-no">#${no} Â· ${type}</div>
               <div class="complaint-desc">${desc}</div>
             </div>
             <div class="complaint-badges">
@@ -5272,7 +5625,7 @@
               <span class="complaint-status-pill status-pill--${escapeHtml(statusCls)}">${status}</span>
             </div>
           </div>
-          <div class="complaint-meta">${raisedBy} · ${raisedAt}</div>
+          <div class="complaint-meta">${raisedBy} Â· ${raisedAt}</div>
           ${actionRow}
         </div>
       `;
@@ -5288,7 +5641,7 @@
     const raisedBy = c.raised_by_login_id || c.raisedByLoginId || '--';
     const raisedAt = formatDateTime(c.created_at || c.createdAt);
     const lines = [
-      `*FloodGuard Complaint — ${locName}*`,
+      `*FloodGuard Complaint â€” ${locName}*`,
       `Complaint No: #${no}`,
       `Type: ${type}`,
       `Priority: ${priority}`,
@@ -5297,7 +5650,7 @@
       `Raised by: ${raisedBy} on ${raisedAt} IST`,
       ``,
       `Please look into this at the earliest.`,
-      `— FloodGuard Monitoring System`
+      `â€” FloodGuard Monitoring System`
     ];
     return lines.join('\n');
   }
@@ -5365,7 +5718,7 @@
     saveSession();
     refreshComplaintsApp().catch(() => {});
     const locName = loc?.location_name || locId;
-    setText('complaint-location-sub', `${locName} · ${locId}`);
+    setText('complaint-location-sub', `${locName} Â· ${locId}`);
   }
 
   async function refreshComplaintsApp() {
@@ -5427,7 +5780,7 @@
     updateNavButtonCount();
   }
 
-  // ── Location & Device Admin ──────────────────────────────────────────────────
+  // â”€â”€ Location & Device Admin â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 
   function populateDeviceLocationSelect() {
     const sel = byId('dev-add-location');
@@ -5564,7 +5917,7 @@
           </div>
           ${!d.location_id ? `
           <div style="margin-top:8px;display:flex;gap:6px;align-items:center">
-            <button class="control-btn info" style="flex:1;padding:7px 10px;font-size:12px;font-weight:600" onclick="openLocationViewWithDevice('${deviceId}')">📍 Connect to Location →</button>
+            <button class="control-btn info" style="flex:1;padding:7px 10px;font-size:12px;font-weight:600" onclick="openLocationViewWithDevice('${deviceId}')">ðŸ“ Connect to Location â†’</button>
           </div>` : `
           <div style="margin-top:6px;text-align:right">
             <button class="ghost-btn" style="padding:5px 10px;font-size:11px" onclick="quickUnbindDeviceApp('${deviceId}', '${locId}')">Unbind</button>
@@ -5629,7 +5982,7 @@
     if (!sel) return;
     const unbound = (state.locations || []).filter((l) => !l.device_id);
     const prev = sel.value;
-    sel.innerHTML = '<option value="">— Skip (bind manually later) —</option>';
+    sel.innerHTML = '<option value="">â€” Skip (bind manually later) â€”</option>';
     unbound.forEach((l) => {
       const opt = document.createElement('option');
       opt.value = l.location_id;
@@ -5692,7 +6045,7 @@
       const sel = byId(`bind-sel-${locationId}`);
       if (sel) {
         const free = (state.adminDevices || []).filter((d) => !d.location_id);
-        sel.innerHTML = '<option value="">Select free device…</option>' +
+        sel.innerHTML = '<option value="">Select free deviceâ€¦</option>' +
           free.map((d) => `<option value="${escapeHtml(d.device_id)}">${escapeHtml(d.device_id)}${d.status ? ' (' + String(d.status).toUpperCase() + ')' : ''}</option>`).join('');
       }
     }
@@ -5821,8 +6174,119 @@
     }
   }
 
+  function transferRightsRequiresReceiver(rightsMode) {
+    return String(rightsMode || 'MOVE').trim().toUpperCase() !== 'REVOKE_SENDER';
+  }
+
+  function resolveTransferUserRef(rawValue, kind = 'receiver') {
+    const value = String(rawValue || '').trim();
+    if (!value) {
+      return {};
+    }
+    if (/^user_/i.test(value)) {
+      return { [`${kind}_user_id`]: value };
+    }
+    return { [`${kind}_login_id`]: value };
+  }
+
+  function clearTransferPipelineInputs() {
+    ['dash-transfer-receiver', 'dash-transfer-new-login', 'dash-transfer-new-name', 'dash-transfer-new-password'].forEach((id) => {
+      const el = byId(id);
+      if (el) el.value = '';
+    });
+    const rightsEl = byId('dash-transfer-rights');
+    if (rightsEl) rightsEl.value = 'MOVE';
+  }
+
+  async function submitLocationTransferPipelineApp(payload) {
+    if (!canUseTransferPipeline()) {
+      showToast('Transfer pipeline is not available for this login.', true);
+      return;
+    }
+    if (!state.selectedLocationId) {
+      setText('dash-transfer-status', 'Select a location before running transfer.');
+      return;
+    }
+
+    const rightsMode = String(byId('dash-transfer-rights')?.value || payload?.rights || 'MOVE').trim().toUpperCase();
+    const senderRef = String(byId('dash-transfer-sender')?.value || state.user?.login_id || '').trim();
+    const requestBody = {
+      location_id: state.selectedLocationId,
+      rights: rightsMode,
+      ...resolveTransferUserRef(senderRef, 'sender'),
+      ...(payload || {})
+    };
+
+    setText('dash-transfer-status', 'Running transfer pipeline...');
+    try {
+      const result = await apiRequest('/admin/location-transfers', {
+        method: 'POST',
+        body: requestBody
+      });
+      const receiver = result?.receiver || result?.created_receiver || null;
+      const locationId = result?.location?.location_id || state.selectedLocationId;
+      const message = receiver
+        ? `Transfer completed: ${locationId} -> ${receiver.login_id || receiver.user_id} (${rightsMode})`
+        : `Transfer completed for ${locationId} (${rightsMode})`;
+      setText('dash-transfer-status', message);
+      showToast(message);
+      clearTransferPipelineInputs();
+      if (byId('view-users')?.classList.contains('active')) {
+        await refreshAdminUsersApp();
+      }
+      await refreshAppData();
+    } catch (error) {
+      setText('dash-transfer-status', `Failed: ${error.message}`);
+      showToast(`Transfer failed: ${error.message}`, true);
+    }
+  }
+
+  async function transferLocationToExistingUserApp() {
+    const rightsMode = String(byId('dash-transfer-rights')?.value || 'MOVE').trim().toUpperCase();
+    const receiverRaw = String(byId('dash-transfer-receiver')?.value || '').trim();
+    if (transferRightsRequiresReceiver(rightsMode) && !receiverRaw) {
+      setText('dash-transfer-status', 'Receiver User ID / Login ID is required for the selected rights mode.');
+      return;
+    }
+    await submitLocationTransferPipelineApp({
+      rights: rightsMode,
+      ...resolveTransferUserRef(receiverRaw, 'receiver')
+    });
+  }
+
+  async function createUserAndTransferLocationApp() {
+    const rightsMode = String(byId('dash-transfer-rights')?.value || 'MOVE').trim().toUpperCase();
+    if (!transferRightsRequiresReceiver(rightsMode)) {
+      setText('dash-transfer-status', 'Choose a rights mode that grants receiver access for create-and-transfer.');
+      return;
+    }
+
+    const loginId = String(byId('dash-transfer-new-login')?.value || '').trim();
+    const name = String(byId('dash-transfer-new-name')?.value || '').trim();
+    const password = String(byId('dash-transfer-new-password')?.value || '').trim();
+    const role = String(byId('dash-transfer-new-role')?.value || (isDemoSuperAdmin() ? 'VENDOR_SUPER_ADMIN' : 'DEPARTMENT_SUPER_ADMIN')).trim().toUpperCase();
+    if (!loginId || !password) {
+      setText('dash-transfer-status', 'New login ID and password are required.');
+      return;
+    }
+    if (password.length < 6) {
+      setText('dash-transfer-status', 'Temporary password must be at least 6 characters.');
+      return;
+    }
+
+    await submitLocationTransferPipelineApp({
+      rights: rightsMode,
+      create_receiver: {
+        login_id: loginId,
+        name: name || loginId,
+        password,
+        role: isDemoSuperAdmin() ? 'VENDOR_SUPER_ADMIN' : role
+      }
+    });
+  }
+
   function canViewReports() {
-    return ['VENDOR_SUPER_ADMIN', 'DEPARTMENT_SUPER_ADMIN', 'DEPARTMENT_ADMIN'].includes(userRole());
+    return ['VENDOR_SUPER_ADMIN', 'DEMO_SUPER_ADMIN', 'DEPARTMENT_SUPER_ADMIN', 'DEPARTMENT_ADMIN'].includes(userRole());
   }
 
   function applyReportsVisibility() {
@@ -5831,167 +6295,8 @@
     updateNavButtonCount();
   }
 
-  // ── Vendor Management ────────────────────────────────────────────────────────
 
-  function applyVendorsTabVisibility() {
-    const tab = byId('vendors-tab');
-    if (tab) tab.style.display = (state.token && state.user && userRole() === 'VENDOR_SUPER_ADMIN') ? 'inline-block' : 'none';
-    updateNavButtonCount();
-  }
-
-  async function loadVendorsApp() {
-    try {
-      const q = String(byId('vendor-search')?.value || '').trim();
-      const project = String(byId('vendor-filter-project')?.value || '').trim();
-      const params = new URLSearchParams();
-      if (q) params.set('q', q);
-      if (project) params.set('project', project);
-      const qs = params.toString();
-      const data = await apiRequest(`/vendor-mgmt/vendors${qs ? '?' + qs : ''}`);
-      state.vendors = data || [];
-      state.vendorsFiltered = [...state.vendors];
-      renderVendorList(state.vendorsFiltered);
-    } catch (error) {
-      setText('vendor-list', '');
-      const el = byId('vendor-list');
-      if (el) el.innerHTML = `<div class="empty err">Failed to load vendors: ${escHtml(error.message)}</div>`;
-    }
-  }
-
-  async function populateVendorProjectSelects() {
-    try {
-      const projects = await apiRequest('/vendor-mgmt/projects');
-      const filterSel = byId('vendor-filter-project');
-      if (filterSel) {
-        while (filterSel.options.length > 1) filterSel.remove(1);
-        (projects || []).forEach((p) => {
-          const opt = document.createElement('option');
-          opt.value = p._id;
-          opt.textContent = p.name;
-          filterSel.appendChild(opt);
-        });
-      }
-      const checkboxWrap = byId('vc-project-checkboxes');
-      if (checkboxWrap) {
-        checkboxWrap.innerHTML = (projects || []).map((p) =>
-          `<label class="vendor-proj-check"><input type="checkbox" value="${escHtml(p._id)}" data-role="CLIENT"> ${escHtml(p.name)}</label>`
-        ).join('');
-      }
-    } catch (_) {}
-  }
-
-  function renderVendorList(vendors) {
-    const el = byId('vendor-list');
-    if (!el) return;
-    if (!vendors || vendors.length === 0) {
-      el.innerHTML = '<div class="empty">No vendors found.</div>';
-      return;
-    }
-    el.innerHTML = vendors.map((v) => {
-      const statusClass = v.is_active ? 'ok' : 'off';
-      const statusLabel = v.is_active ? 'Active' : 'Inactive';
-      const projectTags = (v.projects || []).map((p) =>
-        `<span class="vendor-project-tag">${escHtml(p.project_id)}</span>`
-      ).join('');
-      const adminInfo = v.admin_user
-        ? `<span class="vendor-admin-id">${escHtml(v.admin_login_id)}</span>${v.admin_user.force_password_change ? '<span class="vendor-pw-flag">PW Change Pending</span>' : ''}`
-        : `<span class="vendor-admin-id">${escHtml(v.admin_login_id)}</span>`;
-      const masterBadge = v.is_master_vendor ? '<span class="vendor-master-badge">MASTER</span>' : '';
-      return `
-        <div class="vendor-card${v.is_active ? '' : ' vendor-inactive'}">
-          <div class="vendor-card-head">
-            <div>
-              <span class="vendor-company">${escHtml(v.company_name)}</span>
-              ${masterBadge}
-              <span class="chip ${statusClass}" style="margin-left:6px;font-size:10px">${statusLabel}</span>
-            </div>
-          </div>
-          <div class="vendor-meta-row">
-            <span>Contact: <b>${escHtml(v.contact_name || '—')}</b></span>
-            <span>Mobile: <b>${escHtml(v.mobile || '—')}</b></span>
-          </div>
-          <div class="vendor-meta-row">
-            <span>Admin Login: ${adminInfo}</span>
-          </div>
-          <div class="vendor-meta-row" style="flex-wrap:wrap;gap:4px">
-            ${projectTags || '<span class="hint">No projects assigned</span>'}
-          </div>
-          <div class="vendor-action-row">
-            <button class="control-btn danger" onclick="resetVendorPasswordApp('${escHtml(v._id)}','${escHtml(v.company_name)}')">Reset Password</button>
-            ${!v.is_master_vendor ? `<button class="control-btn ${v.is_active ? 'off' : 'ok'}" onclick="toggleVendorActiveApp('${escHtml(v._id)}','${escHtml(v.company_name)}')">${v.is_active ? 'Deactivate' : 'Activate'}</button>` : ''}
-          </div>
-        </div>`;
-    }).join('');
-  }
-
-  function filterVendorListApp() {
-    const q = String(byId('vendor-search')?.value || '').trim().toLowerCase();
-    const project = String(byId('vendor-filter-project')?.value || '').trim();
-    let filtered = state.vendors;
-    if (project) {
-      filtered = filtered.filter((v) => v.projects && v.projects.some((p) => p.project_id === project));
-    }
-    if (q) {
-      filtered = filtered.filter((v) =>
-        [v.company_name, v.mobile, v.admin_login_id, v.contact_name, v.email].join(' ').toLowerCase().includes(q)
-      );
-    }
-    state.vendorsFiltered = filtered;
-    renderVendorList(filtered);
-  }
-
-  async function createVendorApp() {
-    const companyName = String(byId('vc-company')?.value || '').trim();
-    const contactName = String(byId('vc-contact')?.value || '').trim();
-    const mobile = String(byId('vc-mobile')?.value || '').trim();
-    const email = String(byId('vc-email')?.value || '').trim();
-
-    setText('vc-create-status', '');
-    if (!companyName) { setText('vc-create-status', 'Company name is required.'); return; }
-    if (!mobile) { setText('vc-create-status', 'Mobile number is required.'); return; }
-
-    const checkboxes = Array.from(document.querySelectorAll('#vc-project-checkboxes input[type=checkbox]:checked'));
-    const projects = checkboxes.map((cb) => ({ project_id: cb.value, role: cb.dataset.role || 'CLIENT' }));
-
-    try {
-      const result = await apiRequest('/vendor-mgmt/vendors', {
-        method: 'POST',
-        body: { company_name: companyName, contact_name: contactName, mobile, email, projects }
-      });
-      setText('vc-create-status', `Vendor created. Admin login: ${result.admin_login_id} / Default password: ${result.default_password}`);
-      ['vc-company', 'vc-contact', 'vc-mobile', 'vc-email'].forEach((id) => {
-        const el = byId(id); if (el) el.value = '';
-      });
-      document.querySelectorAll('#vc-project-checkboxes input[type=checkbox]').forEach((cb) => { cb.checked = false; });
-      await loadVendorsApp();
-    } catch (error) {
-      setText('vc-create-status', `Failed: ${error.message}`);
-    }
-  }
-
-  async function resetVendorPasswordApp(vendorId, companyName) {
-    if (!confirm(`Reset password for ${companyName} admin to default (123456)?`)) return;
-    try {
-      const result = await apiRequest(`/vendor-mgmt/vendors/${vendorId}/reset-password`, { method: 'POST', body: {} });
-      showToast(`Password reset. Login: ${result.admin_login_id} / 123456`);
-      await loadVendorsApp();
-    } catch (error) {
-      showToast(`Reset failed: ${error.message}`);
-    }
-  }
-
-  async function toggleVendorActiveApp(vendorId, companyName) {
-    if (!confirm(`Toggle active status for ${companyName}?`)) return;
-    try {
-      await apiRequest(`/vendor-mgmt/vendors/${vendorId}/toggle-active`, { method: 'PATCH', body: {} });
-      showToast('Vendor status updated.');
-      await loadVendorsApp();
-    } catch (error) {
-      showToast(`Failed: ${error.message}`);
-    }
-  }
-
-  // ── Force Password Change Modal ──────────────────────────────────────────────
+  // â”€â”€ Force Password Change Modal â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 
   function openForcePwChangeModal() {
     const modal = byId('force-pw-modal');
@@ -6033,7 +6338,7 @@
       if (settingsNew) settingsNew.value = '';
       if (settingsConf) settingsConf.value = '';
     } catch (error) {
-      setText('force-pw-error', `Failed: ${error.message} — Enter old password manually in Settings if needed.`);
+      setText('force-pw-error', `Failed: ${error.message} â€” Enter old password manually in Settings if needed.`);
     }
   }
 
@@ -6156,10 +6461,10 @@
 
     const csvContent = csvRows.join('\n');
     const filename = buildExportFilename('FloodGuard_Report');
-    const blob = new Blob(['﻿' + csvContent], { type: 'text/csv;charset=utf-8;' });
+    const blob = new Blob(['ï»¿' + csvContent], { type: 'text/csv;charset=utf-8;' });
     const statusEl = byId('report-export-status');
 
-    // Mobile (native app): use Web Share API with file — shows native share sheet
+    // Mobile (native app): use Web Share API with file â€” shows native share sheet
     // User can save to Files, forward via WhatsApp, email, etc.
     if (isNativeApp() && navigator.canShare) {
       const shareFile = new File([blob], filename, { type: 'text/csv' });
@@ -6168,7 +6473,7 @@
           await navigator.share({
             files: [shareFile],
             title: 'FloodGuard Audit Report',
-            text: `${rows.length} records — ${filename}`
+            text: `${rows.length} records â€” ${filename}`
           });
           showToast('Report shared successfully.');
           if (statusEl) statusEl.textContent = `Shared: ${filename} (${rows.length} records)`;
@@ -6181,7 +6486,7 @@
       }
     }
 
-    // Browser / Desktop PWA: standard download → goes to Downloads folder automatically
+    // Browser / Desktop PWA: standard download â†’ goes to Downloads folder automatically
     try {
       const url = URL.createObjectURL(blob);
       const a = document.createElement('a');
@@ -6193,8 +6498,8 @@
       URL.revokeObjectURL(url);
 
       const savedMsg = isNativeApp()
-        ? `Saved: ${filename} — check your device Downloads folder`
-        : `Downloaded: ${filename} — saved to your Downloads folder`;
+        ? `Saved: ${filename} â€” check your device Downloads folder`
+        : `Downloaded: ${filename} â€” saved to your Downloads folder`;
       showToast(savedMsg);
       if (statusEl) statusEl.textContent = `${savedMsg} (${rows.length} records)`;
     } catch (_) {
@@ -6202,7 +6507,7 @@
       if (navigator.clipboard) {
         navigator.clipboard.writeText(csvContent)
           .then(() => {
-            showToast('Download failed. CSV data copied to clipboard — paste into a text file and save as .csv');
+            showToast('Download failed. CSV data copied to clipboard â€” paste into a text file and save as .csv');
             if (statusEl) statusEl.textContent = 'Export copied to clipboard (download not available on this device).';
           })
           .catch(() => showToast('Export failed. No download method available.', true));
@@ -6370,10 +6675,9 @@
       applyVendorInstallVisibility();
       applyConfigVisibility();
       applySettingsVisibility();
-    applyComplaintsVisibility();
-    applyReportsVisibility();
-    applyUsersTabVisibility();
-    applyVendorsTabVisibility();
+      applyComplaintsVisibility();
+      applyReportsVisibility();
+      applyUsersTabVisibility();
       return;
     }
 
@@ -6389,7 +6693,6 @@
       ['applyComplaintsVisibility', () => applyComplaintsVisibility()],
       ['applyReportsVisibility', () => applyReportsVisibility()],
       ['applyUsersTabVisibility', () => applyUsersTabVisibility()],
-      ['applyVendorsTabVisibility', () => applyVendorsTabVisibility()],
     ];
     for (const [name, fn] of steps) {
       try { fn(); } catch (e) { throw new Error(`[${name}] ${e.message}`); }
@@ -6493,6 +6796,8 @@
   window.closeProvisionProgressModalApp = closeProvisionProgressModalApp;
   window.cancelBleProvisionFlowApp = cancelBleProvisionFlowApp;
   window.bleScanDevicesApp = bleScanDevicesApp;
+  window.wifiDiscoverDevicesApp = wifiDiscoverDevicesApp;
+  window.useWifiDiscoveredDeviceApp = useWifiDiscoveredDeviceApp;
   window.bleDisconnectApp = bleDisconnectApp;
   window.bleReadHealthApp = bleReadHealthApp;
   window.diagDownDeviceApp = diagDownDeviceApp;
@@ -6538,6 +6843,8 @@
   window.applyBindFromCardApp = applyBindFromCardApp;
   window.bindDeviceToLocationApp = bindDeviceToLocationApp;
   window.unbindDeviceFromLocationApp = unbindDeviceFromLocationApp;
+  window.transferLocationToExistingUserApp = transferLocationToExistingUserApp;
+  window.createUserAndTransferLocationApp = createUserAndTransferLocationApp;
   window.filterUserListApp = filterUserListApp;
   window.toggleResetPwFormApp = toggleResetPwFormApp;
   window.submitResetPasswordApp = submitResetPasswordApp;

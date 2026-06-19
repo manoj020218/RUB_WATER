@@ -3,6 +3,7 @@ package in.jenix.floodguard;
 import android.Manifest;
 import android.content.Context;
 import android.content.pm.PackageManager;
+import android.net.DhcpInfo;
 import android.net.wifi.WifiInfo;
 import android.net.wifi.WifiManager;
 import android.os.Bundle;
@@ -12,6 +13,8 @@ import android.webkit.WebSettings;
 import androidx.core.content.ContextCompat;
 
 import com.getcapacitor.BridgeActivity;
+
+import org.json.JSONObject;
 
 public class MainActivity extends BridgeActivity {
     private static final String BRIDGE_NAME = "FGAndroid";
@@ -31,22 +34,82 @@ public class MainActivity extends BridgeActivity {
                 if (info == null) {
                     return "";
                 }
-                String ssid = info.getSSID();
-                if (ssid == null) {
-                    return "";
-                }
-                ssid = ssid.trim();
-                if (ssid.startsWith("\"") && ssid.endsWith("\"") && ssid.length() >= 2) {
-                    ssid = ssid.substring(1, ssid.length() - 1);
-                }
-                if ("<unknown ssid>".equalsIgnoreCase(ssid) || "0x".equalsIgnoreCase(ssid)) {
-                    return "";
-                }
-                return ssid;
+                return sanitizeSsid(info.getSSID());
             } catch (Exception ignored) {
                 return "";
             }
         }
+
+        @JavascriptInterface
+        public String getCurrentWifiInfo() {
+            if (!hasWifiStatePermission()) {
+                return "{}";
+            }
+            try {
+                WifiManager wifiManager = (WifiManager) getApplicationContext().getSystemService(Context.WIFI_SERVICE);
+                if (wifiManager == null) {
+                    return "{}";
+                }
+                WifiInfo info = wifiManager.getConnectionInfo();
+                DhcpInfo dhcpInfo = wifiManager.getDhcpInfo();
+                JSONObject payload = new JSONObject();
+
+                if (info != null) {
+                    String ssid = sanitizeSsid(info.getSSID());
+                    if (!ssid.isEmpty()) {
+                        payload.put("ssid", ssid);
+                    }
+                    String ip = intToIpv4(info.getIpAddress());
+                    if (!ip.isEmpty()) {
+                        payload.put("ip", ip);
+                    }
+                }
+
+                if (dhcpInfo != null) {
+                    String ip = intToIpv4(dhcpInfo.ipAddress);
+                    String gateway = intToIpv4(dhcpInfo.gateway);
+                    String netmask = intToIpv4(dhcpInfo.netmask);
+                    if (!ip.isEmpty()) {
+                        payload.put("ip", ip);
+                    }
+                    if (!gateway.isEmpty()) {
+                        payload.put("gateway", gateway);
+                    }
+                    if (!netmask.isEmpty()) {
+                        payload.put("netmask", netmask);
+                        payload.put("prefixLength", Integer.bitCount(dhcpInfo.netmask));
+                    }
+                }
+
+                return payload.toString();
+            } catch (Exception ignored) {
+                return "{}";
+            }
+        }
+    }
+
+    private String sanitizeSsid(String ssid) {
+        if (ssid == null) {
+            return "";
+        }
+        String normalized = ssid.trim();
+        if (normalized.startsWith("\"") && normalized.endsWith("\"") && normalized.length() >= 2) {
+            normalized = normalized.substring(1, normalized.length() - 1);
+        }
+        if ("<unknown ssid>".equalsIgnoreCase(normalized) || "0x".equalsIgnoreCase(normalized)) {
+            return "";
+        }
+        return normalized;
+    }
+
+    private String intToIpv4(int value) {
+        if (value == 0) {
+            return "";
+        }
+        return (value & 0xFF) + "."
+                + ((value >> 8) & 0xFF) + "."
+                + ((value >> 16) & 0xFF) + "."
+                + ((value >> 24) & 0xFF);
     }
 
     private boolean hasLocationPermission() {
