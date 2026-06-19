@@ -18,6 +18,9 @@ constexpr uint16_t kConfig32V2A = 0x2FFF;
 // Cal = trunc(0.04096 / (0.0001A × 0.1Ω)) = 4096
 constexpr uint16_t kCal32V2A   = 0x1000;
 constexpr float    kRshuntOhm  = 0.1f;
+// GY-219 module has a voltage divider on the VIN+ sense path.
+// Measured 9.14V on a 13.52V supply => scale = 13.52/9.14 = 1.4793
+constexpr float    kVBusScale  = 1.4793f;
 
 bool sWireInit = false;
 
@@ -81,7 +84,7 @@ void VoltageMonitor::begin() {
         _snap.ready = true;
         uint16_t busRaw = 0;
         inaRead(kRegBus, busRaw);
-        const float busV = (float)((busRaw >> 3) & 0x1FFF) * 0.004f;
+        const float busV = (float)((busRaw >> 3) & 0x1FFF) * 0.004f * kVBusScale;
         Serial.printf("[VMON] INA219 OK — SDA=GPIO%d SCL=GPIO%d  bus=%.2fV\n",
                       PIN_INA219_SDA, PIN_INA219_SCL, busV);
     } else {
@@ -119,7 +122,7 @@ void VoltageMonitor::loop() {
         return;
     }
 
-    const float busV   = (float)((busRaw >> 3) & 0x1FFF) * 0.004f;
+    const float busV   = (float)((busRaw >> 3) & 0x1FFF) * 0.004f * kVBusScale;
     const float shuntV = shuntOk ? (float)(int16_t)shuntRaw * 0.00001f : 0.0f;
     const float v      = busV + shuntV;
     const float mA     = shuntOk ? (shuntV / kRshuntOhm) * 1000.0f : 0.0f;

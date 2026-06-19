@@ -53,9 +53,11 @@
 #define RF_IDLE_LEVEL            HIGH
 
 // ── INA219 current/voltage monitor — I2C ─────────────────────────────────────
-// GPIO47 (SDA) and GPIO46 (SCL): both free in production (RTS=-1, USB CDC off).
-// GPIO46 is a strapping pin (ROM log enable) — I2C pull-up holds it HIGH at
-// boot which only enables ROM bootloader output; harmless in the field.
+// SDA=GPIO47, SCL=GPIO3 (JTAG_SEL strapping pin — HIGH at boot disables JTAG,
+// harmless in production; allows in-circuit flashing unlike GPIO46 which is
+// input-only and would block esptool via ROM log flooding).
+// GY-219 module has an on-board voltage divider on VIN+; apply kVBusScale in
+// voltage_monitor.cpp to correct bus voltage readings.
 #define PIN_INA219_SDA           47
 #define PIN_INA219_SCL           3
 #define INA219_I2C_ADDR          0x40  // A0=GND, A1=GND (default breakout)

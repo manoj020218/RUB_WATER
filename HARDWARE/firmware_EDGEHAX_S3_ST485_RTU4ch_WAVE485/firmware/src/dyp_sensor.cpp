@@ -36,18 +36,6 @@ void DypSensor::loop() {
     const uint32_t now = millis();
     int32_t dist = 0;
 
-    // Temporary raw-byte diagnostic — always active until DYP is confirmed working
-    {
-        static uint32_t sRawLogMs = 0;
-        if (now - sRawLogMs >= 5000UL || sRawLogMs == 0) {
-            sRawLogMs = now;
-            const int avail = dypSerial.available();
-            if (avail > 0)
-                Serial.printf("[DYP_RAW] %d bytes waiting, first=0x%02X\n", avail, (uint8_t)dypSerial.peek());
-            else
-                Serial.println("[DYP_RAW] 0 bytes on UART1/GPIO21 — no signal from MAX485");
-        }
-    }
 
 #ifdef SENSOR_TEST_MODE
     {
@@ -121,8 +109,7 @@ bool DypSensor::readFrame(int32_t& distOut) {
         for (int i = 0; i < 4; i++) b[i] = (uint8_t)dypSerial.read();
         const uint8_t csum = (b[0] + b[1] + b[2]) & 0xFF;
         const int32_t dRaw = (int32_t)b[1] * 256 + b[2];
-        Serial.printf("[DYP_FRAME] %02X %02X %02X %02X  csum_ok=%c  d=%dmm\n",
-                      b[0], b[1], b[2], b[3], csum == b[3] ? 'Y' : 'N', (int)dRaw);
+
         if (csum != b[3]) continue;
         const int32_t d = (int32_t)b[1] * 256 + b[2];
         if (d < kMinDistMm || d > kMaxDistMm) continue;
