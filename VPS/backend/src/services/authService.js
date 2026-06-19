@@ -187,6 +187,9 @@ function canResetPassword(actor, target) {
   if (actor.role === 'VENDOR_SUPER_ADMIN') {
     return true;
   }
+  if (actor.role === 'DEMO_SUPER_ADMIN') {
+    return target.created_by === actor._id;
+  }
   if (!actor.department_id || actor.department_id !== target.department_id) {
     return false;
   }

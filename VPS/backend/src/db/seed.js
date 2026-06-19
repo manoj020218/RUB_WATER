@@ -42,10 +42,10 @@ function seedIfEmpty() {
       login_id: 'demo',
       password_hash: demoPasswordHash,
       name: 'Demo Super Admin',
-      role: ROLE.VENDOR_SUPER_ADMIN,
+      role: ROLE.DEMO_SUPER_ADMIN,
       vendor_id: 'vendor_001',
       department_id: 'dept_001',
-      assigned_location_ids: ['RUB043'],
+      assigned_location_ids: [],
       is_active: true,
       created_at: new Date().toISOString(),
       updated_at: new Date().toISOString()

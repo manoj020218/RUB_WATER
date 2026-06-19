@@ -1,16 +1,17 @@
-const bcrypt = require('bcryptjs');
 const retentionService = require('../services/retentionService');
 const adminUserService = require('../services/adminUserService');
+const authService = require('../services/authService');
+const locationTransferService = require('../services/locationTransferService');
+const { assertUserLocationAccess, listAccessibleLocationIds } = require('../services/accessService');
 const { assertPermission } = require('../services/rbacService');
 const locationRepo = require('../repositories/locationRepository');
 const deviceRepo = require('../repositories/deviceRepository');
-const userRepo = require('../repositories/userRepository');
 const { dataStore } = require('../db/datastore');
 const deviceConfigRepo = require('../repositories/deviceConfigRepository');
 
 function requireSuperAdmin(req) {
   const role = String(req.auth?.user?.role || '').toUpperCase();
-  if (!['VENDOR_SUPER_ADMIN', 'DEPARTMENT_SUPER_ADMIN'].includes(role)) {
+  if (!['VENDOR_SUPER_ADMIN', 'DEPARTMENT_SUPER_ADMIN', 'DEMO_SUPER_ADMIN'].includes(role)) {
     const err = new Error('Super admin access required');
     err.statusCode = 403;
     throw err;
@@ -77,19 +78,33 @@ function setUserAccess(req, res, next) {
   } catch (error) { next(error); }
 }
 
+async function transferLocation(req, res, next) {
+  try {
+    requireSuperAdmin(req);
+    const data = await locationTransferService.runLocationTransfer({
+      locationId: req.body?.location_id || req.body?.locationId,
+      senderUserId: req.body?.sender_user_id,
+      senderLoginId: req.body?.sender_login_id,
+      receiverUserId: req.body?.receiver_user_id,
+      receiverLoginId: req.body?.receiver_login_id,
+      rights: req.body?.rights,
+      createReceiver: req.body?.create_receiver,
+      authContext: req.auth,
+      ipAddress: req.ip
+    });
+    res.json({ ok: true, data });
+  } catch (error) { next(error); }
+}
+
 async function resetUserPassword(req, res, next) {
   try {
     requireSuperAdmin(req);
-    const user = userRepo.findById(req.params.userId);
-    if (!user) { res.status(404).json({ ok: false, error: 'User not found' }); return; }
-    const newPassword = String(req.body?.new_password || '').trim();
-    if (newPassword.length < 6) {
-      res.status(400).json({ ok: false, error: 'Password must be at least 6 characters' });
-      return;
-    }
-    const hash = await bcrypt.hash(newPassword, 10);
-    userRepo.update(user._id, { password_hash: hash, updated_at: new Date().toISOString() });
-    res.json({ ok: true, message: 'Password reset successfully' });
+    const data = await authService.resetUserPassword({
+      authContext: req.auth,
+      targetUserId: req.params.userId,
+      newPassword: req.body?.new_password
+    });
+    res.json({ ok: true, data });
   } catch (error) { next(error); }
 }
 
@@ -99,8 +114,8 @@ function listAllLocations(req, res, next) {
     requireSuperAdmin(req);
     const user = req.auth.user;
     let allLocs = locationRepo.listAll();
-    if (user.role === 'DEPARTMENT_SUPER_ADMIN') {
-      const allowed = new Set(Array.isArray(user.assigned_location_ids) ? user.assigned_location_ids : []);
+    if (user.role !== 'VENDOR_SUPER_ADMIN') {
+      const allowed = new Set(listAccessibleLocationIds(user));
       allLocs = allLocs.filter((l) => allowed.has(l._id));
     }
     const locations = allLocs.map((loc) => {
@@ -114,6 +129,7 @@ function listAllLocations(req, res, next) {
 function createLocation(req, res, next) {
   try {
     requireSuperAdmin(req);
+    const actor = req.auth.user;
     const loc = locationRepo.create({
       location_id: req.body?.location_id,
       location_name: req.body?.location_name,
@@ -124,6 +140,12 @@ function createLocation(req, res, next) {
       danger_level_mm: req.body?.danger_level_mm,
       danger_clear_level_mm: req.body?.danger_clear_level_mm
     });
+    if (actor.role !== 'VENDOR_SUPER_ADMIN') {
+      const assigned = Array.isArray(actor.assigned_location_ids) ? actor.assigned_location_ids : [];
+      if (!assigned.includes(loc._id)) {
+        actor.assigned_location_ids = [...assigned, loc._id];
+      }
+    }
     res.status(201).json({ ok: true, data: { ...loc, location_id: loc._id, location_name: loc.name } });
   } catch (error) { next(error); }
 }
@@ -133,6 +155,7 @@ function updateLocation(req, res, next) {
     requireSuperAdmin(req);
     const loc = locationRepo.findById(req.params.locationId);
     if (!loc) { res.status(404).json({ ok: false, error: 'Location not found' }); return; }
+    assertUserLocationAccess(req.auth.user, loc._id);
     const patch = {};
     if (req.body?.location_name != null) patch.name = String(req.body.location_name).trim();
     if (req.body?.description != null) patch.description = String(req.body.description).trim();
@@ -149,6 +172,7 @@ function deleteLocation(req, res, next) {
     const locationId = req.params.locationId;
     const loc = locationRepo.findById(locationId);
     if (!loc) { res.status(404).json({ ok: false, error: 'Location not found' }); return; }
+    assertUserLocationAccess(req.auth.user, locationId);
     const boundDevice = deviceRepo.findByLocation(locationId);
     if (boundDevice) {
       deviceRepo.unbindFromLocation(boundDevice._id);
@@ -164,8 +188,8 @@ function listAllDevices(req, res, next) {
     requireSuperAdmin(req);
     const user = req.auth.user;
     let allDevices = deviceRepo.listAll();
-    if (user.role === 'DEPARTMENT_SUPER_ADMIN') {
-      const allowed = new Set(Array.isArray(user.assigned_location_ids) ? user.assigned_location_ids : []);
+    if (user.role !== 'VENDOR_SUPER_ADMIN') {
+      const allowed = new Set(listAccessibleLocationIds(user));
       allDevices = allDevices.filter((d) => d.location_id && allowed.has(d.location_id));
     }
     const devices = allDevices.map((d) => ({
@@ -189,6 +213,9 @@ function createDevice(req, res, next) {
     if (locationId && !locationRepo.findById(locationId)) {
       res.status(400).json({ ok: false, error: `Location ${locationId} not found` });
       return;
+    }
+    if (locationId) {
+      assertUserLocationAccess(req.auth.user, locationId);
     }
     const device = deviceRepo.createDevice({
       device_id: req.body?.device_id,
@@ -215,6 +242,7 @@ function bindDevice(req, res, next) {
 
     const loc = locationRepo.findById(locationId);
     if (!loc) { res.status(404).json({ ok: false, error: 'Location not found' }); return; }
+    assertUserLocationAccess(req.auth.user, locationId);
 
     let device = deviceRepo.findById(deviceId);
     if (!device) {
@@ -234,6 +262,7 @@ function unbindDevice(req, res, next) {
   try {
     requireSuperAdmin(req);
     const locationId = req.params.locationId;
+    assertUserLocationAccess(req.auth.user, locationId);
     const device = deviceRepo.findByLocation(locationId);
     if (!device) { res.status(404).json({ ok: false, error: 'No device bound to this location' }); return; }
     deviceRepo.unbindFromLocation(device._id);
@@ -245,7 +274,10 @@ function unbindDevice(req, res, next) {
 function listAllDeviceConfigs(req, res, next) {
   try {
     requireSuperAdmin(req);
-    const configs = deviceConfigRepo.listAll().map((c) => {
+    const allowed = new Set(listAccessibleLocationIds(req.auth.user));
+    const configs = deviceConfigRepo.listAll()
+      .filter((c) => req.auth.user.role === 'VENDOR_SUPER_ADMIN' || allowed.has(c.location_id))
+      .map((c) => {
       const loc = locationRepo.findById(c.location_id);
       return {
         device_id: c.device_id,
@@ -274,6 +306,7 @@ function resetDeviceConfigToDefault(req, res, next) {
     if (!device) { res.status(404).json({ ok: false, error: 'Device not found' }); return; }
     const locationId = device.location_id;
     if (!locationId) { res.status(400).json({ ok: false, error: 'Device is not bound to a location' }); return; }
+    assertUserLocationAccess(req.auth.user, locationId);
     const loc = locationRepo.findById(locationId);
     const now = new Date().toISOString();
     const defaults = {
@@ -345,6 +378,7 @@ module.exports = {
   createUser,
   setUserAccess,
   updateUserLocations,
+  transferLocation,
   resetUserPassword,
   listAllLocations,
   createLocation,

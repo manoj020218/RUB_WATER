@@ -5,6 +5,7 @@ const locationRepository = require('../repositories/locationRepository');
 const { dataStore } = require('../db/datastore');
 const { ROLE } = require('../config/permissions');
 const fcmService = require('./fcmService');
+const { hasUserLocationAccess } = require('./accessService');
 
 const EVENT_MESSAGES = {
   DANGER_CONFIRMED:    { title: '🚨 Flood DANGER',       body: (loc) => `${loc} — Water level CRITICAL. Evacuate now.` },
@@ -27,9 +28,7 @@ function resolveRecipients({ locationId, recipientRoles, recipientUserIds }) {
     if (explicitUsers.length > 0 && !explicitUsers.includes(user._id)) return false;
     if (roleSet.size > 0 && !roleSet.has(user.role)) return false;
     if (!locationId) return true;
-    if (user.role === ROLE.VENDOR_SUPER_ADMIN) return true;
-    if (location && user.department_id && location.department_id && user.department_id === location.department_id) return true;
-    return Array.isArray(user.assigned_location_ids) && user.assigned_location_ids.includes(locationId);
+    return hasUserLocationAccess(user, locationId);
   });
 
   return users.map((user) => {

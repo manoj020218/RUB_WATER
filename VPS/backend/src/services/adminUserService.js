@@ -5,10 +5,18 @@ const userRepository = require('../repositories/userRepository');
 const sessionRepository = require('../repositories/sessionRepository');
 const auditService = require('./auditService');
 const { assertPermission } = require('./rbacService');
+const { listAccessibleLocationIds } = require('./accessService');
 const { badRequest, forbidden, notFound } = require('../utils/errors');
 const { nowIso } = require('../utils/time');
 
 const ROLE_SET = new Set(Object.values(ROLE));
+const DEPARTMENT_ASSIGNABLE_ROLES = new Set([
+  ROLE.DEPARTMENT_ADMIN,
+  ROLE.LOCATION_ADMIN,
+  ROLE.OPERATOR,
+  ROLE.VIEWER,
+  ROLE.AUDITOR
+]);
 
 function normalizeRole(value) {
   const normalized = String(value || '').trim().toUpperCase();
@@ -53,6 +61,10 @@ function canManageUser(authUser, targetUser) {
     return true;
   }
 
+  if (authUser.role === ROLE.DEMO_SUPER_ADMIN) {
+    return targetUser.created_by === authUser._id;
+  }
+
   return (
     authUser.role === ROLE.DEPARTMENT_SUPER_ADMIN &&
     authUser.department_id &&
@@ -62,14 +74,33 @@ function canManageUser(authUser, targetUser) {
 
 function assertRoleCanAssign(authUser, targetRole) {
   if (authUser.role === ROLE.VENDOR_SUPER_ADMIN) {
+    if (targetRole === ROLE.DEMO_SUPER_ADMIN) {
+      throw forbidden('DEMO_SUPER_ADMIN is reserved and cannot be created here');
+    }
     return;
   }
 
-  if (authUser.role === ROLE.DEPARTMENT_SUPER_ADMIN && targetRole !== ROLE.VENDOR_SUPER_ADMIN) {
+  if (authUser.role === ROLE.DEMO_SUPER_ADMIN && targetRole === ROLE.VENDOR_SUPER_ADMIN) {
+    return;
+  }
+
+  if (authUser.role === ROLE.DEPARTMENT_SUPER_ADMIN && DEPARTMENT_ASSIGNABLE_ROLES.has(targetRole)) {
     return;
   }
 
   throw forbidden('You are not allowed to assign this role');
+}
+
+function assertCanAssignLocations(actor, locationIds) {
+  if (actor.role === ROLE.VENDOR_SUPER_ADMIN) {
+    return;
+  }
+
+  const allowed = new Set(listAccessibleLocationIds(actor));
+  const invalid = locationIds.filter((locationId) => !allowed.has(locationId));
+  if (invalid.length > 0) {
+    throw forbidden(`You cannot assign locations you do not control: ${invalid.join(', ')}`);
+  }
 }
 
 function listManagedUsers(authContext) {
@@ -80,6 +111,8 @@ function listManagedUsers(authContext) {
 
   if (actor.role === ROLE.VENDOR_SUPER_ADMIN) {
     users = userRepository.listAll().filter((user) => canManageUser(actor, user));
+  } else if (actor.role === ROLE.DEMO_SUPER_ADMIN) {
+    users = userRepository.listAll().filter((user) => user.created_by === actor._id);
   } else if (actor.role === ROLE.DEPARTMENT_SUPER_ADMIN) {
     users = userRepository.listAll().filter((user) => user.created_by === actor._id);
   } else {
@@ -127,14 +160,16 @@ async function createManagedUser({
   }
 
   const actor = authContext.user;
-  const nextVendorId = actor.role === ROLE.VENDOR_SUPER_ADMIN ? normalizeString(vendorId || actor.vendor_id) : actor.vendor_id;
-  const nextDepartmentId = actor.role === ROLE.VENDOR_SUPER_ADMIN
+  const vendorScopedActor = actor.role === ROLE.VENDOR_SUPER_ADMIN || actor.role === ROLE.DEMO_SUPER_ADMIN;
+  const nextVendorId = vendorScopedActor ? normalizeString(vendorId || actor.vendor_id) : actor.vendor_id;
+  const nextDepartmentId = vendorScopedActor
     ? normalizeString(departmentId || actor.department_id)
     : actor.department_id;
 
   const locations = Array.isArray(assignedLocationIds)
     ? assignedLocationIds.map((item) => normalizeString(item)).filter(Boolean)
     : [];
+  assertCanAssignLocations(actor, locations);
 
   const timestamp = nowIso();
   const passwordHash = await bcrypt.hash(String(password), 10);
@@ -249,6 +284,7 @@ function updateManagedUserLocations({ userId, locationIds, authContext, ipAddres
   const locs = Array.isArray(locationIds)
     ? locationIds.map((id) => normalizeString(id)).filter(Boolean)
     : [];
+  assertCanAssignLocations(actor, locs);
 
   const updated = userRepository.update(target._id, {
     assigned_location_ids: [...new Set(locs)],
