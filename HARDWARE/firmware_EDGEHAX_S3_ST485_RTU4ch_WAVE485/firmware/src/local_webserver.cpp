@@ -1312,14 +1312,16 @@ void LocalWebserver::handleFactoryResetPost() {
 }
 
 void LocalWebserver::handleApiStatus() {
-    StaticJsonDocument<256> doc;
+    StaticJsonDocument<320> doc;
     doc["device_id"]      = _deviceId;
+    doc["product"]        = PRODUCT_PROFILE;
+    doc["mac"]            = WiFi.macAddress();
     doc["firmware"]       = FIRMWARE_VERSION;
     doc["wifi_connected"] = WifiManager::getInstance().isConnected();
     doc["ip"]             = WifiManager::getInstance().localIp();
     doc["mqtt_connected"] = MqttManager::getInstance().isConnected();
     doc["uptime_s"]       = (uint32_t)(millis() / 1000UL);
-    char buf[256];
+    char buf[320];
     serializeJson(doc, buf, sizeof(buf));
     _server.sendHeader("Access-Control-Allow-Origin", "*");
     _server.send(200, "application/json", buf);
