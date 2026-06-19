@@ -45,12 +45,6 @@
 #define RELAY_ON_LEVEL           LOW
 #define RELAY_OFF_LEVEL          HIGH
 
-// ── RF trigger outputs (active-LOW) ──────────────────────────────────────────
-#define PIN_RF_DANGER_SIREN      17     // LOW = ACTIVE
-#define PIN_RF_SUMP_PUMP         18
-
-#define RF_ACTIVE_LEVEL          LOW
-#define RF_IDLE_LEVEL            HIGH
 
 // ── INA219 current/voltage monitor — I2C ─────────────────────────────────────
 // SDA=GPIO47, SCL=GPIO3 (JTAG_SEL strapping pin — HIGH at boot disables JTAG,
@@ -65,21 +59,19 @@
 // ── External CONFIG button ───────────────────────────────────────────────────
 #define PIN_CONFIG_BUTTON        48     // INPUT_PULLUP, LOW = pressed
 
-// ── Left remote RTU bus — UART2 ──────────────────────────────────────────────
-// CANDIDATE pins — confirmed safe after full GPIO analysis 2026-05-30:
-//   GPIO35/36/37 blocked (OPI PSRAM on N16R8).
-//   GPIO0/3/45 blocked (boot/strapping per spec §2.1).
-//   GPIO46 used for INA219 SCL — see INA219 section above.
-//   Only 2 free pads from Edgehax pinout list: GPIO2, GPIO15.
-//   GPIO19 (USB D-) used for RTS — native USB intentionally unavailable
-//   in field profile; device uses Wi-Fi + OTA only.
-// Freeze to FLOODGUARD-S3-EDGEHAX-N16R8-02 after bench test checklist passes.
-#define PIN_LEFT_RS485_RX        15    // CANDIDATE
-#define PIN_LEFT_RS485_TX        2     // CANDIDATE
+// ── Left remote RTU bus — UART1 (remapped) ───────────────────────────────────
+// GPIO17(TX) and GPIO18(RX) — both on LEFT header, adjacent pins.
+// Root cause of original COMM_LOST: GPIO15=U0RTS (held LOW by ROM bootloader),
+// GPIO1 had silicon-level coupling from adjacent GPIO2 pad, GPIO19=USB D- noise.
+// Cross-board wiring (TX right-header, RX left-header) caused cable coupling echo.
+// Fix confirmed 2026-06-19: both pins on same header → Waveshare suppresses echo.
+// GPIO17/18 freed from RF trigger use (RF not physically wired on this board).
+#define PIN_LEFT_RS485_RX        18    // left header
+#define PIN_LEFT_RS485_TX        17    // left header
 #ifdef DUMMY_DYP_MM
-#define PIN_LEFT_RS485_RTS       47    // dev: GPIO47 replaces GPIO19 (USB D- unusable)
+#define PIN_LEFT_RS485_RTS       47    // dev override
 #else
-#define PIN_LEFT_RS485_RTS       19    // CANDIDATE — USB D- repurposed
+#define PIN_LEFT_RS485_RTS       (-1)  // auto-direction module, no RTS needed
 #endif
 
 // ── Right remote RTU bus — UART2 (remapped) ──────────────────────────────────

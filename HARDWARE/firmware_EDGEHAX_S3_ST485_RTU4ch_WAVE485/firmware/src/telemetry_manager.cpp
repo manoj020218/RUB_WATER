@@ -81,7 +81,6 @@ void TelemetryManager::buildTelemetryJson(char* out, size_t outSize) const {
     doc["relay_siren"]  = out_c.sirenOn;
     doc["relay_flash"]  = out_c.flashOn;
     doc["relay_pump"]   = out_c.sumpPumpOn;
-    doc["rf_siren"]     = out_c.rfDangerSirenOn;
 
     const auto& pump = PumpController::getInstance().snapshot();
     doc["pump_running"] = pump.running;
@@ -95,14 +94,16 @@ void TelemetryManager::buildTelemetryJson(char* out, size_t outSize) const {
     const auto& right = RemoteBoxManager::getInstance().rightStatus();
     JsonObject lb = doc.createNestedObject("remote_left");
     lb["online"]  = left.online;
-    lb["batt_v"]  = serialized(String(left.batteryVoltage, 2));
+    lb["batt"]    = left.di_batteryLow ? "LOW" : "OK";
     lb["siren"]   = left.sirenOn;
     lb["flash"]   = left.flashOn;
+    lb["voice"]   = left.voiceOn;
     JsonObject rb = doc.createNestedObject("remote_right");
     rb["online"]  = right.online;
-    rb["batt_v"]  = serialized(String(right.batteryVoltage, 2));
+    rb["batt"]    = right.di_batteryLow ? "LOW" : "OK";
     rb["siren"]   = right.sirenOn;
     rb["flash"]   = right.flashOn;
+    rb["voice"]   = right.voiceOn;
 
     serializeJson(doc, out, outSize);
 }

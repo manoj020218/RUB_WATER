@@ -94,7 +94,6 @@ void PumpController::startPump() {
     _snap.maxRuntimeReached = false;
     _snap.dryRunStop        = false;
     OutputController::getInstance().setSumpPump(true);
-    OutputController::getInstance().setRfSumpPump(true);
     Serial.println("[PUMP] Started");
 }
 
@@ -102,6 +101,5 @@ void PumpController::stopPump(const char* reason) {
     _running          = false;
     _lowLevelTracking = false;
     OutputController::getInstance().setSumpPump(false);
-    OutputController::getInstance().setRfSumpPump(false);
     Serial.printf("[PUMP] Stopped: %s\n", reason);
 }

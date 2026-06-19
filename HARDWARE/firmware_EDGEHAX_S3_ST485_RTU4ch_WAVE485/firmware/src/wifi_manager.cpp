@@ -56,9 +56,24 @@ void WifiManager::loop() {
     const uint32_t now = millis();
 
     if (isConnected()) {
-        _firstConnectDone = true;
-        _connectTimedOut  = false;
+        if (!_firstConnectDone) {
+            _firstConnectDone = true;
+            _lastIpLogMs = now;
+            Serial.printf("[WIFI] Connected! IP=%s  SSID=%s  RSSI=%ddBm\n",
+                          WiFi.localIP().toString().c_str(), _ssid, WiFi.RSSI());
+        } else if ((now - _lastIpLogMs) >= 120000UL) {
+            _lastIpLogMs = now;
+            Serial.printf("[WIFI] IP=%s  SSID=%s  RSSI=%ddBm\n",
+                          WiFi.localIP().toString().c_str(), _ssid, WiFi.RSSI());
+        }
+        _connectTimedOut = false;
         return;
+    }
+
+    // WiFi just dropped — reset so next reconnect prints the IP again
+    if (_firstConnectDone) {
+        _firstConnectDone = false;
+        Serial.printf("[WIFI] Disconnected from '%s'\n", _ssid);
     }
 
     // Only flag timeout on the initial connect attempt (not transient disconnects)

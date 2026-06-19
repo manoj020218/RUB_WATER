@@ -30,6 +30,7 @@ private:
     uint32_t _connectStartMs   = 0;
     bool     _connectTimedOut  = false;
     bool     _firstConnectDone = false;
+    uint32_t _lastIpLogMs      = 0;
 
     void loadFromNvs();
     void persistToNvs();

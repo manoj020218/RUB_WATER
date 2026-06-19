@@ -14,11 +14,6 @@ void OutputController::begin() {
         pinMode(p, OUTPUT);
         digitalWrite(p, RELAY_OFF_LEVEL);
     }
-    const int rf[] = { PIN_RF_DANGER_SIREN, PIN_RF_SUMP_PUMP };
-    for (int p : rf) {
-        pinMode(p, OUTPUT);
-        digitalWrite(p, RF_IDLE_LEVEL);
-    }
     _snap = {};
     Serial.println("[OUT] All relays and RF outputs initialised OFF");
 }
@@ -28,8 +23,6 @@ void OutputController::safeOff() {
     setFlash(false);
     setVoiceFuture(false);
     setSumpPump(false);
-    setRfDangerSiren(false);
-    setRfSumpPump(false);
 }
 
 void OutputController::setSiren(bool on) {
@@ -52,20 +45,6 @@ void OutputController::setSumpPump(bool on) {
     _snap.sumpPumpOn = on;
 }
 
-void OutputController::setRfDangerSiren(bool on) {
-    writeRf(PIN_RF_DANGER_SIREN, on);
-    _snap.rfDangerSirenOn = on;
-}
-
-void OutputController::setRfSumpPump(bool on) {
-    writeRf(PIN_RF_SUMP_PUMP, on);
-    _snap.rfSumpPumpOn = on;
-}
-
 void OutputController::writeRelay(int pin, bool on) {
     digitalWrite(pin, on ? RELAY_ON_LEVEL : RELAY_OFF_LEVEL);
-}
-
-void OutputController::writeRf(int pin, bool active) {
-    digitalWrite(pin, active ? RF_ACTIVE_LEVEL : RF_IDLE_LEVEL);
 }

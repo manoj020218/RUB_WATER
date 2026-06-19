@@ -5,7 +5,13 @@
 **Active build flag:** `ST485_RTU4CH_WAVE485_MODE`  
 **Version:** 0.2.0  &nbsp;|&nbsp; **Release date:** 2026-06-08  
 **MCU board:** Edgehax ESP32-S3-WROOM-1 N16R8 (16 MB flash, 8 MB OPI PSRAM)  
-**Last flashed:** 2026-06-12 — COM3, MAC `9c:13:9e:ba:f9:68` — INA219 wiring confirmed (SDA=GPIO47, SCL=GPIO46), webserver UI verified, delivered to client
+**Last flashed:** 2026-06-19 — Left RS485 COMM_LOST fix (GPIO17/18), RF removed
+
+> **RF TRIGGER PINS PERMANENTLY REMOVED (2026-06-19)**  
+> Client confirmed RF trigger feature is not used and will not be used on this project.  
+> `PIN_RF_DANGER_SIREN` and `PIN_RF_SUMP_PUMP` no longer exist in `device_profile.h`.  
+> `OutputController` has no RF methods. Do **not** add them back.  
+> GPIO17 = Left RS485 TX, GPIO18 = Left RS485 RX. Do **not** reassign these to RF.
 
 This document is the single source of truth for anyone working on this firmware. Read it before touching any file.
 

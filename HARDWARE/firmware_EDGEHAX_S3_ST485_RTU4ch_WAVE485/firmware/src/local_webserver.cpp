@@ -14,6 +14,7 @@
 #include "output_controller.h"
 #include "pump_controller.h"
 #include "remote_box_manager.h"
+#include "rs485_rtu_master.h"
 #include "sd_fifo.h"
 #include "voltage_monitor.h"
 #include "wifi_manager.h"
@@ -261,6 +262,7 @@ void LocalWebserver::setupRoutes() {
     _server.on("/config",              HTTP_GET,  [this]{ handleConfig(); });
     _server.on("/config",              HTTP_POST, [this]{ handleConfigPost(); });
     _server.on("/diagnostics",         HTTP_GET,  [this]{ handleDiagnostics(); });
+    _server.on("/diagnostics",         HTTP_POST, [this]{ handleDiagnosticsPost(); });
     _server.on("/relay-test",          HTTP_GET,  [this]{ handleRelayTest(); });
     _server.on("/relay-test",          HTTP_POST, [this]{ handleRelayTestPost(); });
     _server.on("/remote-test",         HTTP_GET,  [this]{ handleRemoteTest(); });
@@ -459,7 +461,6 @@ void LocalWebserver::handleStatus() {
     html += "<tr><th>Local Siren</th><td>" + String(out.sirenOn ? "<span class='err'>ON</span>" : "off") + "</td></tr>";
     html += "<tr><th>Local Flash</th><td>" + String(out.flashOn ? "<span class='err'>ON</span>" : "off") + "</td></tr>";
     html += "<tr><th>Pump</th><td>" + String(out.sumpPumpOn ? "<span class='ok'>ON</span>" : "off") + "</td></tr>";
-    html += "<tr><th>RF Siren</th><td>" + String(out.rfDangerSirenOn ? "<span class='err'>ON</span>" : "off") + "</td></tr>";
     html += "</table></div>";
 
     html += "<div class='card'><h2>Battery (INA219)</h2><table>";
@@ -585,8 +586,29 @@ void LocalWebserver::handleDiagnostics() {
     html += "<tr><th>SD Mounted</th><td>" + String(sd.mounted ? "yes" : "no") + "</td></tr>";
     html += "<tr><th>SD Records</th><td>" + String(sd.recordCount) + "</td></tr>";
     html += "</table></div>";
+
+    // ── Left RS485 bus TX pin diagnostic ─────────────────────────────────────
+    html += "<div class='card'><h2>Left RS485 TX Pin Diagnostic (GPIO" + String(PIN_LEFT_RS485_TX) + ")</h2>";
+    html += "<p>Pulses GPIO" + String(PIN_LEFT_RS485_TX) + " HIGH/LOW 5 times (~6s). "
+            "Measure with multimeter between GPIO" + String(PIN_LEFT_RS485_TX) + " pad and GND while test runs.</p>"
+            "<ul><li><b>Voltage alternates 0V ↔ 3.3V</b> → ESP32 GPIO OK, check PCB trace to Waveshare TXD or replace Waveshare module</li>"
+            "<li><b>Constant 3.3V or 0V</b> → GPIO" + String(PIN_LEFT_RS485_TX) + " output not reaching your probe point — broken trace or cold joint</li></ul>";
+    html += "<form method='POST' action='/diagnostics'>"
+            "<input type='hidden' name='action' value='left_tx_pulse'>"
+            "<button type='submit' class='btn btn-warn'>Pulse Left TX GPIO" + String(PIN_LEFT_RS485_TX) + " (blocks ~6s)</button>"
+            "</form></div>";
+
     html += htmlFooter();
     _server.send(200, "text/html", html);
+}
+
+void LocalWebserver::handleDiagnosticsPost() {
+    if (!checkAuth()) { sendUnauth(); return; }
+    if (_server.arg("action") == "left_tx_pulse") {
+        Rs485RtuMaster::getInstance().diagTxPulse(RtuBus::LEFT);
+    }
+    _server.sendHeader("Location", "/diagnostics");
+    _server.send(302, "text/plain", "");
 }
 
 void LocalWebserver::handleRelayTest() {
@@ -756,8 +778,6 @@ void LocalWebserver::handleRelayTestPost() {
     else if (relay == "flash")    { out.setFlash(true);          delay(5000); out.setFlash(false); }
     else if (relay == "voice")    { out.setVoiceFuture(true);    delay(3000); out.setVoiceFuture(false); }
     else if (relay == "pump")     { out.setSumpPump(true);       delay(5000); out.setSumpPump(false); }
-    else if (relay == "rf_siren") { out.setRfDangerSiren(true);  delay(3000); out.setRfDangerSiren(false); }
-    else if (relay == "rf_pump")  { out.setRfSumpPump(true);     delay(3000); out.setRfSumpPump(false); }
     Serial.printf("[WEB] Relay test: %s\n", relay.c_str());
 #ifdef ST485_RTU4CH_WAVE485_MODE
     _server.sendHeader("Location", "/relay-test?bus=right&result=ok&relay=" + relay);

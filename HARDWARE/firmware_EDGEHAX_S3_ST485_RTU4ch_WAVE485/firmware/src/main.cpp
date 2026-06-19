@@ -258,7 +258,6 @@ static void updateOutputsFromState() {
 
     out.setSiren(dangerActive);
     out.setFlash(dangerActive);
-    out.setRfDangerSiren(dangerActive);
     // Voice/future relay: not activated automatically
     // Pump is managed entirely by PumpController
 

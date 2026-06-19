@@ -7,8 +7,6 @@ struct OutputSnapshot {
     bool flashOn;
     bool voiceFutureOn;
     bool sumpPumpOn;
-    bool rfDangerSirenOn;
-    bool rfSumpPumpOn;
 };
 
 class OutputController {
@@ -22,8 +20,6 @@ public:
     void setFlash(bool on);
     void setVoiceFuture(bool on);
     void setSumpPump(bool on);
-    void setRfDangerSiren(bool on);
-    void setRfSumpPump(bool on);
 
     const OutputSnapshot& snapshot() const { return _snap; }
 
@@ -31,5 +27,4 @@ private:
     OutputController() = default;
     OutputSnapshot _snap{};
     void writeRelay(int pin, bool on);
-    void writeRf(int pin, bool active);
 };

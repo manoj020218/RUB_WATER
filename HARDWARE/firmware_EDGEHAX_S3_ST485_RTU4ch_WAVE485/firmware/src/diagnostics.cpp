@@ -18,14 +18,6 @@ void diagnosticsRunBootTests() {
         }
     }
 
-    // RF pins
-    const int rf[] = { PIN_RF_DANGER_SIREN, PIN_RF_SUMP_PUMP };
-    for (int p : rf) {
-        if (digitalRead(p) != RF_IDLE_LEVEL) {
-            Serial.printf("[DIAG] FAIL: RF GPIO%d not IDLE on boot\n", p);
-        }
-    }
-
     Serial.printf("[DIAG] Free heap:  %u bytes\n", ESP.getFreeHeap());
     Serial.printf("[DIAG] PSRAM size: %u bytes\n", ESP.getPsramSize());
     Serial.printf("[DIAG] Flash size: %u bytes\n", ESP.getFlashChipSize());
