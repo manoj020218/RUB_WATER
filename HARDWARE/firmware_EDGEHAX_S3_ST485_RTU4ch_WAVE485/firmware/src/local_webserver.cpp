@@ -1150,11 +1150,20 @@ void LocalWebserver::handleCalibration() {
             "<input type='hidden' name='action' value='zero'>"
             "<button type='submit' class='btn'>Set Current Reading as Ground Zero</button></form>";
 
-    html += "<h2>Battery Monitor (INA219)</h2>";
-    html += "<p>Voltage: <b>" + String(vmon.voltage, 3) + " V</b> &nbsp; "
+    html += "<h2>Battery / Supply Monitor (INA219)</h2>";
+    html += "<p>Voltage: <b>" + String(vmon.voltage, 2) + " V</b> &nbsp; "
             "Current: <b>" + String(vmon.currentMa, 1) + " mA</b> &nbsp; "
             "Power: <b>" + String(vmon.powerMw, 0) + " mW</b></p>";
-    html += "<p class='hint'>INA219 is self-calibrated — no manual calibration required.</p></div>";
+    html += "<p>Cal factor: <b>" + String(cfg.vMonCalFactor, 4) + "</b></p>";
+    html += "<p class='hint'>If the voltage shown above does not match your multimeter, "
+            "enter the actual measured voltage below. The calibration factor will be updated automatically.</p>";
+    html += "<form method='POST' action='/calibration'>"
+            "<input type='hidden' name='action' value='vmon_cal'>"
+            "<label>Actual Voltage from Multimeter (V)</label>"
+            "<input type='number' name='vmon_actual_v' step='0.01' min='1' max='30' "
+            "value='" + String(vmon.voltage, 2) + "'>"
+            "<button type='submit' class='btn'>Set Voltage Calibration</button>"
+            "</form></div>";
     html += htmlFooter();
     _server.send(200, "text/html", html);
 }
@@ -1170,6 +1179,26 @@ void LocalWebserver::handleCalibrationPost() {
         if (ok) {
             const uint16_t z = (uint16_t)DypSensor::getInstance().zeroDistanceMm();
             ConfigManager::getInstance().setZeroDistance(z, reason);
+        }
+    }
+
+    if (action == "vmon_cal") {
+        if (!_server.hasArg("vmon_actual_v")) {
+            reason = "missing_actual_voltage";
+        } else {
+            const float actualV = _server.arg("vmon_actual_v").toFloat();
+            const auto& vmon    = VoltageMonitor::getInstance().snapshot();
+            const auto& cfg     = ConfigManager::getInstance().get();
+            const float rawV    = (vmon.voltage > 0.1f)
+                                  ? vmon.voltage / cfg.vMonCalFactor : 0.0f;
+            if (rawV < 0.5f) {
+                reason = "ina219_reading_too_low_check_wiring";
+            } else {
+                const float newFactor = actualV / rawV;
+                char buf[64];
+                snprintf(buf, sizeof(buf), "{\"vmon_cal_factor\":%.4f}", newFactor);
+                ok = ConfigManager::getInstance().applyJson(buf, reason);
+            }
         }
     }
 
@@ -1301,7 +1330,11 @@ void LocalWebserver::handleWifi() {
             "<label>WiFi SSID</label>"
             "<input type='text' name='ssid' placeholder='Network name' value='" + curSsid + "' autofocus required>"
             "<label>Password</label>"
-            "<input type='password' name='pass' placeholder='WiFi password (blank for open networks)'>"
+            "<div style='position:relative;display:flex;align-items:center'>"
+            "<input type='password' id='wpass' name='pass' placeholder='WiFi password (blank for open networks)' style='flex:1;padding-right:40px'>"
+            "<button type='button' onclick=\"var i=document.getElementById('wpass');i.type=i.type==='password'?'text':'password';this.textContent=i.type==='password'?'&#128065;':'&#128064';\" "
+            "style='position:absolute;right:6px;border:none;background:none;cursor:pointer;font-size:18px;padding:0'>&#128065;</button>"
+            "</div>"
             "<button type='submit'>Save &amp; Connect</button></form>"
             "<p style='margin-top:16px;font-size:12px;color:#888'>"
             "Device reboots after saving. Reconnect to your WiFi then access the device at its local IP.</p>"
@@ -1324,11 +1357,28 @@ void LocalWebserver::handleWifiPost() {
     }
     WifiManager::getInstance().setCredentials(ssid.c_str(), pass.c_str(), true);
     Serial.printf("[WEB] WiFi credentials saved via web UI: ssid=%s\n", ssid.c_str());
-    _server.send(200, "text/html",
-        htmlHeader("WiFi Setup") + "</nav>"
-        "<div class='card' style='max-width:440px;margin:40px auto'>"
-        "<p class='ok'>&#x2713; Credentials saved. Rebooting now...</p></div>" + htmlFooter());
-    delay(1000);
+
+    // Connect to WiFi now (before reboot) so we can read the assigned IP
+    WiFi.begin(ssid.c_str(), pass.c_str());
+    const uint32_t t0 = millis();
+    while (WiFi.status() != WL_CONNECTED && (millis() - t0) < 12000UL) delay(200);
+    const bool gotIp   = (WiFi.status() == WL_CONNECTED);
+    const String ipStr = gotIp ? WiFi.localIP().toString() : String("(connecting...)");
+
+    String body = htmlHeader("WiFi Setup") + "</nav>"
+        "<meta http-equiv='refresh' content='18;url=http://" + String(_mdnsHost) + ".local'>"
+        "<div class='card' style='max-width:480px;margin:40px auto'>"
+        "<p class='ok'>&#x2713; Credentials saved for <b>" + ssid + "</b></p>";
+    if (gotIp) {
+        body += "<p>Device IP: <b><a href='http://" + ipStr + "'>" + ipStr + "</a></b></p>";
+    }
+    body += "<p>After your phone reconnects to your WiFi, open:<br>"
+            "<b>http://" + String(_mdnsHost) + ".local</b><br>"
+            "<small>(page auto-redirects in 18 s)</small></p>"
+            "</div>";
+    body += htmlFooter();
+    _server.send(200, "text/html", body);
+    delay(2000);
     ESP.restart();
 }
 

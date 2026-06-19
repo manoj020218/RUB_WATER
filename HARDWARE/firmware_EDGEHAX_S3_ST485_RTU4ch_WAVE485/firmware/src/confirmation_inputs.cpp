@@ -28,8 +28,16 @@ void ConfirmationInputs::loop() {
     if (l1 != _l1Raw) { _l1Raw = l1; _l1StableMs = now; }
     if (l2 != _l2Raw) { _l2Raw = l2; _l2StableMs = now; }
 
+    const bool prev1 = _l1Debounced;
+    const bool prev2 = _l2Debounced;
+
     if ((now - _l1StableMs) >= kDebounceMs) _l1Debounced = _l1Raw;
     if ((now - _l2StableMs) >= kDebounceMs) _l2Debounced = _l2Raw;
+
+    if (_l1Debounced != prev1)
+        Serial.printf("[CONF] L1 GPIO%d %s\n", PIN_CONFIRM_LEVEL1, _l1Debounced ? "ACTIVE" : "inactive");
+    if (_l2Debounced != prev2)
+        Serial.printf("[CONF] L2 GPIO%d %s\n", PIN_CONFIRM_LEVEL2, _l2Debounced ? "ACTIVE" : "inactive");
 
     _snap.level1Active = _l1Debounced;
     _snap.level2Active = _l2Debounced;

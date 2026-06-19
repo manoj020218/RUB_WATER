@@ -2,6 +2,7 @@
 
 #include <Wire.h>
 
+#include "config_manager.h"
 #include "device_profile.h"
 
 namespace {
@@ -18,9 +19,6 @@ constexpr uint16_t kConfig32V2A = 0x2FFF;
 // Cal = trunc(0.04096 / (0.0001A × 0.1Ω)) = 4096
 constexpr uint16_t kCal32V2A   = 0x1000;
 constexpr float    kRshuntOhm  = 0.1f;
-// GY-219 module has a voltage divider on the VIN+ sense path.
-// Measured 9.14V on a 13.52V supply => scale = 13.52/9.14 = 1.4793
-constexpr float    kVBusScale  = 1.4793f;
 
 bool sWireInit = false;
 
@@ -32,10 +30,19 @@ void busWarmUp() {
     if (!sWireInit) {
         Wire.begin(PIN_INA219_SDA, PIN_INA219_SCL);
         sWireInit = true;
-    }
-    for (uint8_t a = 1; a < 50; a++) {
-        Wire.beginTransmission(a);
-        Wire.endTransmission(true);
+        // Cold-start: ESP32-S3 I2C needs ~50 preceding write transactions
+        // before the peripheral responds reliably.
+        for (uint8_t a = 1; a < 50; a++) {
+            Wire.beginTransmission(a);
+            Wire.endTransmission(true);
+        }
+    } else {
+        // Periodic re-warm: 5 probes is enough when the bus was active <30s ago.
+        // Keeps I2C noise on the 3.3V rail to a minimum.
+        for (uint8_t a = 1; a < 6; a++) {
+            Wire.beginTransmission(a);
+            Wire.endTransmission(true);
+        }
     }
     Wire.requestFrom((uint8_t)INA219_I2C_ADDR, (uint8_t)2, (uint8_t)true);
     while (Wire.available()) Wire.read();
@@ -84,7 +91,7 @@ void VoltageMonitor::begin() {
         _snap.ready = true;
         uint16_t busRaw = 0;
         inaRead(kRegBus, busRaw);
-        const float busV = (float)((busRaw >> 3) & 0x1FFF) * 0.004f * kVBusScale;
+        const float busV = (float)((busRaw >> 3) & 0x1FFF) * 0.004f * ConfigManager::getInstance().get().vMonCalFactor;
         Serial.printf("[VMON] INA219 OK — SDA=GPIO%d SCL=GPIO%d  bus=%.2fV\n",
                       PIN_INA219_SDA, PIN_INA219_SCL, busV);
     } else {
@@ -122,7 +129,7 @@ void VoltageMonitor::loop() {
         return;
     }
 
-    const float busV   = (float)((busRaw >> 3) & 0x1FFF) * 0.004f * kVBusScale;
+    const float busV   = (float)((busRaw >> 3) & 0x1FFF) * 0.004f * ConfigManager::getInstance().get().vMonCalFactor;
     const float shuntV = shuntOk ? (float)(int16_t)shuntRaw * 0.00001f : 0.0f;
     const float v      = busV + shuntV;
     const float mA     = shuntOk ? (shuntV / kRshuntOhm) * 1000.0f : 0.0f;

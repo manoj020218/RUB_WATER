@@ -6,7 +6,7 @@
 #include "device_profile.h"
 
 namespace {
-constexpr uint32_t kConfigMagic = 0xFEED0003UL;  // bumped: removed ADC battery fields
+constexpr uint32_t kConfigMagic = 0xFEED0004UL;  // bumped: added vMonCalFactor
 }
 
 ConfigManager& ConfigManager::getInstance() {
@@ -88,6 +88,8 @@ bool ConfigManager::applyJson(const char* json, String& reason) {
     OPT_BOOL(dailyRebootEnabled,    "daily_reboot_enabled")
     OPT_U8(dailyRebootHour,         "daily_reboot_hour")
     OPT_U8(dailyRebootMinute,       "daily_reboot_minute")
+    if (doc.containsKey("vmon_cal_factor"))
+        next.vMonCalFactor = doc["vmon_cal_factor"].as<float>();
 
 #undef OPT_U16
 #undef OPT_BOOL
@@ -130,6 +132,7 @@ bool ConfigManager::buildJson(char* out, size_t outSize) const {
     doc["daily_reboot_enabled"]              = _cfg.dailyRebootEnabled;
     doc["daily_reboot_hour"]                 = _cfg.dailyRebootHour;
     doc["daily_reboot_minute"]               = _cfg.dailyRebootMinute;
+    doc["vmon_cal_factor"]                   = _cfg.vMonCalFactor;
     return serializeJson(doc, out, outSize) > 0;
 }
 
@@ -157,6 +160,7 @@ void ConfigManager::loadDefaults() {
     _cfg.dailyRebootEnabled      = true;
     _cfg.dailyRebootHour         = 3;
     _cfg.dailyRebootMinute       = 30;
+    _cfg.vMonCalFactor           = 1.0f;
     _cfg.configVersion           = kConfigMagic;
 }
 
@@ -195,6 +199,10 @@ bool ConfigManager::validate(const MainConfig& c, String& reason) {
     }
     if (c.alarmClearDelaySeconds < 30) {
         reason = "alarm_clear_delay_must_be_at_least_30_seconds";
+        return false;
+    }
+    if (c.vMonCalFactor < 0.5f || c.vMonCalFactor > 3.0f) {
+        reason = "vmon_cal_factor_must_be_0.5_to_3.0";
         return false;
     }
     return true;

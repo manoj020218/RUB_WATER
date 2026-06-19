@@ -18,6 +18,7 @@ struct MainConfig {
     bool     dailyRebootEnabled;
     uint8_t  dailyRebootHour;
     uint8_t  dailyRebootMinute;
+    float    vMonCalFactor;    // INA219 bus voltage multiplier — default 1.0 (no correction)
     uint32_t configVersion;
 };
 

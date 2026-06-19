@@ -65,6 +65,10 @@ void DypSensor::loop() {
         _snap.detected     = true;
         _snap.lastValidMs  = now;
         _lastReadMs        = now;
+        if (now - _lastLogMs >= 10000UL || _lastLogMs == 0) {
+            _lastLogMs = now;
+            Serial.printf("[DYP] d=%dmm  lvl=%dmm\n", (int)dist, (int)_snap.waterLevelMm);
+        }
         return;
     }
 
