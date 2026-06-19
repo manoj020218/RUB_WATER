@@ -184,6 +184,26 @@ void loop() {
 
     // ── Connectivity (non-blocking) ────────────────────────────────────────
     WifiManager::getInstance().loop();
+
+    // Wrong-password / connect-timeout → open AP so user can re-provision
+    {
+        static bool sFallbackApOpened = false;
+        auto& wifi = WifiManager::getInstance();
+        auto& lws  = LocalWebserver::getInstance();
+        if (!sFallbackApOpened && wifi.isConnectTimedOut() && !lws.isApActive()) {
+            sFallbackApOpened = true;
+            lws.startAp(600000UL);  // 10 min
+            gApOpenedMs = millis();
+            Serial.println("[MAIN] WiFi connect timeout — AP opened for re-provisioning (10 min)");
+        }
+        // Close fallback AP once WiFi reconnects (password was corrected via AP)
+        if (sFallbackApOpened && !gApReopenedManually && wifi.isConnected() && lws.isApActive()) {
+            sFallbackApOpened = false;
+            lws.stopAp();
+            Serial.println("[MAIN] WiFi reconnected — closing fallback AP");
+        }
+    }
+
     MqttManager::getInstance().loop();
     HttpFallback::getInstance().loop();
     TelemetryManager::getInstance().loop();

@@ -6,7 +6,7 @@
 #include "device_profile.h"
 
 namespace {
-static HardwareSerial dypSerial(2);    // UART2 dedicated to DYP sensor (matches old working firmware)
+static HardwareSerial dypSerial(1);    // UART1 for DYP sensor — UART2 is reserved for RS485 RTU master
 constexpr uint32_t kBaud          = 9600;
 constexpr int32_t  kMinDistMm     = 280;
 constexpr int32_t  kMaxDistMm     = 2500;
@@ -35,6 +35,19 @@ void DypSensor::loop() {
     if (!_uartReady) return;
     const uint32_t now = millis();
     int32_t dist = 0;
+
+    // Temporary raw-byte diagnostic — always active until DYP is confirmed working
+    {
+        static uint32_t sRawLogMs = 0;
+        if (now - sRawLogMs >= 5000UL || sRawLogMs == 0) {
+            sRawLogMs = now;
+            const int avail = dypSerial.available();
+            if (avail > 0)
+                Serial.printf("[DYP_RAW] %d bytes waiting, first=0x%02X\n", avail, (uint8_t)dypSerial.peek());
+            else
+                Serial.println("[DYP_RAW] 0 bytes on UART1/GPIO21 — no signal from MAX485");
+        }
+    }
 
 #ifdef SENSOR_TEST_MODE
     {
@@ -99,16 +112,17 @@ bool DypSensor::readFrame(int32_t& distOut) {
         if (dypSerial.available() < 4) {
             const uint32_t t0 = millis();
             while (dypSerial.available() < 4 && (millis() - t0) < 300UL) { yield(); }
-            if (dypSerial.available() < 4) break;
+            if (dypSerial.available() < 4) {
+                dypSerial.read();  // discard the 0xFF so it doesn't block forever
+                break;
+            }
         }
         uint8_t b[4];
         for (int i = 0; i < 4; i++) b[i] = (uint8_t)dypSerial.read();
         const uint8_t csum = (b[0] + b[1] + b[2]) & 0xFF;
-#ifdef SENSOR_TEST_MODE
         const int32_t dRaw = (int32_t)b[1] * 256 + b[2];
         Serial.printf("[DYP_FRAME] %02X %02X %02X %02X  csum_ok=%c  d=%dmm\n",
                       b[0], b[1], b[2], b[3], csum == b[3] ? 'Y' : 'N', (int)dRaw);
-#endif
         if (csum != b[3]) continue;
         const int32_t d = (int32_t)b[1] * 256 + b[2];
         if (d < kMinDistMm || d > kMaxDistMm) continue;

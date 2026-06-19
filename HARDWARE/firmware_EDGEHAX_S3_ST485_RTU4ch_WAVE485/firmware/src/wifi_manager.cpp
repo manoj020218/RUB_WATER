@@ -42,6 +42,9 @@ void WifiManager::begin() {
     if (_hasCredentials) {
         Serial.printf("[WIFI] Connecting to '%s'...\n", _ssid);
         WiFi.begin(_ssid, _pass);
+        _connectStartMs   = millis();
+        _connectTimedOut  = false;
+        _firstConnectDone = false;
     } else {
         Serial.println("[WIFI] No credentials — waiting for BLE/AP provisioning");
     }
@@ -49,9 +52,22 @@ void WifiManager::begin() {
 
 void WifiManager::loop() {
     if (!_hasCredentials) return;
-    if (isConnected()) return;
 
     const uint32_t now = millis();
+
+    if (isConnected()) {
+        _firstConnectDone = true;
+        _connectTimedOut  = false;
+        return;
+    }
+
+    // Only flag timeout on the initial connect attempt (not transient disconnects)
+    if (!_firstConnectDone && !_connectTimedOut && _connectStartMs > 0
+            && (now - _connectStartMs) >= 60000UL) {
+        _connectTimedOut = true;
+        Serial.println("[WIFI] 60s connect timeout — wrong password or SSID not found");
+    }
+
     if ((now - _lastAttemptMs) < kRetryIntervalMs) return;
     _lastAttemptMs = now;
 
@@ -59,12 +75,17 @@ void WifiManager::loop() {
     WiFi.begin(_ssid, _pass);
 }
 
+bool WifiManager::isConnectTimedOut() const { return _connectTimedOut; }
+
 void WifiManager::setCredentials(const char* ssid, const char* password, bool persist) {
     strncpy(_ssid, ssid,     sizeof(_ssid) - 1);
     strncpy(_pass, password, sizeof(_pass) - 1);
     _ssid[sizeof(_ssid)-1] = '\0';
     _pass[sizeof(_pass)-1] = '\0';
-    _hasCredentials = (strlen(_ssid) > 0);
+    _hasCredentials   = (strlen(_ssid) > 0);
+    _connectStartMs   = millis();
+    _connectTimedOut  = false;
+    _firstConnectDone = false;
     if (persist) persistToNvs();
 }
 

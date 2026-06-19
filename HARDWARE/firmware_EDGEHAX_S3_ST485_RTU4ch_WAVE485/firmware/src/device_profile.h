@@ -30,7 +30,7 @@
 
 // ── Primary DYP sensor — UART1, receive-only ─────────────────────────────────
 #define PIN_PRIMARY_DYP_RX       21
-#define PIN_PRIMARY_DYP_TX       (-1)   // TX not wired
+#define PIN_PRIMARY_DYP_TX       (-1)   // TX not wired — auto-direction MAX485 handles DE/RE
 
 // ── Two-level confirmation inputs ─────────────────────────────────────────────
 #define PIN_CONFIRM_LEVEL1       4      // INPUT_PULLUP, LOW = active
@@ -57,7 +57,7 @@
 // GPIO46 is a strapping pin (ROM log enable) — I2C pull-up holds it HIGH at
 // boot which only enables ROM bootloader output; harmless in the field.
 #define PIN_INA219_SDA           47
-#define PIN_INA219_SCL           46
+#define PIN_INA219_SCL           3
 #define INA219_I2C_ADDR          0x40  // A0=GND, A1=GND (default breakout)
 
 // ── External CONFIG button ───────────────────────────────────────────────────
