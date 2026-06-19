@@ -6,7 +6,7 @@
 #include "device_profile.h"
 
 namespace {
-constexpr uint32_t kConfigMagic = 0xFEED0004UL;  // bumped: added vMonCalFactor
+constexpr uint32_t kConfigMagic = 0xFEED0005UL;  // bumped: added leftRtuSlaveId/rightRtuSlaveId
 }
 
 ConfigManager& ConfigManager::getInstance() {
@@ -90,6 +90,10 @@ bool ConfigManager::applyJson(const char* json, String& reason) {
     OPT_U8(dailyRebootMinute,       "daily_reboot_minute")
     if (doc.containsKey("vmon_cal_factor"))
         next.vMonCalFactor = doc["vmon_cal_factor"].as<float>();
+    if (doc.containsKey("left_rtu_slave_id"))
+        next.leftRtuSlaveId  = (uint8_t)constrain(doc["left_rtu_slave_id"].as<int>(), 1, 247);
+    if (doc.containsKey("right_rtu_slave_id"))
+        next.rightRtuSlaveId = (uint8_t)constrain(doc["right_rtu_slave_id"].as<int>(), 1, 247);
 
 #undef OPT_U16
 #undef OPT_BOOL
@@ -133,6 +137,8 @@ bool ConfigManager::buildJson(char* out, size_t outSize) const {
     doc["daily_reboot_hour"]                 = _cfg.dailyRebootHour;
     doc["daily_reboot_minute"]               = _cfg.dailyRebootMinute;
     doc["vmon_cal_factor"]                   = _cfg.vMonCalFactor;
+    doc["left_rtu_slave_id"]                 = _cfg.leftRtuSlaveId;
+    doc["right_rtu_slave_id"]                = _cfg.rightRtuSlaveId;
     return serializeJson(doc, out, outSize) > 0;
 }
 
@@ -161,6 +167,8 @@ void ConfigManager::loadDefaults() {
     _cfg.dailyRebootHour         = 3;
     _cfg.dailyRebootMinute       = 30;
     _cfg.vMonCalFactor           = 1.0f;
+    _cfg.leftRtuSlaveId          = RTU_SLAVE_ID_LEFT_BOX;
+    _cfg.rightRtuSlaveId         = RTU_SLAVE_ID_RIGHT_BOX;
     _cfg.configVersion           = kConfigMagic;
 }
 

@@ -6,7 +6,7 @@
 #include "device_profile.h"
 
 namespace {
-static HardwareSerial dypSerial(1);    // UART1 for DYP sensor — UART2 is reserved for RS485 RTU master
+static HardwareSerial dypSerial(2);    // UART2 for DYP sensor — UART1 is RS485 RTU master
 constexpr uint32_t kBaud          = 9600;
 constexpr int32_t  kMinDistMm     = 280;
 constexpr int32_t  kMaxDistMm     = 2500;
@@ -81,7 +81,7 @@ void DypSensor::loop() {
         const uint32_t elapsed = _snap.lastValidMs > 0
             ? (now - _snap.lastValidMs) / 1000UL
             : (now - _graceStartMs) / 1000UL;
-        Serial.printf("[DYP] No frame for %us\n", (unsigned)elapsed);
+        Serial.printf("[DYP] No frame for %us  rx=%d\n", (unsigned)elapsed, dypSerial.available());
     }
 
     _snap.distanceMm   = 0;

@@ -44,6 +44,7 @@ private:
     void handleConfig();
     void handleConfigPost();
     void handleDiagnostics();
+    void handleDiagnosticsPost();
     void handleRelayTest();
     void handleRelayTestPost();
     void handleRemoteTest();

@@ -19,6 +19,8 @@ struct MainConfig {
     uint8_t  dailyRebootHour;
     uint8_t  dailyRebootMinute;
     float    vMonCalFactor;    // INA219 bus voltage multiplier — default 1.0 (no correction)
+    uint8_t  leftRtuSlaveId;   // Modbus slave ID of left ST485 box (default 1)
+    uint8_t  rightRtuSlaveId;  // Modbus slave ID of right ST485 box (default 1)
     uint32_t configVersion;
 };
 

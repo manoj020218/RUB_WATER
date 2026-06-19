@@ -62,8 +62,10 @@ static void pollST485Box(RtuBus bus, RemoteBoxStatus& status, uint8_t slaveId) {
 
     // FC1: read 4 coil states for dashboard display
     uint8_t coilBuf[1] = {0};
-    if (!rtu.readCoils(bus, slaveId, ST485::COIL_R1, 4, coilBuf, 1).ok) {
-        if (status.online) Serial.printf("[RTU] %s ST485 no response\n", bn);
+    const RtuResult r1 = rtu.readCoils(bus, slaveId, ST485::COIL_R1, 4, coilBuf, 1);
+    if (!r1.ok) {
+        if (status.online)
+            Serial.printf("[RTU] %s ST485 no response (id=%u exc=0x%02X)\n", bn, slaveId, r1.exceptionCode);
         // State transition on comm loss
         if (status.rtuState == RtuState::LOW_BATTERY) {
             status.rtuState  = RtuState::LVD_TRIPPED;
@@ -73,6 +75,29 @@ static void pollST485Box(RtuBus bus, RemoteBoxStatus& status, uint8_t slaveId) {
             status.rtuState  = RtuState::COMM_LOST;
             status.commLostMs = millis();
             Serial.printf("[RTU] %s ST485 COMM_LOST\n", bn);
+        }
+        // One-time left-bus slave ID scan — runs after the first COMM_LOST to detect
+        // a misconfigured slave address on the ST485 box.
+        if (bus == RtuBus::LEFT) {
+            static bool sLeftScanDone = false;
+            if (!sLeftScanDone) {
+                sLeftScanDone = true;
+                const uint8_t scanIds[] = {1, 2, 3, 11, 12};
+                Serial.printf("[RTU] Left bus ID scan (configured=%u, trying 1,2,3,11,12)...\n", slaveId);
+                bool foundAny = false;
+                for (uint8_t sid : scanIds) {
+                    if (sid == slaveId) continue;
+                    uint8_t sb[1] = {0};
+                    if (rtu.readCoils(bus, sid, ST485::COIL_R1, 4, sb, 1).ok) {
+                        Serial.printf("[RTU] Left bus: FOUND responder at ID=%u "
+                                      "(fix: change RTU_SLAVE_ID_LEFT_BOX to %u)\n", sid, sid);
+                        foundAny = true;
+                    }
+                }
+                if (!foundAny)
+                    Serial.println("[RTU] Left bus scan: no ID responded — "
+                                   "check ST485 box power + RS485 A/B cable to left terminal");
+            }
         }
         status.online = false;
         return;
@@ -230,17 +255,17 @@ void RemoteBoxManager::loop() {
 
 #ifdef ST485_RTU4CH_WAVE485_MODE
     if (cfg.leftRemoteEnabled)
-        processConfirmation(RtuBus::LEFT,  _left,  RTU_SLAVE_ID_LEFT_BOX,  _leftConfirm);
+        processConfirmation(RtuBus::LEFT,  _left,  cfg.leftRtuSlaveId,  _leftConfirm);
     if (cfg.rightRemoteEnabled)
-        processConfirmation(RtuBus::RIGHT, _right, RTU_SLAVE_ID_RIGHT_BOX, _rightConfirm);
+        processConfirmation(RtuBus::RIGHT, _right, cfg.rightRtuSlaveId, _rightConfirm);
 #endif
 
 #ifdef GENERIC_REMOTE_RELAY_MODE
     const uint8_t leftSlaveId  = GENERIC_REMOTE_RELAY_LEFT_ADDR;
     const uint8_t rightSlaveId = GENERIC_REMOTE_RELAY_RIGHT_ADDR;
 #else
-    const uint8_t leftSlaveId  = RTU_SLAVE_ID_LEFT_BOX;
-    const uint8_t rightSlaveId = RTU_SLAVE_ID_RIGHT_BOX;
+    const uint8_t leftSlaveId  = cfg.leftRtuSlaveId;
+    const uint8_t rightSlaveId = cfg.rightRtuSlaveId;
 #endif
 
     // Adjust poll rate based on alarm state
@@ -295,7 +320,8 @@ void RemoteBoxManager::suspendAutoControl(uint32_t durationMs) {
 bool RemoteBoxManager::manualSetSirenFlash(RtuBus bus, bool sirenOn, bool flashOn) {
     suspendAutoControl();
 #ifdef ST485_RTU4CH_WAVE485_MODE
-    const uint8_t slaveId = (bus == RtuBus::LEFT) ? RTU_SLAVE_ID_LEFT_BOX : RTU_SLAVE_ID_RIGHT_BOX;
+    const auto& cfgM = ConfigManager::getInstance().get();
+    const uint8_t slaveId = (bus == RtuBus::LEFT) ? cfgM.leftRtuSlaveId : cfgM.rightRtuSlaveId;
     auto& status = (bus == RtuBus::LEFT) ? _left : _right;
     const bool voiceOn = sirenOn;
     if (!writeST485Outputs(bus, slaveId, sirenOn, flashOn, voiceOn, false)) {
@@ -354,7 +380,8 @@ bool RemoteBoxManager::manualSetSirenFlash(RtuBus bus, bool sirenOn, bool flashO
 bool RemoteBoxManager::manualSetSingleRelay(RtuBus bus, uint8_t coilIdx, bool on) {
     suspendAutoControl();
 #ifdef ST485_RTU4CH_WAVE485_MODE
-    const uint8_t slaveId = (bus == RtuBus::LEFT) ? RTU_SLAVE_ID_LEFT_BOX : RTU_SLAVE_ID_RIGHT_BOX;
+    const auto& cfgM = ConfigManager::getInstance().get();
+    const uint8_t slaveId = (bus == RtuBus::LEFT) ? cfgM.leftRtuSlaveId : cfgM.rightRtuSlaveId;
     auto& status = (bus == RtuBus::LEFT) ? _left : _right;
     auto& rtu = Rs485RtuMaster::getInstance();
     const char* bn = bus == RtuBus::LEFT ? "Left" : "Right";

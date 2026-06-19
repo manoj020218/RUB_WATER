@@ -18,6 +18,10 @@ public:
 
     void begin();
 
+    // Pulses the TX pin as a plain GPIO for ~5 seconds so a multimeter can confirm
+    // the PCB trace from ESP32 to Waveshare TXD is intact. Restores UART after.
+    void diagTxPulse(RtuBus bus);
+
     // Blocking call - do NOT use inside safety loop.
     // Called from RemoteBoxManager which runs on its own slow cadence.
     RtuResult readHolding(RtuBus bus, uint8_t slaveId,

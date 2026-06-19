@@ -5,7 +5,7 @@
 #include "device_profile.h"
 
 namespace {
-static HardwareSerial rtuSerial(2);   // UART2 shared between left/right buses
+static HardwareSerial rtuSerial(1);   // UART1 shared between left/right buses — UART2 is DYP sensor
 constexpr uint32_t kBaud           = 9600;
 constexpr uint32_t kResponseStartTimeoutMs = 350UL; // wait for first response byte
 constexpr uint32_t kInterByteTimeoutMs = 25UL;      // once bytes start, wait this long for the next byte
@@ -60,7 +60,7 @@ void Rs485RtuMaster::begin() {
         rtuSerial.begin(kBaud, SERIAL_8N1, PIN_LEFT_RS485_RX, PIN_LEFT_RS485_TX);
     }
     _begun = true;
-    Serial.println("[RTU] Master started on UART2");
+    Serial.println("[RTU] Master started on UART1");
 }
 
 // Public API
@@ -397,6 +397,26 @@ uint8_t Rs485RtuMaster::sendAndReceive(const uint8_t* req, size_t reqLen,
         }
     }
     return lastErr;
+}
+
+void Rs485RtuMaster::diagTxPulse(RtuBus bus) {
+    const int txPin = (bus == RtuBus::LEFT) ? PIN_LEFT_RS485_TX : PIN_RIGHT_RS485_TX;
+    const int rxPin = (bus == RtuBus::LEFT) ? PIN_LEFT_RS485_RX : PIN_RIGHT_RS485_RX;
+    const char* bn  = (bus == RtuBus::LEFT) ? "Left" : "Right";
+    rtuSerial.end();
+    pinMode(txPin, OUTPUT);
+    Serial.printf("[RTU] diagTxPulse: %s TX=GPIO%d pulsing 5x — measure with multimeter now\n", bn, txPin);
+    for (int i = 0; i < 5; i++) {
+        digitalWrite(txPin, HIGH);
+        Serial.printf("[RTU] GPIO%d -> HIGH (3.3V)\n", txPin);
+        delay(600);
+        digitalWrite(txPin, LOW);
+        Serial.printf("[RTU] GPIO%d -> LOW  (0V)\n", txPin);
+        delay(600);
+    }
+    digitalWrite(txPin, HIGH);  // restore UART idle level before re-init
+    rtuSerial.begin(kBaud, SERIAL_8N1, rxPin, txPin);
+    Serial.printf("[RTU] diagTxPulse done — UART1 restored RX=GPIO%d TX=GPIO%d\n", rxPin, txPin);
 }
 
 uint16_t Rs485RtuMaster::crc16(const uint8_t* data, size_t len) {
