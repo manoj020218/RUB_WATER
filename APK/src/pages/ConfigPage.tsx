@@ -1,5 +1,5 @@
 import { useEffect, useState, useCallback } from 'react';
-import { FiSettings, FiRefreshCw, FiSave, FiSend, FiTool } from 'react-icons/fi';
+import { FiSettings, FiRefreshCw, FiSave, FiSend, FiTool, FiMapPin } from 'react-icons/fi';
 import { useApp } from '@/context/AppContext';
 import { fetchDeviceConfig, saveDeviceConfig, pushDeviceConfig, fetchDeviceConfigHistory, saveDeviceConfigLocal, fetchDeviceLifecycle, patchDeviceLifecycle, fetchDeviceLifecycleHistory } from '@/api/commands';
 import { DeviceConfig } from '@/types';
@@ -11,7 +11,7 @@ function fmtDT(iso?: string) {
 }
 
 export default function ConfigPage() {
-  const { state, canEditConfig, canViewConfig, showToast } = useApp();
+  const { state, dispatch, canEditConfig, canViewConfig, showToast } = useApp();
   const deviceId = state.selectedDeviceId ?? state.configDeviceId ?? '';
   const locationId = state.selectedLocationId ?? '';
 
@@ -130,9 +130,31 @@ export default function ConfigPage() {
       <section className="view active" id="view-config">
         <div className="card">
           <h2 className="view-title"><FiSettings size={16} style={{ marginRight: 8 }} />Device Configuration</h2>
-          <div style={{ padding: '20px 0', textAlign: 'center', color: '#757575', fontSize: 13 }}>
-            Select a device from the <strong>Locations</strong> tab to view and configure it.
-          </div>
+          {state.locations.length > 0 ? (
+            <>
+              <div style={{ padding: '10px 0 6px', color: '#475569', fontSize: 13 }}>Select a location to configure its device:</div>
+              <select
+                className="inp"
+                defaultValue=""
+                onChange={(e) => {
+                  const loc = state.locations.find((l) => (l.location_id || l.id) === e.target.value);
+                  if (loc) {
+                    dispatch({ type: 'SELECT_LOCATION', locationId: loc.location_id || loc.id, deviceId: loc.device_id || null });
+                  }
+                }}
+              >
+                <option value="" disabled>-- Select Location --</option>
+                {state.locations.map((l) => {
+                  const lid = l.location_id || l.id;
+                  return <option key={lid} value={lid}>{l.location_name} ({lid})</option>;
+                })}
+              </select>
+            </>
+          ) : (
+            <div style={{ padding: '20px 0', textAlign: 'center', color: '#757575', fontSize: 13 }}>
+              Select a device from the <strong>Locations</strong> tab to view and configure it.
+            </div>
+          )}
         </div>
       </section>
     );
@@ -152,7 +174,12 @@ export default function ConfigPage() {
       <div className="card">
         <div className="row between">
           <h2 className="view-title"><FiSettings size={16} style={{ marginRight: 8 }} />Device Config</h2>
-          <div style={{ display: 'flex', gap: 6 }}>
+          <div style={{ display: 'flex', gap: 6, alignItems: 'center', flexWrap: 'wrap' }}>
+            {locationId && (
+              <span className="chip" style={{ fontSize: 11, background: '#e0f2fe', color: '#0369a1' }}>
+                <FiMapPin size={10} style={{ marginRight: 3 }} />{locationId}
+              </span>
+            )}
             <span className="chip off" style={{ fontSize: 11 }}>{deviceId}</span>
             <button className="ghost-btn" style={{ padding: '5px 10px' }} onClick={load}><FiRefreshCw size={14} /></button>
           </div>

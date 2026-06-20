@@ -22,6 +22,7 @@ export default function SettingsPage() {
   const [pwStatus, setPwStatus] = useState('');
   const [busy, setBusy] = useState(false);
   const [checkingUpdate, setCheckingUpdate] = useState(false);
+  const [downloadStatus, setDownloadStatus] = useState('');
 
   async function handleChangePw() {
     if (!curPw || !newPw || !confPw) { setPwStatus('Fill all fields.'); return; }
@@ -46,7 +47,24 @@ export default function SettingsPage() {
 
   function download() {
     if (!latest?.downloadUrl) return;
-    const a = document.createElement('a'); a.href = latest.downloadUrl; a.target = '_blank'; a.rel = 'noopener'; a.click();
+    // Session (token, location) is already auto-persisted to localStorage by AppContext.
+    // Force an explicit sync here as a safety net before navigating away.
+    try {
+      const saved = localStorage.getItem('fg_mobile_session_v1');
+      if (saved) localStorage.setItem('fg_mobile_session_v1', saved); // re-write to flush any pending
+    } catch (_) {}
+    setDownloadStatus('Local data saved. Opening download…');
+    setTimeout(() => {
+      const a = document.createElement('a');
+      a.href = latest!.downloadUrl!;
+      a.target = '_blank';
+      a.rel = 'noopener noreferrer';
+      a.setAttribute('download', latest?.fileName ?? 'FloodGuard-release.apk');
+      document.body.appendChild(a);
+      a.click();
+      document.body.removeChild(a);
+      setDownloadStatus('APK download started. Tap the downloaded file to install.');
+    }, 300);
   }
 
   return (
@@ -83,6 +101,12 @@ export default function SettingsPage() {
               </button>
             )}
           </div>
+          {downloadStatus && <div className="meta" style={{ marginTop: 6 }}>{downloadStatus}</div>}
+          {latest?.notes && latest.notes.length > 0 && (
+            <ul style={{ margin: '8px 0 0', paddingLeft: 18, fontSize: 12, color: '#475569' }}>
+              {latest.notes.map((n: string, i: number) => <li key={i}>{n}</li>)}
+            </ul>
+          )}
         </div>
 
         <h3 style={{ fontSize: 14, margin: '16px 0 8px' }}>

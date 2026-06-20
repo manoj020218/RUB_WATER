@@ -2,7 +2,7 @@ import { useEffect, useState, useCallback } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { FiMapPin, FiRefreshCw, FiWifi, FiWifiOff, FiAlertTriangle, FiPlus, FiEdit2, FiTrash2, FiCheck, FiX } from 'react-icons/fi';
 import { useApp } from '@/context/AppContext';
-import { fetchLocations, addLocation, fetchAdminDevices, saveLocationDetails, deleteLocation } from '@/api/locations';
+import { fetchLocations, addLocation, fetchAdminDevices, saveLocationDetails, deleteLocation, bindDevice } from '@/api/locations';
 import { Location } from '@/types';
 
 function statusColor(status?: string) {
@@ -91,7 +91,6 @@ export default function LocationsPage() {
         // Move bound device to new location before deleting old
         const boundDeviceId = loc.device_id;
         if (boundDeviceId) {
-          const { bindDevice } = await import('@/api/locations');
           await bindDevice(newLocId, boundDeviceId);
         }
         // Delete old location (device already moved, no unbind will happen)
@@ -141,12 +140,30 @@ export default function LocationsPage() {
   }
 
   async function handleAddDevice() {
-    if (!devAddId.trim()) { setDevAddStatus('Device ID required.'); return; }
+    const id = devAddId.trim().toUpperCase();
+    const loc = devAddLoc.trim();
+    if (!id) { setDevAddStatus('Device ID required.'); return; }
     setDevAddStatus('Registering…');
     try {
-      const { addDevice } = await import('@/api/locations');
-      await addDevice(devAddId.trim(), devAddLoc || undefined);
-      setDevAddStatus('Device registered.'); setDevAddId(''); setDevAddLoc('');
+      if (loc) {
+        // bindDevice auto-creates if new, or rebinds if already registered — no "already exists" error
+        await bindDevice(loc, id);
+        setDevAddStatus(`Device ${id} linked to ${loc}.`);
+      } else {
+        const { addDevice } = await import('@/api/locations');
+        try {
+          await addDevice(id);
+          setDevAddStatus('Device registered (no location).');
+        } catch (e: unknown) {
+          const msg = e instanceof Error ? e.message : '';
+          if (/already exist/i.test(msg)) {
+            setDevAddStatus(`${id} already registered. Select a location to reassign it.`);
+            return;
+          }
+          throw e;
+        }
+      }
+      setDevAddId(''); setDevAddLoc('');
       loadAdminDevices();
     } catch (e: unknown) { setDevAddStatus(e instanceof Error ? e.message : 'Failed'); }
   }

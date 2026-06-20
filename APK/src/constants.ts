@@ -27,8 +27,8 @@ export const WIFI_DISCOVERY_BATCH_SIZE = 14;
 export const MAX_WIFI_DISCOVERY_HOSTS = 254;
 
 export const APP_RELEASE_INFO = Object.freeze({
-  version: '1.0.2',
-  versionCode: 3,
+  version: '1.0.3',
+  versionCode: 4,
   releasedAt: '2026-06-20',
   releasedLabel: '20 Jun 2026',
 });

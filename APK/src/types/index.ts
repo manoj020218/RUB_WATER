@@ -152,6 +152,7 @@ export interface AppRelease {
   releasedLabel?: string;
   notes?: string[];
   downloadUrl?: string;
+  fileName?: string;
   forceUpdate?: boolean;
 }
 
