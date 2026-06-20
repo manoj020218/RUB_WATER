@@ -1707,11 +1707,13 @@ button {
 /* ── RTU Status Cards ───────────────────────────────────────────── */
 .rtu-row {
   display: flex;
+  flex-wrap: wrap;
   gap: 8px;
   margin: 10px 0;
 }
 .rtu-card {
-  flex: 1;
+  flex: 1 1 140px;
+  min-width: 0;
   background: #f5f5f5;
   border-radius: 8px;
   padding: 10px;
