@@ -154,28 +154,77 @@
             </div>
           </div>
 
-          <!-- Relay / output indicators -->
-          <div class="relay-row">
-            <div class="relay-item" id="relay-item-siren">
-              <div class="relay-led" id="relay-led-siren"></div>
-              <div class="relay-label">Siren</div>
-              <div class="relay-status" id="relay-siren">--</div>
+          <!-- RTU Status — Left and Right -->
+          <div class="rtu-row">
+
+            <!-- LEFT RTU -->
+            <div class="rtu-card">
+              <div class="rtu-card-header">
+                <span class="rtu-title">LEFT RTU</span>
+                <span class="rtu-badge rtu-badge-online" id="rtu-left-online">--</span>
+              </div>
+              <div class="rtu-batt-row">
+                <span class="rtu-batt-label">Battery</span>
+                <span class="rtu-batt-value" id="rtu-left-batt">--</span>
+              </div>
+              <div class="relay-row rtu-relay-row">
+                <div class="relay-item" id="rtu-left-item-siren">
+                  <div class="relay-led"></div>
+                  <div class="relay-label">Siren</div>
+                  <div class="relay-status" id="rtu-left-siren">--</div>
+                </div>
+                <div class="relay-item" id="rtu-left-item-flash">
+                  <div class="relay-led"></div>
+                  <div class="relay-label">Flash</div>
+                  <div class="relay-status" id="rtu-left-flash">--</div>
+                </div>
+                <div class="relay-item" id="rtu-left-item-voice">
+                  <div class="relay-led"></div>
+                  <div class="relay-label">Voice</div>
+                  <div class="relay-status" id="rtu-left-voice">--</div>
+                </div>
+                <div class="relay-item relay-item-future">
+                  <div class="relay-led"></div>
+                  <div class="relay-label">Boom</div>
+                  <div class="relay-status">FUTURE</div>
+                </div>
+              </div>
             </div>
-            <div class="relay-item" id="relay-item-beacon">
-              <div class="relay-led" id="relay-led-beacon"></div>
-              <div class="relay-label">Beacon</div>
-              <div class="relay-status" id="relay-beacon">--</div>
+
+            <!-- RIGHT RTU -->
+            <div class="rtu-card">
+              <div class="rtu-card-header">
+                <span class="rtu-title">RIGHT RTU</span>
+                <span class="rtu-badge rtu-badge-online" id="rtu-right-online">--</span>
+              </div>
+              <div class="rtu-batt-row">
+                <span class="rtu-batt-label">Battery</span>
+                <span class="rtu-batt-value" id="rtu-right-batt">--</span>
+              </div>
+              <div class="relay-row rtu-relay-row">
+                <div class="relay-item" id="rtu-right-item-siren">
+                  <div class="relay-led"></div>
+                  <div class="relay-label">Siren</div>
+                  <div class="relay-status" id="rtu-right-siren">--</div>
+                </div>
+                <div class="relay-item" id="rtu-right-item-flash">
+                  <div class="relay-led"></div>
+                  <div class="relay-label">Flash</div>
+                  <div class="relay-status" id="rtu-right-flash">--</div>
+                </div>
+                <div class="relay-item" id="rtu-right-item-voice">
+                  <div class="relay-led"></div>
+                  <div class="relay-label">Voice</div>
+                  <div class="relay-status" id="rtu-right-voice">--</div>
+                </div>
+                <div class="relay-item relay-item-future">
+                  <div class="relay-led"></div>
+                  <div class="relay-label">Boom</div>
+                  <div class="relay-status">FUTURE</div>
+                </div>
+              </div>
             </div>
-            <div class="relay-item" id="relay-item-voice">
-              <div class="relay-led" id="relay-led-voice"></div>
-              <div class="relay-label">Voice</div>
-              <div class="relay-status" id="relay-voice">--</div>
-            </div>
-            <div class="relay-item" id="relay-item-barrier">
-              <div class="relay-led" id="relay-led-barrier"></div>
-              <div class="relay-label">Barrier</div>
-              <div class="relay-status" id="relay-barrier">--</div>
-            </div>
+
           </div>
 
           <!-- Power & connectivity -->

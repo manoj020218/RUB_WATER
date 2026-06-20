@@ -3885,20 +3885,40 @@
       sw1Marker.style.bottom = `${sw1Bottom.toFixed(1)}%`;
     }
 
-    // Relay/output indicators
-    const outputs = latest?.outputs || {};
-    const relayStates = {
-      siren:   Boolean(outputs.siren   ?? latest?.relay_siren   ?? latest?.siren_active   ?? false),
-      beacon:  Boolean(outputs.beacon  ?? latest?.relay_beacon  ?? latest?.beacon_active  ?? false),
-      voice:   Boolean(outputs.voice   ?? latest?.relay_voice   ?? latest?.voice_active   ?? false),
-      barrier: Boolean(outputs.barrier ?? latest?.relay_barrier ?? false)
-    };
-    Object.entries(relayStates).forEach(([key, isOn]) => {
-      const item = byId(`relay-item-${key}`);
-      const status = byId(`relay-${key}`);
-      if (item) item.classList.toggle('relay-on', isOn);
-      if (status) status.textContent = latest ? (isOn ? 'ON' : 'OFF') : '--';
-    });
+    // ── RTU relay + battery status ───────────────────────────────────
+    const remoteLeft  = latest?.remote_left  || {};
+    const remoteRight = latest?.remote_right || {};
+
+    function updateRtu(prefix, remote) {
+      const hasData = latest !== null;
+      const online  = Boolean(remote.online);
+      const batt    = remote.batt || '--';
+
+      const onlineEl = byId(prefix + 'online');
+      if (onlineEl) {
+        onlineEl.textContent = hasData ? (online ? 'ONLINE' : 'OFFLINE') : '--';
+        onlineEl.classList.toggle('online',  hasData && online);
+        onlineEl.classList.toggle('offline', hasData && !online);
+      }
+
+      const battEl = byId(prefix + 'batt');
+      if (battEl) {
+        battEl.textContent = hasData ? batt : '--';
+        battEl.classList.toggle('batt-ok',  hasData && batt === 'OK');
+        battEl.classList.toggle('batt-low', hasData && batt === 'LOW');
+      }
+
+      ['siren', 'flash', 'voice'].forEach(function(relay) {
+        const isOn   = Boolean(remote[relay]);
+        const item   = byId(prefix + 'item-' + relay);
+        const status = byId(prefix + relay);
+        if (item)   item.classList.toggle('relay-on', isOn);
+        if (status) status.textContent = hasData ? (isOn ? 'ON' : 'OFF') : '--';
+      });
+    }
+
+    updateRtu('rtu-left-',  remoteLeft);
+    updateRtu('rtu-right-', remoteRight);
 
     // Quick controls visibility (OPERATOR+ roles)
     const qc = byId('dash-quick-controls');
