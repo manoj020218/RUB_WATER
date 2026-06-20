@@ -17,6 +17,7 @@ const ComplaintsPage = lazy(() => import('@/pages/ComplaintsPage'));
 const UsersPage = lazy(() => import('@/pages/UsersPage'));
 const ReportsPage = lazy(() => import('@/pages/ReportsPage'));
 const SettingsPage = lazy(() => import('@/pages/SettingsPage'));
+const TransferPage = lazy(() => import('@/pages/TransferPage'));
 
 function RequireAuth({ children }: { children: React.ReactNode }) {
   const { state } = useApp();
@@ -45,6 +46,7 @@ export default function App() {
             <Route path="/users" element={<RequireAuth><UsersPage /></RequireAuth>} />
             <Route path="/reports" element={<RequireAuth><ReportsPage /></RequireAuth>} />
             <Route path="/settings" element={<RequireAuth><SettingsPage /></RequireAuth>} />
+            <Route path="/transfer" element={<RequireAuth><TransferPage /></RequireAuth>} />
             <Route path="*" element={<Navigate to={isLoggedIn ? '/locations' : '/login'} replace />} />
           </Routes>
         </Suspense>

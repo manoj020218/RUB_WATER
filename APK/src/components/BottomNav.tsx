@@ -4,7 +4,7 @@ import { useApp } from '@/context/AppContext';
 interface NavItem { to: string; label: string; show?: boolean }
 
 export default function BottomNav() {
-  const { canOperate, canViewConfig, canVendorInstall, isSuperAdmin, state } = useApp();
+  const { canOperate, canViewConfig, canVendorInstall, canUseTransferPipeline, isSuperAdmin, state } = useApp();
   const role = state.user?.role || '';
 
   const canViewReports = ['VENDOR_SUPER_ADMIN', 'DEPARTMENT_SUPER_ADMIN', 'VENDOR_MONITORING_USER'].includes(role);
@@ -21,6 +21,7 @@ export default function BottomNav() {
     { to: '/complaints', label: 'Complaints', show: canViewComplaints },
     { to: '/users', label: 'Users', show: canViewUsers },
     { to: '/reports', label: 'Reports', show: canViewReports },
+    { to: '/transfer', label: 'Transfer', show: canUseTransferPipeline() },
     { to: '/settings', label: 'Settings' },
   ];
 

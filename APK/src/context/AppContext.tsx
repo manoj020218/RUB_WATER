@@ -218,7 +218,7 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
   const canViewConfig = () => ['VENDOR_SUPER_ADMIN', 'DEPARTMENT_SUPER_ADMIN', 'DEPARTMENT_ADMIN', 'LOCATION_ADMIN', 'VENDOR_MONITORING_USER'].includes(userRole());
   const canEditConfig = () => ['VENDOR_SUPER_ADMIN', 'DEPARTMENT_SUPER_ADMIN', 'DEPARTMENT_ADMIN', 'VENDOR_MONITORING_USER'].includes(userRole());
   const canVendorInstall = () => ['VENDOR_SUPER_ADMIN', 'VENDOR_MONITORING_USER'].includes(userRole());
-  const canUseTransferPipeline = () => userRole() === 'VENDOR_SUPER_ADMIN' && !isDemoSuperAdmin();
+  const canUseTransferPipeline = () => userRole() === 'VENDOR_SUPER_ADMIN';
   const isNativeApp = () => !!(window as unknown as Record<string, unknown>).Capacitor;
   const selectedLocation = () => state.locations.find((l) => l.location_id === state.selectedLocationId || l.id === state.selectedLocationId);
 
