@@ -275,7 +275,7 @@ export default function DashboardPage() {
             <div className="mini-value">{hasData ? (latest?.sensor_detected ? (latest?.sensor_valid ? 'OK' : 'INVALID') : 'NOT DETECTED') : '--'}</div>
           </div>
           <div className="mini-card">
-            <div className="mini-label">Switch L1 {sw1Mm}mm</div>
+            <div className="mini-label">Switch L1 {alertMm}mm</div>
             <div className="mini-value">{hasData ? (latest?.l1_active ? 'TRIPPED' : 'CLEAR') : '--'}</div>
           </div>
           <div className="mini-card">
