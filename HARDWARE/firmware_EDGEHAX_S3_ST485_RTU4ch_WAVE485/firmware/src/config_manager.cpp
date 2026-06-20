@@ -164,8 +164,8 @@ void ConfigManager::loadDefaults() {
     _cfg.rightRemoteEnabled      = false;
 #endif
     _cfg.dailyRebootEnabled      = true;
-    _cfg.dailyRebootHour         = 3;
-    _cfg.dailyRebootMinute       = 30;
+    _cfg.dailyRebootHour         = 1;
+    _cfg.dailyRebootMinute       = 0;
     _cfg.vMonCalFactor           = 1.0f;
     _cfg.leftRtuSlaveId          = RTU_SLAVE_ID_LEFT_BOX;
     _cfg.rightRtuSlaveId         = RTU_SLAVE_ID_RIGHT_BOX;

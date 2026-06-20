@@ -272,6 +272,8 @@ void LocalWebserver::setupRoutes() {
     _server.on("/firmware-upload",     HTTP_GET,  [this]{ handleFirmwareUpload(); });
     _server.on("/reboot",              HTTP_GET,  [this]{ handleReboot(); });
     _server.on("/reboot",              HTTP_POST, [this]{ handleRebootPost(); });
+    _server.on("/identity",              HTTP_GET,  [this]{ handleIdentity(); });
+    _server.on("/identity",              HTTP_POST, [this]{ handleIdentityPost(); });
     _server.on("/factory-reset-confirm", HTTP_GET,  [this]{ handleFactoryReset(); });
     _server.on("/factory-reset-confirm", HTTP_POST, [this]{ handleFactoryResetPost(); });
     _server.onNotFound([this]{ handleNotFound(); });
@@ -340,7 +342,7 @@ String LocalWebserver::htmlFooter() {
 String LocalWebserver::navBar(const char* active) {
     const char* pages[][2] = {
         {"/status","Status"},{"/wifi","WiFi Setup"},{"/config","Config"},{"/calibration","Calibrate"},
-        {"/relay-test","Relay Test"},{"/remote-test","Remote"},
+        {"/identity","Identity"},{"/relay-test","Relay Test"},{"/remote-test","Remote"},
         {"/diagnostics","Diagnostics"},{"/firmware-upload","OTA"},
         {"/reboot","Reboot"},{"/logout","Logout"}
     };
@@ -457,11 +459,7 @@ void LocalWebserver::handleStatus() {
     html += "<tr><th>L2 Active</th><td>" + String(fsm.l2Active ? "YES" : "no") + "</td></tr>";
     html += "</table></div>";
 
-    html += "<div class='card'><h2>Outputs</h2><table>";
-    html += "<tr><th>Local Siren</th><td>" + String(out.sirenOn ? "<span class='err'>ON</span>" : "off") + "</td></tr>";
-    html += "<tr><th>Local Flash</th><td>" + String(out.flashOn ? "<span class='err'>ON</span>" : "off") + "</td></tr>";
-    html += "<tr><th>Pump</th><td>" + String(out.sumpPumpOn ? "<span class='ok'>ON</span>" : "off") + "</td></tr>";
-    html += "</table></div>";
+    // Local relay outputs hidden — no relay board fitted on this unit.
 
     html += "<div class='card'><h2>Battery (INA219)</h2><table>";
     html += "<tr><th>Voltage</th><td>" + String(vmon.voltage, 2) + " V</td></tr>";
@@ -473,9 +471,9 @@ void LocalWebserver::handleStatus() {
     if (!vmon.ready) html += "<tr><td colspan='2'><span class='err'>INA219 not detected</span></td></tr>";
     html += "</table></div>";
 
-    html += "<div class='card'><h2>Remote Boxes</h2><table>";
-    html += "<tr><th></th><th>Online</th><th>Battery</th><th>Siren</th><th>Flash</th></tr>";
+    html += "<div class='card'><h2>Remote Boxes (RTU)</h2><table>";
 #ifdef GENERIC_REMOTE_RELAY_MODE
+    html += "<tr><th></th><th>Online</th><th>Battery</th><th>Siren</th><th>Flash</th></tr>";
     html += "<tr><td>Left Relay (" + String(GENERIC_REMOTE_RELAY_LEFT_MODEL) + "CH, ID" + String(GENERIC_REMOTE_RELAY_LEFT_ADDR) + ")</td><td>" + String(left.online ? "<span class='ok'>Y</span>" : "<span class='err'>N</span>")
             + "</td><td>" + String(left.batteryVoltage, 1) + "V</td>"
             + "<td>" + String(left.sirenOn ? "ON" : "off") + "</td>"
@@ -485,14 +483,27 @@ void LocalWebserver::handleStatus() {
             + "<td>" + String(right.sirenOn ? "ON" : "off") + "</td>"
             + "<td>" + String(right.flashOn ? "ON" : "off") + "</td></tr>";
 #else
-    html += "<tr><td>Left (ID11)</td><td>" + String(left.online ? "<span class='ok'>Y</span>" : "<span class='err'>N</span>")
-            + "</td><td>" + String(left.batteryVoltage, 1) + "V</td>"
-            + "<td>" + String(left.sirenOn ? "ON" : "off") + "</td>"
-            + "<td>" + String(left.flashOn ? "ON" : "off") + "</td></tr>";
-    html += "<tr><td>Right (ID12)</td><td>" + String(right.online ? "<span class='ok'>Y</span>" : "<span class='err'>N</span>")
-            + "</td><td>" + String(right.batteryVoltage, 1) + "V</td>"
-            + "<td>" + String(right.sirenOn ? "ON" : "off") + "</td>"
-            + "<td>" + String(right.flashOn ? "ON" : "off") + "</td></tr>";
+    html += "<tr><th></th><th>Online</th><th>Batt Low</th><th>Siren</th><th>Flash</th><th>Voice</th></tr>";
+    auto rtuStatusStr = [](const RemoteBoxStatus& s) -> String {
+        if (!s.online) return "<span class='err'>COMM LOST</span>";
+        return "<span class='ok'>Online</span>";
+    };
+    auto outStr = [](bool on, bool fault) -> String {
+        if (fault) return "<span class='err'>FAULT</span>";
+        return on ? "<span class='err'>ON</span>" : "off";
+    };
+    html += "<tr><td>Left RTU (ID1)</td><td>" + rtuStatusStr(left)
+            + "</td><td>" + String(left.di_batteryLow ? "<span class='err'>LOW</span>" : String(left.batteryVoltage, 1) + "V")
+            + "</td><td>" + outStr(left.sirenOn, left.sirenFaulty)
+            + "</td><td>" + outStr(left.flashOn, left.flashFaulty)
+            + "</td><td>" + outStr(left.voiceOn, left.voiceFaulty)
+            + "</td></tr>";
+    html += "<tr><td>Right RTU (ID1)</td><td>" + rtuStatusStr(right)
+            + "</td><td>" + String(right.di_batteryLow ? "<span class='err'>LOW</span>" : String(right.batteryVoltage, 1) + "V")
+            + "</td><td>" + outStr(right.sirenOn, right.sirenFaulty)
+            + "</td><td>" + outStr(right.flashOn, right.flashFaulty)
+            + "</td><td>" + outStr(right.voiceOn, right.voiceFaulty)
+            + "</td></tr>";
 #endif
     html += "</table></div>";
     html += htmlFooter();
@@ -1308,6 +1319,77 @@ void LocalWebserver::handleFactoryResetPost() {
         htmlHeader("Reset") + "</nav><div class='card'>"
         "<p>WiFi credentials erased. Rebooting into provisioning mode...</p></div>" + htmlFooter());
     delay(1000);
+    ESP.restart();
+}
+
+void LocalWebserver::handleIdentity() {
+    if (!checkAuth()) { sendUnauth(); return; }
+    String html = htmlHeader("Device Identity") + navBar("identity");
+    html += "<div class='card'>"
+            "<h2>Device Identity</h2>"
+            "<table>"
+            "<tr><th>Current Device ID</th><td><b>" + String(_deviceId) + "</b></td></tr>"
+            "<tr><th>MQTT Host</th><td>" DEFAULT_MQTT_HOST "</td></tr>"
+            "</table>"
+            "<hr style='margin:16px 0'>"
+            "<h3>Change Device ID</h3>"
+            "<p style='color:#555;font-size:13px'>"
+            "The Device ID is used as the MQTT client ID and topic prefix. "
+            "After saving, the device will reboot with the new ID. "
+            "Make sure the new ID is registered on the cloud (VPS) and the MQTT broker "
+            "has credentials for it before rebooting.</p>"
+            "<form method='POST' action='/identity'>"
+            "<label>New Device ID</label>"
+            "<input type='text' name='device_id' value='" + String(_deviceId) + "' "
+            "placeholder='e.g. RUB42-CTRL01' maxlength='31' "
+            "pattern='[A-Za-z0-9_-]+' title='Only letters, digits, dash and underscore' required>"
+            "<button type='submit' class='btn btn-warn' "
+            "onclick=\"return confirm('Save new Device ID and reboot?')\">"
+            "Save &amp; Reboot</button>"
+            "</form></div>";
+    html += htmlFooter();
+    _server.send(200, "text/html", html);
+}
+
+void LocalWebserver::handleIdentityPost() {
+    if (!checkAuth()) { sendUnauth(); return; }
+    String newId = _server.arg("device_id");
+    newId.trim();
+    newId.toUpperCase();
+    if (newId.isEmpty() || newId.length() >= 32) {
+        _server.send(400, "text/html",
+            htmlHeader("Identity") + navBar("identity") +
+            "<div class='card'><p class='err'>Device ID must be 1–31 characters.</p>"
+            "<a href='/identity'>Back</a></div>" + htmlFooter());
+        return;
+    }
+    for (char c : newId) {
+        if (!isAlphaNumeric(c) && c != '-' && c != '_') {
+            _server.send(400, "text/html",
+                htmlHeader("Identity") + navBar("identity") +
+                "<div class='card'><p class='err'>Only letters, digits, dash and underscore are allowed.</p>"
+                "<a href='/identity'>Back</a></div>" + htmlFooter());
+            return;
+        }
+    }
+    Preferences prefs;
+    if (!prefs.begin(NVS_NS_IDENTITY, false)) {
+        _server.send(500, "text/html",
+            htmlHeader("Identity") + navBar("identity") +
+            "<div class='card'><p class='err'>NVS open failed.</p>"
+            "<a href='/identity'>Back</a></div>" + htmlFooter());
+        return;
+    }
+    prefs.putString("device_id", newId);
+    prefs.end();
+    strncpy(_deviceId, newId.c_str(), sizeof(_deviceId) - 1);
+    Serial.printf("[WEB] Device ID changed to: %s — rebooting\n", _deviceId);
+    _server.send(200, "text/html",
+        htmlHeader("Identity Saved") + "</nav>"
+        "<div class='card'><h2>Identity Saved</h2>"
+        "<p>New Device ID: <b>" + newId + "</b></p>"
+        "<p>Rebooting in 2 seconds&hellip;</p></div>" + htmlFooter());
+    delay(2000);
     ESP.restart();
 }
 

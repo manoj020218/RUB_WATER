@@ -94,9 +94,19 @@ void setup() {
     RemoteBoxManager::getInstance().begin();
 #endif
 
-    // Identity (compiled-in build flags)
+    // Identity — NVS override takes priority over compiled-in seed
     strncpy(gDeviceId,    DEVICE_ID_SEED,    sizeof(gDeviceId)    - 1);
     strncpy(gDeviceToken, DEVICE_TOKEN_SEED, sizeof(gDeviceToken) - 1);
+    {
+        Preferences idPrefs;
+        if (idPrefs.begin(NVS_NS_IDENTITY, true)) {
+            String storedId = idPrefs.getString("device_id", "");
+            if (storedId.length() > 0 && storedId.length() < sizeof(gDeviceId)) {
+                storedId.toCharArray(gDeviceId, sizeof(gDeviceId));
+            }
+            idPrefs.end();
+        }
+    }
     Serial.printf("[MAIN] device_id=%s\n", gDeviceId);
 
 #ifdef SENSOR_TEST_MODE

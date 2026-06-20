@@ -1,0 +1,499 @@
+import { useState, useEffect, useRef } from 'react';
+import { FiBluetooth, FiWifi, FiSearch, FiCheckCircle, FiAlertTriangle, FiX, FiEye, FiEyeOff, FiRefreshCw } from 'react-icons/fi';
+import { BleClient, ScanResult } from '@capacitor-community/bluetooth-le';
+import { useApp } from '@/context/AppContext';
+import { localGet } from '@/api/client';
+import {
+  BLE_SERVICE_UUID, BLE_CHARACTERISTIC_UUID, BLE_NAME_PREFIX,
+  WIFI_DISCOVERY_TIMEOUT_MS, WIFI_DISCOVERY_BATCH_SIZE,
+  DEFAULT_VPS_HEALTH_URL,
+} from '@/constants';
+import { BleDevice, WifiDiscoveryResult } from '@/types';
+
+// ── helpers ───────────────────────────────────────────────────────────────────
+function isNative() { return !!(window as unknown as Record<string, unknown>).Capacitor; }
+function textToHex(s: string) { return Array.from(new TextEncoder().encode(s)).map((b) => b.toString(16).padStart(2, '0')).join(''); }
+function hexToText(h: string) { return new TextDecoder().decode(new Uint8Array((h.match(/.{1,2}/g) ?? []).map((b) => parseInt(b, 16)))); }
+function dataViewFromHex(hex: string): DataView { const bytes = (hex.match(/.{1,2}/g) ?? []).map((b) => parseInt(b, 16)); return new DataView(new Uint8Array(bytes).buffer); }
+function dataViewToHex(dv: DataView): string { return Array.from(new Uint8Array(dv.buffer)).map((b) => b.toString(16).padStart(2, '0')).join(''); }
+
+function intToIpv4(n: number) { return [(n >>> 24) & 255, (n >>> 16) & 255, (n >>> 8) & 255, n & 255].join('.'); }
+function ipv4Subnet24Base(ip: string) {
+  // Returns the first host in the /24 that contains this IP
+  const p = ip.split('.').map(Number);
+  return (p[0] << 24 | p[1] << 16 | p[2] << 8) >>> 0;
+}
+
+// Use WebRTC ICE candidate trick to discover the phone's LAN IP without native plugins.
+// Works inside Capacitor WebViews on Android.
+async function getLocalIpViaRtc(): Promise<string | null> {
+  return new Promise((resolve) => {
+    const ips = new Set<string>();
+    try {
+      const pc = new RTCPeerConnection({ iceServers: [] });
+      pc.createDataChannel('');
+      void pc.createOffer().then((o) => pc.setLocalDescription(o));
+      const tid = setTimeout(() => { pc.close(); resolve(ips.size ? [...ips][0] : null); }, 3000);
+      pc.onicecandidate = (e) => {
+        if (!e || !e.candidate) return;
+        const m = /(\d+\.\d+\.\d+\.\d+)/.exec(e.candidate.candidate);
+        if (m && !m[1].startsWith('127.') && !m[1].startsWith('169.254.')) {
+          ips.add(m[1]);
+          clearTimeout(tid);
+          pc.close();
+          resolve(m[1]);
+        }
+      };
+    } catch (_) {
+      resolve(null);
+    }
+  });
+}
+
+// Fallback subnets to try when WebRTC fails (covers most home/office routers)
+const FALLBACK_SUBNETS = ['192.168.1', '192.168.0', '10.0.0', '172.16.0'];
+
+// ── component ─────────────────────────────────────────────────────────────────
+export default function InstallPage() {
+  const { state, dispatch, showToast, canVendorInstall, isSuperAdmin } = useApp();
+  const locations = state.locations;
+
+  const [bleDevices, setBleDevices] = useState<BleDevice[]>([]);
+  const [selectedBle, setSelectedBle] = useState('');
+  const [connectedBle, setConnectedBle] = useState('');
+  const [bleStatus, setBleStatus] = useState('DISCONNECTED');
+  const [scanning, setScanning] = useState(false);
+  const [healthLog, setHealthLog] = useState('No health response yet.');
+  const [provOutput, setProvOutput] = useState('No provisioning response yet.');
+
+  const [wifiNetworks, setWifiNetworks] = useState<{ ssid: string; rssi?: number }[]>([]);
+  const [selectedSsid, setSelectedSsid] = useState('');
+  const [wifiPw, setWifiPw] = useState('');
+  const [showPw, setShowPw] = useState(false);
+  const [provKey, setProvKey] = useState('');
+  const [adcRatio, setAdcRatio] = useState('5.00');
+  const [adcCal, setAdcCal] = useState('1.000');
+  const [adcMeasured, setAdcMeasured] = useState('');
+  const [showProvSection, setShowProvSection] = useState(false);
+
+  const [localUrl, setLocalUrl] = useState(state.install.localUrl || '');
+  const [localStatus, setLocalStatus] = useState('--');
+  const [mqttStatus, setMqttStatus] = useState('--');
+  const [mqttOk, setMqttOk] = useState(false);
+  const [cloudStatus, setCloudStatus] = useState('--');
+  const [appCloud, setAppCloud] = useState(false);
+  const [checking, setChecking] = useState(false);
+  const [lastChecked, setLastChecked] = useState<Date | null>(null);
+
+  const localUrlRef = useRef(localUrl);
+
+  const [discovery, setDiscovery] = useState({ running: false, scanned: 0, total: 0, summary: '', results: [] as WifiDiscoveryResult[] });
+
+  // Keep ref in sync so the interval closure always sees the latest localUrl
+  useEffect(() => { localUrlRef.current = localUrl; }, [localUrl]);
+
+  // Auto-refresh MQTT + cloud status every 30 s when a local URL is configured
+  useEffect(() => {
+    async function silentRefresh() {
+      const url = localUrlRef.current.trim();
+      if (!url) return;
+      try {
+        const s = await localGet<Record<string, unknown>>(url, '/api/status');
+        const connected = Boolean(s.mqtt_connected);
+        setMqttOk(connected);
+        setMqttStatus(connected ? 'CONNECTED' : 'DISCONNECTED');
+        setAppCloud(connected);
+        setCloudStatus(connected ? `CONNECTED · ${s.device_id ?? ''}` : `DISCONNECTED · ${s.device_id ?? ''}`);
+        setLastChecked(new Date());
+      } catch (_) {
+        setMqttOk(false);
+        setMqttStatus('OFFLINE');
+        setAppCloud(false);
+        setCloudStatus('Device OFFLINE');
+        setLastChecked(new Date());
+      }
+    }
+    silentRefresh(); // run immediately on mount / localUrl change
+    const id = setInterval(silentRefresh, 30000);
+    return () => clearInterval(id);
+  }, []); // runs once; uses ref to track localUrl changes
+
+  // ── BLE send command ─────────────────────────────────────────────────────
+  async function bleSendJson(payload: Record<string, unknown>): Promise<Record<string, unknown>> {
+    if (!connectedBle) throw new Error('BLE not connected');
+    const hex = textToHex(JSON.stringify(payload));
+    await BleClient.write(connectedBle, BLE_SERVICE_UUID, BLE_CHARACTERISTIC_UUID, dataViewFromHex(hex));
+    await new Promise((r) => setTimeout(r, 400));
+    const dv = await BleClient.read(connectedBle, BLE_SERVICE_UUID, BLE_CHARACTERISTIC_UUID);
+    return JSON.parse(hexToText(dataViewToHex(dv))) as Record<string, unknown>;
+  }
+
+  // ── BLE scan ─────────────────────────────────────────────────────────────
+  async function bleScan() {
+    if (!isNative()) { showToast('BLE requires the Android app.', true); return; }
+    setScanning(true); setBleDevices([]);
+    try {
+      await BleClient.initialize({ androidNeverForLocation: true });
+      const found: BleDevice[] = [];
+      await BleClient.requestLEScan(
+        { services: [BLE_SERVICE_UUID], namePrefix: BLE_NAME_PREFIX, allowDuplicates: false },
+        (result: ScanResult) => {
+          const id = result.device?.deviceId;
+          if (id && !found.find((d) => d.deviceId === id)) {
+            found.push({ deviceId: id, name: result.device.name, rssi: result.rssi });
+            setBleDevices([...found]);
+          }
+        }
+      );
+      await new Promise((r) => setTimeout(r, 5000));
+      await BleClient.stopLEScan();
+    } catch (e: unknown) { showToast(e instanceof Error ? e.message : 'Scan failed', true); } finally { setScanning(false); }
+  }
+
+  // ── BLE connect + hello ───────────────────────────────────────────────────
+  async function bleConnect(deviceId: string) {
+    setBleStatus('CONNECTING…');
+    try {
+      await BleClient.connect(deviceId, () => {
+        setConnectedBle(''); setBleStatus('DISCONNECTED'); setShowProvSection(false);
+        showToast('BLE device disconnected.', true);
+      });
+      setConnectedBle(deviceId); setBleStatus('CONNECTED'); setSelectedBle(deviceId); setShowProvSection(true);
+      const res = await bleSendJson({ cmd: 'hello' });
+      setHealthLog(JSON.stringify(res, null, 2));
+      showToast(`Connected to ${deviceId}`);
+    } catch (e: unknown) { setBleStatus('FAILED'); showToast(e instanceof Error ? e.message : 'Connect failed', true); }
+  }
+
+  async function bleDisconnect() {
+    if (connectedBle) { try { await BleClient.disconnect(connectedBle); } catch (_) {} }
+    setConnectedBle(''); setBleStatus('DISCONNECTED'); setShowProvSection(false);
+  }
+
+  // ── BLE wifi scan ─────────────────────────────────────────────────────────
+  async function bleScanWifi() {
+    try {
+      const res = await bleSendJson({ cmd: 'scan_wifi' }) as { networks?: { ssid: string; rssi?: number }[] };
+      setWifiNetworks(res.networks ?? []);
+      showToast(`Found ${res.networks?.length ?? 0} networks.`);
+    } catch (e: unknown) { showToast(e instanceof Error ? e.message : 'Wi-Fi scan failed', true); }
+  }
+
+  // ── BLE provision ────────────────────────────────────────────────────────
+  async function bleProvision() {
+    if (!selectedSsid.trim()) { showToast('Select or enter an SSID.', true); return; }
+    if (!wifiPw) { showToast('Enter Wi-Fi password.', true); return; }
+    if (!provKey) { showToast('Enter Provision Key.', true); return; }
+    setProvOutput('Starting provisioning…');
+    try {
+      const payload = { cmd: 'w', ssid: selectedSsid, password: wifiPw, provision_key: provKey, adc_ratio: Number(adcRatio), adc_cal: Number(adcCal) };
+      const res = await bleSendJson(payload) as Record<string, unknown>;
+      setProvOutput(JSON.stringify(res, null, 2));
+      if (res.ip) {
+        const ip = String(res.ip);
+        setLocalUrl(`http://${ip}`);
+        dispatch({ type: 'SET_INSTALL', patch: { localUrl: `http://${ip}`, localIp: ip } });
+        showToast(`Provisioned! IP: ${ip}`);
+      }
+    } catch (e: unknown) { setProvOutput(e instanceof Error ? e.message : 'Failed'); showToast('Provisioning failed', true); }
+  }
+
+  // ── Health check ──────────────────────────────────────────────────────────
+  async function bleReadHealth() {
+    if (!connectedBle) { showToast('Connect to a BLE device first.', true); return; }
+    try {
+      const res = await bleSendJson({ cmd: 'hello' });
+      setHealthLog(JSON.stringify(res, null, 2));
+    } catch (e: unknown) { setHealthLog(e instanceof Error ? e.message : 'Failed'); }
+  }
+
+  // ── Local device check ────────────────────────────────────────────────────
+  async function checkLocal() {
+    if (!localUrl.trim()) { showToast('Enter Local Device URL first.', true); return; }
+    setChecking(true); setLocalStatus('Checking…'); setMqttStatus('--'); setMqttOk(false);
+    try {
+      const s = await localGet<Record<string, unknown>>(localUrl, '/api/status');
+      const connected = Boolean(s.mqtt_connected);
+      setLocalStatus(`ONLINE · ${s.device_id ?? ''} · ${s.firmware ?? ''}`);
+      setMqttStatus(connected ? 'CONNECTED' : 'DISCONNECTED');
+      setMqttOk(connected);
+      if (s.device_id) dispatch({ type: 'SET_INSTALL', patch: { localUrl: localUrl.trim(), localIp: (s.ip as string) ?? '' } });
+    } catch (e: unknown) {
+      setLocalStatus(`OFFLINE: ${e instanceof Error ? e.message : 'Failed'}`);
+      setMqttStatus('UNKNOWN');
+      setMqttOk(false);
+    } finally { setChecking(false); }
+  }
+
+  // ── Device → VPS cloud status (via local /api/status mqtt_connected) ─────
+  async function checkAppCloud() {
+    if (!localUrl.trim()) {
+      setAppCloud(false);
+      setCloudStatus('Set Local URL first');
+      showToast('Enter Device Local URL and run Check Local Device first.', true);
+      return;
+    }
+    setAppCloud(false); setCloudStatus('Checking…');
+    try {
+      const s = await localGet<Record<string, unknown>>(localUrl, '/api/status');
+      const connected = Boolean(s.mqtt_connected);
+      setAppCloud(connected);
+      setCloudStatus(connected ? `CONNECTED · ${s.device_id ?? ''}` : `DISCONNECTED · ${s.device_id ?? ''}`);
+    } catch (_) {
+      setAppCloud(false);
+      setCloudStatus('Device OFFLINE');
+    }
+  }
+
+  // ── Wi-Fi discovery ───────────────────────────────────────────────────────
+  async function wifiDiscover() {
+    setDiscovery({ running: true, scanned: 0, total: 0, summary: 'Detecting phone LAN IP…', results: [] });
+
+    const phoneIp = await getLocalIpViaRtc();
+
+    let subnets: string[];
+    if (phoneIp) {
+      const p = phoneIp.split('.');
+      subnets = [`${p[0]}.${p[1]}.${p[2]}`];
+      setDiscovery((d) => ({ ...d, summary: `Phone IP: ${phoneIp} — scanning ${subnets[0]}.1-254 simultaneously…` }));
+    } else {
+      subnets = FALLBACK_SUBNETS;
+      setDiscovery((d) => ({ ...d, summary: 'IP detect failed — scanning 192.168.1.x, 192.168.0.x, 10.0.0.x simultaneously…' }));
+    }
+
+    const allResults: WifiDiscoveryResult[] = [];
+
+    for (const subnet of subnets) {
+      const ips = Array.from({ length: 254 }, (_, i) => `${subnet}.${i + 1}`);
+      setDiscovery((d) => ({ ...d, total: ips.length, scanned: 0 }));
+
+      // Scan all 254 hosts concurrently — each has its own 900ms abort timeout.
+      // Total elapsed ≈ 900ms regardless of subnet size.
+      await Promise.all(ips.map(async (ip) => {
+        try {
+          const ctrl = new AbortController();
+          const tid = setTimeout(() => ctrl.abort(), WIFI_DISCOVERY_TIMEOUT_MS);
+          const res = await fetch(`http://${ip}/api/status`, { signal: ctrl.signal });
+          clearTimeout(tid);
+          if (!res.ok) return;
+          const r = await res.json() as Record<string, unknown>;
+          // Match on product field OR device_id prefix (JXFG…)
+          const prod = String(r.product ?? r.device_type ?? '').toUpperCase();
+          const devId = String(r.device_id ?? '').toUpperCase();
+          if (prod.includes('FLOODGUARD') || devId.startsWith('JXFG')) {
+            const entry: WifiDiscoveryResult = {
+              ip,
+              device_id: r.device_id as string,
+              product: r.product as string,
+              mac: r.mac as string,
+              firmware: r.firmware as string,
+              wifi_connected: r.wifi_connected as boolean,
+              mqtt_connected: r.mqtt_connected as boolean,
+            };
+            allResults.push(entry);
+            setDiscovery((d) => ({ ...d, results: [...d.results, entry] }));
+          }
+        } catch (_) {}
+        setDiscovery((d) => ({ ...d, scanned: Math.min(d.scanned + 1, d.total) }));
+      }));
+
+      if (allResults.length > 0) break; // found on this subnet — skip remaining fallbacks
+    }
+
+    // Auto-populate local URL when exactly one device found
+    if (allResults.length === 1) {
+      const found = allResults[0];
+      const url = `http://${found.ip}`;
+      setLocalUrl(url);
+      dispatch({ type: 'SET_INSTALL', patch: { localUrl: url, localIp: found.ip } });
+      showToast(`Found ${found.device_id ?? found.ip} — Local URL set`);
+    }
+
+    setDiscovery((d) => ({
+      ...d,
+      running: false,
+      summary: allResults.length > 0
+        ? `Found ${allResults.length} FloodGuard device(s).${allResults.length === 1 ? ' Local URL auto-set.' : ' Tap "Use This Device" to select one.'}`
+        : 'No FloodGuard devices found. Check you are on the same Wi-Fi as the device.',
+    }));
+  }
+
+  function useDiscovered(ip: string) {
+    const url = `http://${ip}`;
+    setLocalUrl(url);
+    dispatch({ type: 'SET_INSTALL', patch: { localUrl: url, localIp: ip } });
+    showToast(`Local URL set to ${url}`);
+  }
+
+
+  return (
+    <section className="view active" id="view-install">
+      <div className="card">
+        <div className="row between">
+          <h2 className="view-title">Vendor Install</h2>
+          <span className="chip">{state.user?.role?.replace(/_/g, ' ') ?? 'VENDOR'}</span>
+        </div>
+        <p className="view-subtitle">BLE provisioning for ESP32-S3 (JXFG…) and site diagnostics.</p>
+
+        {!isNative() && (
+          <div className="pwa-notice">
+            <div className="pwa-notice-icon"><FiBluetooth size={28} /></div>
+            <div className="pwa-notice-title">Android App Required for BLE Device Setup</div>
+            <p className="pwa-notice-body">BLE-based device provisioning requires the <strong>FloodGuard Android app</strong>.</p>
+            <p className="pwa-notice-body">Wi-Fi discovery and local status checks work from this browser.</p>
+          </div>
+        )}
+
+        {/* Status grid — 2×2 */}
+        <div className="diag-grid">
+          <div className="mini-card">
+            <div className="mini-label">Device to Cloud</div>
+            <div className="mini-value" style={{ color: appCloud ? '#059669' : '#94a3b8' }}>{cloudStatus}</div>
+          </div>
+          <div className="mini-card">
+            <div className="mini-label">Device Local</div>
+            <div className="mini-value" style={{ fontSize: 11 }}>{localStatus}</div>
+          </div>
+          <div className="mini-card">
+            <div className="mini-label">BLE Link</div>
+            <div className="mini-value" style={{ color: connectedBle ? '#059669' : '#94a3b8' }}>{bleStatus}</div>
+          </div>
+          <div className="mini-card">
+            <div className="mini-label">MQTT Status {lastChecked && <span style={{ fontWeight: 400, color: '#94a3b8' }}>· {lastChecked.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', second: '2-digit' })}</span>}</div>
+            <div className="mini-value" style={{ color: mqttOk ? '#059669' : mqttStatus === '--' ? '#94a3b8' : '#dc2626' }}>{mqttStatus}</div>
+          </div>
+        </div>
+
+        <button className="ghost-btn" style={{ marginTop: 8 }} onClick={checkAppCloud}><FiWifi size={13} style={{ marginRight: 5 }} />Check VPS Cloud</button>
+
+        {/* Local URL */}
+        <label className="lbl" style={{ marginTop: 12 }}>Device Local URL</label>
+        <input className="inp" value={localUrl} onChange={(e) => setLocalUrl(e.target.value)} placeholder="http://192.168.1.80" autoCapitalize="none" />
+        <div className="row install-actions">
+          <button className="ghost-btn" onClick={checkLocal} disabled={checking}><FiRefreshCw size={13} style={{ marginRight: 5 }} />{checking ? 'Checking…' : 'Check Local Device'}</button>
+        </div>
+
+        {/* BLE scan + connect */}
+        <div className="row install-actions" style={{ marginTop: 12 }}>
+          <button className="control-btn info" style={{ marginTop: 0 }} onClick={bleScan} disabled={scanning}>
+            <FiBluetooth size={13} style={{ marginRight: 5 }} />
+            {scanning ? 'Scanning BLE…' : 'Scan BLE Devices'}
+          </button>
+          {connectedBle && (
+            <button className="ghost-btn" onClick={bleDisconnect}><FiX size={13} style={{ marginRight: 4 }} />Disconnect</button>
+          )}
+        </div>
+
+        {bleDevices.length > 0 && (
+          <div className="timeline" style={{ marginTop: 8 }}>
+            {bleDevices.map((d) => (
+              <div key={d.deviceId} className={`timeline-item${selectedBle === d.deviceId ? ' selected' : ''}`} onClick={() => bleConnect(d.deviceId)} style={{ cursor: 'pointer' }}>
+                <div className="timeline-dot" style={{ background: selectedBle === d.deviceId ? '#1d4ed8' : '#94a3b8' }} />
+                <div className="timeline-body">
+                  <div className="timeline-event"><FiBluetooth size={11} style={{ marginRight: 4 }} />{d.name ?? d.deviceId}</div>
+                  {d.rssi && <div className="timeline-meta">RSSI: {d.rssi} dBm</div>}
+                </div>
+              </div>
+            ))}
+          </div>
+        )}
+
+        {connectedBle && (
+          <button className="control-btn warn" style={{ marginTop: 8 }} onClick={bleReadHealth}>Check Device Health</button>
+        )}
+        <pre className="diag-log" style={{ marginTop: 8, whiteSpace: 'pre-wrap', wordBreak: 'break-all' }}>{healthLog}</pre>
+
+        {/* Wi-Fi Provisioning section */}
+        {showProvSection && (
+          <div id="ble-wifi-provision-section">
+            <div className="row between" style={{ marginTop: 12 }}>
+              <h3 style={{ margin: 0, fontSize: 14 }}>Wi-Fi Provisioning</h3>
+              <button className="ghost-btn" style={{ padding: '6px 10px' }} onClick={bleScanWifi}>Scan Wi-Fi</button>
+            </div>
+
+            {wifiNetworks.length > 0 && (
+              <div className="timeline" style={{ marginTop: 8 }}>
+                {wifiNetworks.map((n) => (
+                  <div key={n.ssid} className="timeline-item" onClick={() => setSelectedSsid(n.ssid)} style={{ cursor: 'pointer' }}>
+                    <div className="timeline-dot" style={{ background: selectedSsid === n.ssid ? '#1d4ed8' : '#94a3b8' }} />
+                    <div className="timeline-body">
+                      <div className="timeline-event"><FiWifi size={11} style={{ marginRight: 4 }} />{n.ssid}</div>
+                      {n.rssi != null && <div className="timeline-meta">{n.rssi} dBm</div>}
+                    </div>
+                  </div>
+                ))}
+              </div>
+            )}
+
+            <label className="lbl">Selected SSID</label>
+            <input className="inp" value={selectedSsid} onChange={(e) => setSelectedSsid(e.target.value)} placeholder="Wi-Fi SSID" autoCapitalize="none" />
+
+            <label className="lbl">Password</label>
+            <div className="inp-inline">
+              <input className="inp" type={showPw ? 'text' : 'password'} value={wifiPw} onChange={(e) => setWifiPw(e.target.value)} placeholder="Wi-Fi password" />
+              <button className="ghost-btn eye-btn" type="button" onClick={() => setShowPw((p) => !p)}>{showPw ? <FiEyeOff size={14} /> : <FiEye size={14} />}</button>
+            </div>
+
+            <label className="lbl">Provision Key</label>
+            <input className="inp" type="password" value={provKey} onChange={(e) => setProvKey(e.target.value)} placeholder="x-provision-key" />
+
+            <label className="lbl">ADC Divider Ratio</label>
+            <input className="inp" type="number" value={adcRatio} onChange={(e) => setAdcRatio(e.target.value)} step="0.01" min="1" max="25" />
+
+            <label className="lbl">ADC Calibration Factor</label>
+            <input className="inp" type="number" value={adcCal} onChange={(e) => setAdcCal(e.target.value)} step="0.001" min="0.5" max="1.8" />
+
+            <label className="lbl">Measured Voltage (Multimeter)</label>
+            <input className="inp" type="number" value={adcMeasured} onChange={(e) => setAdcMeasured(e.target.value)} placeholder="12.40" step="0.01" />
+            <button className="ghost-btn" style={{ padding: '6px 10px', marginTop: 4 }} onClick={() => {
+              if (!adcMeasured || !adcRatio) return;
+              const deviceV = parseFloat(adcMeasured) / parseFloat(adcRatio);
+              if (!deviceV) return;
+              setAdcCal((parseFloat(adcMeasured) / deviceV).toFixed(3));
+            }}>Auto-calculate Calibration</button>
+
+            <div className="row install-actions" style={{ marginTop: 10 }}>
+              <button className="control-btn info" onClick={bleProvision}>Apply</button>
+              <button className="ghost-btn" onClick={() => setShowProvSection(false)}>Cancel</button>
+            </div>
+            <pre className="diag-log" style={{ marginTop: 8, whiteSpace: 'pre-wrap', wordBreak: 'break-all' }}>{provOutput}</pre>
+          </div>
+        )}
+
+        {/* Wi-Fi discovery */}
+        <div className="row install-actions" style={{ marginTop: 16 }}>
+          <button className="ghost-btn" style={{ marginTop: 0 }} onClick={wifiDiscover} disabled={discovery.running}>
+            <FiSearch size={13} style={{ marginRight: 5 }} />
+            {discovery.running ? `Scanning… ${discovery.scanned}/${discovery.total}` : 'Find S3 On Wi-Fi'}
+          </button>
+        </div>
+        {discovery.summary && <div className="meta" style={{ marginTop: 8 }}>{discovery.summary}</div>}
+
+        {discovery.results.length > 0 && (
+          <div className="timeline" style={{ marginTop: 8 }}>
+            {discovery.results.map((r) => (
+              <div key={r.ip} className="timeline-item">
+                <div className="timeline-dot" style={{ background: '#059669' }} />
+                <div className="timeline-body">
+                  <div className="timeline-event">
+                    <FiCheckCircle size={11} style={{ marginRight: 4, color: '#059669' }} />
+                    {r.device_id ?? r.ip}
+                  </div>
+                  <div className="timeline-meta">{r.ip} · {r.product} · {r.firmware}</div>
+                  <button className="ghost-btn" style={{ fontSize: 11, padding: '3px 8px', marginTop: 4 }} onClick={() => useDiscovered(r.ip)}>
+                    Use This Device
+                  </button>
+                </div>
+              </div>
+            ))}
+          </div>
+        )}
+        {discovery.running === false && discovery.scanned > 0 && discovery.results.length === 0 && (
+          <div className="empty" style={{ marginTop: 8 }}>
+            <FiAlertTriangle size={13} style={{ marginRight: 5 }} />No FloodGuard devices found on this network.
+          </div>
+        )}
+      </div>
+    </section>
+  );
+}

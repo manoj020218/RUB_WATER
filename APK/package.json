@@ -1,22 +1,36 @@
 {
   "name": "floodguard-android-app",
-  "version": "1.0.1",
+  "version": "1.0.2",
   "private": true,
-  "description": "FloodGuard by Jenix Android app (Capacitor)",
+  "description": "FloodGuard by Jenix Android app (Capacitor + React)",
   "scripts": {
-    "build:web": "node -e \"console.log('Web assets ready in ./www')\"",
-    "cap:add:android": "npx cap add android",
+    "dev": "vite",
+    "build": "tsc --noEmit && vite build",
+    "preview": "vite preview",
     "cap:sync": "npx cap sync android",
-    "android:debug": "cd android && gradlew.bat assembleDebug"
+    "android:debug": "cd android && gradlew.bat assembleDebug",
+    "android:release": "cd android && gradlew.bat assembleRelease"
   },
   "dependencies": {
     "@capacitor-community/bluetooth-le": "^6.1.0",
     "@capacitor/android": "^6.1.2",
     "@capacitor/core": "^6.1.2",
-    "@capacitor/push-notifications": "^6.0.1"
+    "@capacitor/push-notifications": "^6.0.1",
+    "react": "^18.3.1",
+    "react-dom": "^18.3.1",
+    "react-icons": "^5.5.0",
+    "react-router-dom": "^6.28.2"
+  },
+  "pnpm": {
+    "onlyBuiltDependencies": ["esbuild"]
   },
   "devDependencies": {
     "@capacitor/cli": "^6.1.2",
-    "fs-extra": "^11.3.4"
+    "@types/react": "^18.3.18",
+    "@types/react-dom": "^18.3.5",
+    "@vitejs/plugin-react": "^4.3.4",
+    "fs-extra": "^11.3.4",
+    "typescript": "^5.7.3",
+    "vite": "^6.3.5"
   }
 }

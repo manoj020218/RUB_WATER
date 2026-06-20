@@ -58,6 +58,8 @@ private:
     void handleApiStatus();
     void handleWifi();
     void handleWifiPost();
+    void handleIdentity();
+    void handleIdentityPost();
     void handleFactoryReset();
     void handleFactoryResetPost();
     void handleNotFound();
