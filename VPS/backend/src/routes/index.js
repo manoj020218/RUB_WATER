@@ -10,11 +10,13 @@ const reportRoutes = require('./reportRoutes');
 const integrationRoutes = require('./integrationRoutes');
 const vendorRoutes = require('./vendorRoutes');
 const appReleaseRoutes = require('./appReleaseRoutes');
+const deviceOtaRoutes = require('./deviceOtaRoutes');
 
 const router = express.Router();
 
 router.use('/auth', authRoutes);
 router.use('/device', deviceRoutes);
+router.use('/device-ota', deviceOtaRoutes);
 router.use('/commands', commandRoutes);
 router.use('/devices', deviceConfigRoutes);
 router.use('/complaints', complaintRoutes);
