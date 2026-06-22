@@ -6,12 +6,8 @@ struct MainConfig {
     uint16_t alertLevelMm;
     uint16_t dangerLevelMm;
     uint16_t dangerClearLevelMm;
-    uint16_t pumpAutoStartLevelMm;
-    uint16_t pumpAutoStopLevelMm;
     uint16_t triggerDelaySeconds;
     uint16_t alarmClearDelaySeconds;
-    uint16_t pumpLowStopDelaySeconds;
-    uint16_t pumpMaxRuntimeMinutes;
     uint16_t zeroDistanceMm;
     bool     leftRemoteEnabled;
     bool     rightRemoteEnabled;
@@ -21,6 +17,7 @@ struct MainConfig {
     float    vMonCalFactor;    // INA219 bus voltage multiplier — default 1.0 (no correction)
     uint8_t  leftRtuSlaveId;   // Modbus slave ID of left ST485 box (default 1)
     uint8_t  rightRtuSlaveId;  // Modbus slave ID of right ST485 box (default 1)
+    uint16_t telemetryIdleIntervalSeconds;  // Idle publish interval when no flood (default 180)
     uint32_t configVersion;
 };
 

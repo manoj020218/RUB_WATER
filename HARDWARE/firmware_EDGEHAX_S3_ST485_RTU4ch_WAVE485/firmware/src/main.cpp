@@ -17,21 +17,23 @@
 #include "mqtt_manager.h"
 #include "ota_manager.h"
 #include "output_controller.h"
-#include "pump_controller.h"
 #include "remote_box_manager.h"
 #include "sd_fifo.h"
 #include "status_led.h"
 #include "telemetry_manager.h"
 #include "voltage_monitor.h"
+#include "vps_ota_hook.h"
 #include "wifi_manager.h"
 
 // ── Dynamic loop-task stack sizing ───────────────────────────────────────────
 // BLE provisioning needs ~70 KB internal heap. When unprovisioned (no WiFi in
 // NVS) we return 24 KB so the task stack stays small and BLE can allocate.
 // Once provisioned (WiFi saved) BLE is skipped → use full 65 KB stack.
-// DEV builds skip BLE entirely, so always use the full 65 KB stack.
+// DEV builds and ST485 production builds skip BLE or have pre-loaded NVS, so
+// always use the full 65 KB stack. The NVS-based check can fail if called before
+// NVS is initialised by the bootloader on certain SDK versions.
 size_t getArduinoLoopTaskStackSize() {
-#ifdef DEV_WIFI_SSID
+#if defined(DEV_WIFI_SSID) || defined(ST485_RTU4CH_WAVE485_MODE)
     return 65536;
 #else
     Preferences prefs;
@@ -52,6 +54,18 @@ static char gDeviceToken[128];
 static bool gMqttFirstConnected = false;
 static uint32_t gApOpenedMs = 0;
 static bool gApReopenedManually = false;
+
+// Deferred MQTT event from command callback (reentrancy-safe)
+static char  gPendingEvent[192] = {};
+static bool  gPendingEventReady = false;
+static bool  gPendingReboot     = false;
+
+// MQTT debug state — readable from /api/status
+uint32_t gDbgLastCmdMs    = 0;
+char     gDbgLastCmdStr[32] = {};
+uint32_t gDbgLastEvtMs    = 0;
+bool     gDbgEvtConn      = false;
+bool     gDbgEvtPubOk     = false;
 
 // ── Forward declarations ──────────────────────────────────────────────────────
 static void checkConfigButton();
@@ -80,7 +94,6 @@ void setup() {
     ConfirmationInputs::getInstance().begin();
     FloodStateMachine::getInstance().begin();
 #ifndef SENSOR_TEST_MODE
-    PumpController::getInstance().begin();
     VoltageMonitor::getInstance().begin();
 #endif
     StatusLed::getInstance().begin();
@@ -145,6 +158,7 @@ void setup() {
     HttpFallback::getInstance().begin(gDeviceId, gDeviceToken);
     TelemetryManager::getInstance().begin(gDeviceId);
     OtaManager::getInstance().begin();
+    VpsOtaHook::getInstance().begin(gDeviceId, gDeviceToken);
 #endif  // SENSOR_TEST_MODE
 
     diagnosticsRunBootTests();
@@ -188,7 +202,6 @@ void loop() {
     ConfirmationInputs::getInstance().loop();
     FloodStateMachine::getInstance().loop();
     updateOutputsFromState();
-    PumpController::getInstance().loop();
     StatusLed::getInstance().loop();
     VoltageMonitor::getInstance().loop();
 
@@ -215,6 +228,35 @@ void loop() {
     }
 
     MqttManager::getInstance().loop();
+
+    // Deferred MQTT actions — outside PubSubClient callback to avoid buffer reentrancy.
+    // Retries on every loop until publish() succeeds or the flag is cleared by reboot.
+    if (gPendingEventReady) {
+        auto& mqtt   = MqttManager::getInstance();
+        bool  conn   = mqtt.isConnected();
+        bool  ok     = false;
+        if (conn) {
+            ok = mqtt.publish(mqtt.eventTopic().c_str(), gPendingEvent);
+            if (ok) gPendingEventReady = false;
+        }
+        gDbgEvtConn   = conn;
+        gDbgEvtPubOk  = ok;
+        gDbgLastEvtMs = millis();
+        Serial.printf("[EVT] conn=%d pub=%d payload=%s\n", conn, ok, gPendingEvent);
+    }
+    if (gPendingReboot) {
+        gPendingReboot = false;
+        if (gPendingEventReady) {
+            // Best-effort flush before reboot — clear flag regardless of result
+            MqttManager::getInstance().publish(
+                MqttManager::getInstance().eventTopic().c_str(), gPendingEvent);
+            gPendingEventReady = false;
+        }
+        Serial.println("[MAIN] Executing deferred reboot");
+        delay(500);
+        ESP.restart();
+    }
+
     HttpFallback::getInstance().loop();
     TelemetryManager::getInstance().loop();
 
@@ -244,6 +286,7 @@ void loop() {
 
     // ── OTA ────────────────────────────────────────────────────────────────
     OtaManager::getInstance().loop();
+    VpsOtaHook::getInstance().loop();
 
     // ── CONFIG button for AP maintenance ──────────────────────────────────
     checkConfigButton();
@@ -269,7 +312,6 @@ static void updateOutputsFromState() {
     out.setSiren(dangerActive);
     out.setFlash(dangerActive);
     // Voice/future relay: not activated automatically
-    // Pump is managed entirely by PumpController
 
     // Command remote boxes
     if (alertActive) {
@@ -280,17 +322,36 @@ static void updateOutputsFromState() {
 }
 
 // ── MQTT command handler ──────────────────────────────────────────────────────
+// NOTE: Do NOT call MqttManager::publish() here — PubSubClient reentrancy bug:
+// publish() overwrites the internal buffer[] that loop() is still using for PUBACK.
+// Instead set gPendingEvent/gPendingReboot flags; the main loop flushes them.
 static void onMqttCommand(const char* topic, const char* payload) {
+    gDbgLastCmdMs = millis();
+    strncpy(gDbgLastCmdStr, payload, sizeof(gDbgLastCmdStr) - 1);
+    gDbgLastCmdStr[sizeof(gDbgLastCmdStr) - 1] = '\0';
     Serial.printf("[CMD] topic=%s payload=%s\n", topic, payload);
 
-    StaticJsonDocument<256> doc;
-    if (deserializeJson(doc, payload) != DeserializationError::Ok) return;
+    StaticJsonDocument<512> doc;
+    if (deserializeJson(doc, payload) != DeserializationError::Ok) {
+        Serial.printf("[CMD] JSON parse FAILED: %s\n", payload);
+        snprintf(gPendingEvent, sizeof(gPendingEvent),
+                 "{\"type\":\"cmd_err\",\"reason\":\"json_fail\",\"uptime\":%lu}", millis()/1000UL);
+        gPendingEventReady = true;
+        return;
+    }
 
-    const String cmd = String(doc["cmd"] | "");
-    if (cmd == "pump_on")  { PumpController::getInstance().setManualOn(); }
-    if (cmd == "pump_off") { PumpController::getInstance().setManualOff(); }
-    if (cmd == "pump_auto") { PumpController::getInstance().setAutoMode(); }
+    const char* cmdRaw = doc["cmd"] | "";
+    const String cmd   = String(cmdRaw);
+    Serial.printf("[CMD] cmd=%s\n", cmdRaw);
 
+    // Queue ack event — will be published from main loop after PUBACK is sent
+    snprintf(gPendingEvent, sizeof(gPendingEvent),
+             "{\"type\":\"cmd_ack\",\"cmd\":\"%s\",\"uptime\":%lu}", cmdRaw, millis()/1000UL);
+    gPendingEventReady = true;
+
+    if (cmd == "ping") {
+        Serial.println("[CMD] Ping OK");
+    }
     if (cmd == "config_update") {
         String reason;
         char buf[512];
@@ -298,9 +359,60 @@ static void onMqttCommand(const char* topic, const char* payload) {
         ConfigManager::getInstance().applyJson(buf, reason);
     }
     if (cmd == "reboot") {
-        Serial.println("[CMD] Remote reboot requested");
-        delay(500);
-        ESP.restart();
+        Serial.println("[CMD] Remote reboot — will restart after PUBACK");
+        gPendingReboot = true;
+    }
+    if (cmd == "ota") {
+        const char* url = doc["url"] | "";
+        if (strlen(url) > 0) {
+            Serial.printf("[CMD] OTA from VPS: %s\n", url);
+            OtaManager::getInstance().beginRemoteOta(url);
+        }
+    }
+    // {"cmd":"relay","bus":"right","coil":0,"state":true}
+    // bus: "left" | "right"   coil: 0-3   state: true/false
+    if (cmd == "relay") {
+        const String bus   = String(doc["bus"] | "right");
+        const uint8_t coil = (uint8_t)constrain((int)(doc["coil"] | 0), 0, 3);
+        const bool    on   = (bool)(doc["state"] | false);
+        const RtuBus  rb   = (bus == "left") ? RtuBus::LEFT : RtuBus::RIGHT;
+        Serial.printf("[CMD] RTU relay bus=%s coil=%d state=%d\n", bus.c_str(), coil, on);
+        RemoteBoxManager::getInstance().manualSetSingleRelay(rb, coil, on);
+    }
+    if (cmd == "relay_all_off") {
+        const String bus = String(doc["bus"] | "right");
+        const RtuBus rb  = (bus == "left") ? RtuBus::LEFT : RtuBus::RIGHT;
+        Serial.printf("[CMD] RTU all-off bus=%s\n", bus.c_str());
+        RemoteBoxManager::getInstance().manualSetSirenFlash(rb, false, false);
+    }
+    // {"cmd":"calibrate_zero"} — set water-zero from current DYP distance
+    if (cmd == "calibrate_zero") {
+        String reason;
+        if (DypSensor::getInstance().setZeroFromCurrentReading(reason)) {
+            const uint16_t z = (uint16_t)DypSensor::getInstance().zeroDistanceMm();
+            ConfigManager::getInstance().setZeroDistance(z, reason);
+            Serial.printf("[CMD] Zero set to %dmm\n", z);
+        } else {
+            Serial.printf("[CMD] calibrate_zero failed: %s\n", reason.c_str());
+        }
+    }
+    // {"cmd":"calibrate_vmon","actual_v":12.5} — INA219 voltage calibration
+    if (cmd == "calibrate_vmon") {
+        const float actualV = doc["actual_v"] | 0.0f;
+        if (actualV > 1.0f) {
+            const auto& vmon = VoltageMonitor::getInstance().snapshot();
+            const auto& cfg  = ConfigManager::getInstance().get();
+            const float rawV = (vmon.voltage > 0.1f) ? vmon.voltage / cfg.vMonCalFactor : 0.0f;
+            if (rawV > 0.5f) {
+                char buf[64];
+                snprintf(buf, sizeof(buf), "{\"vmon_cal_factor\":%.4f}", actualV / rawV);
+                String reason;
+                ConfigManager::getInstance().applyJson(buf, reason);
+                Serial.printf("[CMD] vmon cal factor updated: %.4f\n", actualV / rawV);
+            } else {
+                Serial.println("[CMD] calibrate_vmon: INA219 reading too low");
+            }
+        }
     }
 }
 
@@ -372,7 +484,6 @@ static void checkDailyReboot() {
     // Block reboot during active states
     const FloodState fs = FloodStateMachine::getInstance().snapshot().state;
     if (isAlertOrDanger(fs)) return;
-    if (PumpController::getInstance().snapshot().running) return;
     if (OtaManager::getInstance().isRunning()) return;
 
     // Reboot after 24h of uptime at roughly the scheduled time

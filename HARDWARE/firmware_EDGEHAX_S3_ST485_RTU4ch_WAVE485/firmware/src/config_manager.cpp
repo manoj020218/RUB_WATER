@@ -6,7 +6,7 @@
 #include "device_profile.h"
 
 namespace {
-constexpr uint32_t kConfigMagic = 0xFEED0005UL;  // bumped: added leftRtuSlaveId/rightRtuSlaveId
+constexpr uint32_t kConfigMagic = 0xFEED0007UL;  // bumped: added telemetryIdleIntervalSeconds
 }
 
 ConfigManager& ConfigManager::getInstance() {
@@ -36,10 +36,8 @@ void ConfigManager::begin() {
         Serial.println("[CFG] GENERIC relay backup: default rightRemoteEnabled=true");
     }
 #endif
-    Serial.printf("[CFG] alert=%d danger=%d clear=%d pumpStart=%d pumpStop=%d "
-                  "trigDelay=%d clearDelay=%d zero=%d\n",
+    Serial.printf("[CFG] alert=%d danger=%d clear=%d trigDelay=%d clearDelay=%d zero=%d\n",
                   _cfg.alertLevelMm, _cfg.dangerLevelMm, _cfg.dangerClearLevelMm,
-                  _cfg.pumpAutoStartLevelMm, _cfg.pumpAutoStopLevelMm,
                   _cfg.triggerDelaySeconds, _cfg.alarmClearDelaySeconds,
                   _cfg.zeroDistanceMm);
 }
@@ -76,18 +74,14 @@ bool ConfigManager::applyJson(const char* json, String& reason) {
     OPT_U16(alertLevelMm,           "alert_level_mm")
     OPT_U16(dangerLevelMm,          "danger_level_mm")
     OPT_U16(dangerClearLevelMm,     "danger_clear_level_mm")
-    OPT_U16(pumpAutoStartLevelMm,   "pump_auto_start_level_mm")
-    OPT_U16(pumpAutoStopLevelMm,    "pump_auto_stop_level_mm")
     OPT_U16(triggerDelaySeconds,    "trigger_delay_seconds")
     OPT_U16(alarmClearDelaySeconds, "alarm_clear_delay_seconds")
-    OPT_U16(pumpLowStopDelaySeconds,"pump_low_level_stop_delay_seconds")
-    OPT_U16(pumpMaxRuntimeMinutes,  "pump_max_runtime_minutes")
-    // battery_adc_divider_ratio / battery_adc_calibration_factor removed — INA219 used
     OPT_BOOL(leftRemoteEnabled,     "left_remote_enabled")
     OPT_BOOL(rightRemoteEnabled,    "right_remote_enabled")
     OPT_BOOL(dailyRebootEnabled,    "daily_reboot_enabled")
     OPT_U8(dailyRebootHour,         "daily_reboot_hour")
     OPT_U8(dailyRebootMinute,       "daily_reboot_minute")
+    OPT_U16(telemetryIdleIntervalSeconds, "telemetry_idle_interval_seconds")
     if (doc.containsKey("vmon_cal_factor"))
         next.vMonCalFactor = doc["vmon_cal_factor"].as<float>();
     if (doc.containsKey("left_rtu_slave_id"))
@@ -121,16 +115,12 @@ bool ConfigManager::setZeroDistance(uint16_t mm, String& reason) {
 
 bool ConfigManager::buildJson(char* out, size_t outSize) const {
     StaticJsonDocument<512> doc;
-    doc["alert_level_mm"]                    = _cfg.alertLevelMm;
-    doc["danger_level_mm"]                   = _cfg.dangerLevelMm;
-    doc["danger_clear_level_mm"]             = _cfg.dangerClearLevelMm;
-    doc["pump_auto_start_level_mm"]          = _cfg.pumpAutoStartLevelMm;
-    doc["pump_auto_stop_level_mm"]           = _cfg.pumpAutoStopLevelMm;
-    doc["trigger_delay_seconds"]             = _cfg.triggerDelaySeconds;
-    doc["alarm_clear_delay_seconds"]         = _cfg.alarmClearDelaySeconds;
-    doc["pump_low_level_stop_delay_seconds"] = _cfg.pumpLowStopDelaySeconds;
-    doc["pump_max_runtime_minutes"]          = _cfg.pumpMaxRuntimeMinutes;
-    doc["zero_distance_mm"]                  = _cfg.zeroDistanceMm;
+    doc["alert_level_mm"]            = _cfg.alertLevelMm;
+    doc["danger_level_mm"]           = _cfg.dangerLevelMm;
+    doc["danger_clear_level_mm"]     = _cfg.dangerClearLevelMm;
+    doc["trigger_delay_seconds"]     = _cfg.triggerDelaySeconds;
+    doc["alarm_clear_delay_seconds"] = _cfg.alarmClearDelaySeconds;
+    doc["zero_distance_mm"]          = _cfg.zeroDistanceMm;
     doc["left_remote_enabled"]               = _cfg.leftRemoteEnabled;
     doc["right_remote_enabled"]              = _cfg.rightRemoteEnabled;
     doc["daily_reboot_enabled"]              = _cfg.dailyRebootEnabled;
@@ -139,6 +129,7 @@ bool ConfigManager::buildJson(char* out, size_t outSize) const {
     doc["vmon_cal_factor"]                   = _cfg.vMonCalFactor;
     doc["left_rtu_slave_id"]                 = _cfg.leftRtuSlaveId;
     doc["right_rtu_slave_id"]                = _cfg.rightRtuSlaveId;
+    doc["telemetry_idle_interval_seconds"]   = _cfg.telemetryIdleIntervalSeconds;
     return serializeJson(doc, out, outSize) > 0;
 }
 
@@ -146,12 +137,8 @@ void ConfigManager::loadDefaults() {
     _cfg.alertLevelMm            = 200;
     _cfg.dangerLevelMm           = 400;
     _cfg.dangerClearLevelMm      = 350;
-    _cfg.pumpAutoStartLevelMm    = 200;
-    _cfg.pumpAutoStopLevelMm     = 50;
     _cfg.triggerDelaySeconds     = 60;
     _cfg.alarmClearDelaySeconds  = 300;
-    _cfg.pumpLowStopDelaySeconds = 30;
-    _cfg.pumpMaxRuntimeMinutes   = 30;
     _cfg.zeroDistanceMm          = 1200;
 #if defined(ST485_RTU4CH_WAVE485_MODE)
     _cfg.leftRemoteEnabled       = true;   // both buses active in ST485 mode
@@ -167,9 +154,10 @@ void ConfigManager::loadDefaults() {
     _cfg.dailyRebootHour         = 1;
     _cfg.dailyRebootMinute       = 0;
     _cfg.vMonCalFactor           = 1.0f;
-    _cfg.leftRtuSlaveId          = RTU_SLAVE_ID_LEFT_BOX;
-    _cfg.rightRtuSlaveId         = RTU_SLAVE_ID_RIGHT_BOX;
-    _cfg.configVersion           = kConfigMagic;
+    _cfg.leftRtuSlaveId                  = RTU_SLAVE_ID_LEFT_BOX;
+    _cfg.rightRtuSlaveId                 = RTU_SLAVE_ID_RIGHT_BOX;
+    _cfg.telemetryIdleIntervalSeconds    = 180;
+    _cfg.configVersion                   = kConfigMagic;
 }
 
 bool ConfigManager::loadFromNvs() {
@@ -197,10 +185,6 @@ bool ConfigManager::validate(const MainConfig& c, String& reason) {
         reason = "danger_clear_must_be_less_than_danger";
         return false;
     }
-    if (c.pumpAutoStopLevelMm >= c.pumpAutoStartLevelMm) {
-        reason = "pump_stop_must_be_less_than_pump_start";
-        return false;
-    }
     if (c.triggerDelaySeconds < 10) {
         reason = "trigger_delay_must_be_at_least_10_seconds";
         return false;
@@ -211,6 +195,10 @@ bool ConfigManager::validate(const MainConfig& c, String& reason) {
     }
     if (c.vMonCalFactor < 0.5f || c.vMonCalFactor > 3.0f) {
         reason = "vmon_cal_factor_must_be_0.5_to_3.0";
+        return false;
+    }
+    if (c.telemetryIdleIntervalSeconds < 30 || c.telemetryIdleIntervalSeconds > 600) {
+        reason = "telemetry_idle_interval_must_be_30_to_600_seconds";
         return false;
     }
     return true;

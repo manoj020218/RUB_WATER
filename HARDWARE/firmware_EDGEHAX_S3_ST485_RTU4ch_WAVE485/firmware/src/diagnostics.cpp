@@ -10,8 +10,7 @@ void diagnosticsRunBootTests() {
     Serial.println("[DIAG] === Boot Self-Tests ===");
 
     // Relay pins: verify they can be driven without ESP panic
-    const int relays[] = { PIN_RELAY_SIREN, PIN_RELAY_FLASH,
-                           PIN_RELAY_VOICE_FUTURE, PIN_RELAY_SUMP_PUMP };
+    const int relays[] = { PIN_RELAY_SIREN, PIN_RELAY_FLASH, PIN_RELAY_VOICE_FUTURE };
     for (int p : relays) {
         if (digitalRead(p) != RELAY_OFF_LEVEL) {
             Serial.printf("[DIAG] FAIL: relay GPIO%d not at OFF level on boot\n", p);

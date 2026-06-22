@@ -17,6 +17,9 @@ public:
     bool writeChunk(const uint8_t* data, size_t len);
     bool endLocalUpload(String& reason);
 
+    // Remote OTA: download firmware from URL and flash
+    void beginRemoteOta(const char* url);
+
 private:
     OtaManager() = default;
     bool     _running = false;

@@ -30,7 +30,14 @@ void MqttManager::begin(const char* deviceId, const char* token) {
 void MqttManager::loop() {
     if (!WifiManager::getInstance().isConnected()) return;
     if (_mqtt.connected()) {
-        _mqtt.loop();
+        // ESP32-S3 SMP: Core 0 (WiFi/LwIP) fills TCP RX buffer but Core 1's
+        // WiFiClient::available() can return stale 0 due to CPU cache. Yield
+        // repeatedly so Core 0 can update the buffer between each loop() call.
+        // Do NOT condition on available() — that's the stale value we're fixing.
+        for (int i = 0; i < 5; i++) {
+            delay(2);
+            _mqtt.loop();
+        }
         return;
     }
     const uint32_t now = millis();
@@ -81,8 +88,8 @@ bool MqttManager::reconnect() {
 }
 
 void MqttManager::subscribe() {
-    _mqtt.subscribe(commandTopic().c_str());
-    _mqtt.subscribe(configTopic().c_str());
+    _mqtt.subscribe(commandTopic().c_str(), 1);  // QoS1: broker retries until PUBACK
+    _mqtt.subscribe(configTopic().c_str(), 1);
 }
 
 void MqttManager::onMessageBridge(char* topic, uint8_t* payload, unsigned int len) {

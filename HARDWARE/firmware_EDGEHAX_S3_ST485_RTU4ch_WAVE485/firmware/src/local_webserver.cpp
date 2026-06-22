@@ -5,6 +5,13 @@
 #include <Preferences.h>
 #include <WiFi.h>
 
+// MQTT debug globals (defined in main.cpp)
+extern uint32_t gDbgLastCmdMs;
+extern char     gDbgLastCmdStr[];
+extern uint32_t gDbgLastEvtMs;
+extern bool     gDbgEvtConn;
+extern bool     gDbgEvtPubOk;
+
 #include "config_manager.h"
 #include "device_profile.h"
 #include "dyp_sensor.h"
@@ -12,7 +19,6 @@
 #include "mqtt_manager.h"
 #include "ota_manager.h"
 #include "output_controller.h"
-#include "pump_controller.h"
 #include "remote_box_manager.h"
 #include "rs485_rtu_master.h"
 #include "sd_fifo.h"
@@ -522,18 +528,10 @@ void LocalWebserver::handleConfig() {
             "<input type='number' name='danger_level_mm' value='" + String(cfg.dangerLevelMm) + "'>"
             "<label>Danger Clear Level (mm)</label>"
             "<input type='number' name='danger_clear_level_mm' value='" + String(cfg.dangerClearLevelMm) + "'>"
-            "<label>Pump Auto Start (mm)</label>"
-            "<input type='number' name='pump_auto_start_level_mm' value='" + String(cfg.pumpAutoStartLevelMm) + "'>"
-            "<label>Pump Auto Stop (mm)</label>"
-            "<input type='number' name='pump_auto_stop_level_mm' value='" + String(cfg.pumpAutoStopLevelMm) + "'>"
             "<label>Trigger Delay (sec)</label>"
             "<input type='number' name='trigger_delay_seconds' value='" + String(cfg.triggerDelaySeconds) + "'>"
             "<label>Alarm Clear Delay (sec)</label>"
             "<input type='number' name='alarm_clear_delay_seconds' value='" + String(cfg.alarmClearDelaySeconds) + "'>"
-            "<label>Pump Low Stop Delay (sec)</label>"
-            "<input type='number' name='pump_low_level_stop_delay_seconds' value='" + String(cfg.pumpLowStopDelaySeconds) + "'>"
-            "<label>Pump Max Runtime (min)</label>"
-            "<input type='number' name='pump_max_runtime_minutes' value='" + String(cfg.pumpMaxRuntimeMinutes) + "'>"
             "<label>Left Remote Enabled</label>"
             "<select name='left_remote_enabled'><option value='1'" + String(cfg.leftRemoteEnabled?" selected":"") + ">Yes</option>"
             "<option value='0'" + String(!cfg.leftRemoteEnabled?" selected":"") + ">No</option></select>"
@@ -544,6 +542,8 @@ void LocalWebserver::handleConfig() {
             "<input type='number' name='daily_reboot_hour' value='" + String(cfg.dailyRebootHour) + "'>"
             "<label>Daily Reboot Minute (0-59)</label>"
             "<input type='number' name='daily_reboot_minute' value='" + String(cfg.dailyRebootMinute) + "'>"
+            "<label>Telemetry Idle Interval (sec, 30-600)</label>"
+            "<input type='number' min='30' max='600' name='telemetry_idle_interval_seconds' value='" + String(cfg.telemetryIdleIntervalSeconds) + "'>"
             "<button type='submit'>Save Config</button></form></div>";
     html += htmlFooter();
     _server.send(200, "text/html", html);
@@ -556,10 +556,9 @@ void LocalWebserver::handleConfigPost() {
         if (_server.hasArg(k)) doc[k] = _server.arg(k).toInt();
     };
     setU16("alert_level_mm"); setU16("danger_level_mm"); setU16("danger_clear_level_mm");
-    setU16("pump_auto_start_level_mm"); setU16("pump_auto_stop_level_mm");
     setU16("trigger_delay_seconds"); setU16("alarm_clear_delay_seconds");
-    setU16("pump_low_level_stop_delay_seconds"); setU16("pump_max_runtime_minutes");
     setU16("daily_reboot_hour"); setU16("daily_reboot_minute");
+    setU16("telemetry_idle_interval_seconds");
     if (_server.hasArg("left_remote_enabled"))
         doc["left_remote_enabled"]  = (_server.arg("left_remote_enabled") == "1");
     if (_server.hasArg("right_remote_enabled"))
@@ -725,9 +724,7 @@ void LocalWebserver::handleRelayTest() {
             "<button type='submit' name='relay' value='siren' class='btn btn-warn'>Test Siren (3s)</button><br><br>"
             "<button type='submit' name='relay' value='flash' class='btn btn-warn'>Test Flash (5s)</button><br><br>"
             "<button type='submit' name='relay' value='voice' class='btn'>Test Voice (3s)</button><br><br>"
-            "<button type='submit' name='relay' value='pump' class='btn btn-danger' onclick=\"return confirm('Confirm pump test?')\">Test Pump (5s)</button><br><br>"
-            "<button type='submit' name='relay' value='rf_siren' class='btn btn-warn'>Test RF Siren (3s)</button><br><br>"
-            "<button type='submit' name='relay' value='rf_pump' class='btn btn-warn'>Test RF Pump (3s)</button>"
+            "<button type='submit' name='relay' value='rf_siren' class='btn btn-warn'>Test RF Siren (3s)</button>"
             "</form></div>";
 
 #else
@@ -743,9 +740,7 @@ void LocalWebserver::handleRelayTest() {
             "<button type='submit' name='relay' value='siren' class='btn btn-warn'>Test Siren (3s)</button><br><br>"
             "<button type='submit' name='relay' value='flash' class='btn btn-warn'>Test Flash (5s)</button><br><br>"
             "<button type='submit' name='relay' value='voice' class='btn'>Test Voice/Future (3s)</button><br><br>"
-            "<button type='submit' name='relay' value='pump' class='btn btn-danger' onclick=\"return confirm('Confirm pump test?')\">Test Pump (5s)</button><br><br>"
-            "<button type='submit' name='relay' value='rf_siren' class='btn btn-warn'>Test RF Siren (3s)</button><br><br>"
-            "<button type='submit' name='relay' value='rf_pump'  class='btn btn-warn'>Test RF Pump (3s)</button>"
+            "<button type='submit' name='relay' value='rf_siren' class='btn btn-warn'>Test RF Siren (3s)</button>"
             "</form></div>";
 #endif
 
@@ -788,7 +783,6 @@ void LocalWebserver::handleRelayTestPost() {
     if      (relay == "siren")    { out.setSiren(true);          delay(3000); out.setSiren(false); }
     else if (relay == "flash")    { out.setFlash(true);          delay(5000); out.setFlash(false); }
     else if (relay == "voice")    { out.setVoiceFuture(true);    delay(3000); out.setVoiceFuture(false); }
-    else if (relay == "pump")     { out.setSumpPump(true);       delay(5000); out.setSumpPump(false); }
     Serial.printf("[WEB] Relay test: %s\n", relay.c_str());
 #ifdef ST485_RTU4CH_WAVE485_MODE
     _server.sendHeader("Location", "/relay-test?bus=right&result=ok&relay=" + relay);
@@ -881,7 +875,7 @@ void LocalWebserver::handleRemoteTest() {
     const uint8_t genericModel = clampGenericRelayModel(g_genericRelayStatus.moduleType);
 
     html += "<div class='card'><h2>Remote Box Status</h2><table>";
-    html += "<tr><th>Box</th><th>Online</th><th>Battery</th><th>Siren</th><th>Flash</th><th>Pump</th></tr>";
+    html += "<tr><th>Box</th><th>Online</th><th>Battery</th><th>Siren</th><th>Flash</th></tr>";
 #ifdef GENERIC_REMOTE_RELAY_MODE
     html += "<tr><td>Left Relay (" + String(GENERIC_REMOTE_RELAY_LEFT_MODEL) + "CH, ID" + String(GENERIC_REMOTE_RELAY_LEFT_ADDR) + ")</td><td>" + String(left.online?"Y":"N") + "</td><td>"
             + String(left.batteryVoltage,1) + "V</td><td>" + String(left.sirenOn?"ON":"off")
@@ -892,10 +886,10 @@ void LocalWebserver::handleRemoteTest() {
 #else
     html += "<tr><td>Left (ID11)</td><td>" + String(left.online?"Y":"N") + "</td><td>"
             + String(left.batteryVoltage,1) + "V</td><td>" + String(left.sirenOn?"ON":"off")
-            + "</td><td>" + String(left.flashOn?"ON":"off") + "</td><td>" + String(left.pumpOn?"ON":"off") + "</td></tr>";
+            + "</td><td>" + String(left.flashOn?"ON":"off") + "</td></tr>";
     html += "<tr><td>Right (ID12)</td><td>" + String(right.online?"Y":"N") + "</td><td>"
             + String(right.batteryVoltage,1) + "V</td><td>" + String(right.sirenOn?"ON":"off")
-            + "</td><td>" + String(right.flashOn?"ON":"off") + "</td><td>" + String(right.pumpOn?"ON":"off") + "</td></tr>";
+            + "</td><td>" + String(right.flashOn?"ON":"off") + "</td></tr>";
 #endif
     html += "</table></div>";
 
@@ -1255,7 +1249,7 @@ void LocalWebserver::handleFirmwareUpload() {
     html += "</table></div>";
     html += "<div class='card'><h2>Local OTA Firmware Upload</h2>";
     if (!OtaManager::getInstance().isSafeToOta()) {
-        html += "<p class='err'>OTA is blocked while alert/danger/pump is active.</p>";
+        html += "<p class='err'>OTA is blocked while alert/danger is active.</p>";
     } else {
         html += "<p>Upload a valid .bin firmware file. Device will reboot after successful upload.</p>"
                 "<form method='POST' action='/firmware-upload' enctype='multipart/form-data'>"
@@ -1394,7 +1388,7 @@ void LocalWebserver::handleIdentityPost() {
 }
 
 void LocalWebserver::handleApiStatus() {
-    StaticJsonDocument<320> doc;
+    StaticJsonDocument<512> doc;
     doc["device_id"]      = _deviceId;
     doc["product"]        = PRODUCT_PROFILE;
     doc["mac"]            = WiFi.macAddress();
@@ -1403,7 +1397,12 @@ void LocalWebserver::handleApiStatus() {
     doc["ip"]             = WifiManager::getInstance().localIp();
     doc["mqtt_connected"] = MqttManager::getInstance().isConnected();
     doc["uptime_s"]       = (uint32_t)(millis() / 1000UL);
-    char buf[320];
+    doc["dbg_last_cmd_ms"]  = gDbgLastCmdMs;
+    doc["dbg_last_cmd"]     = gDbgLastCmdStr;
+    doc["dbg_last_evt_ms"]  = gDbgLastEvtMs;
+    doc["dbg_evt_conn"]     = gDbgEvtConn;
+    doc["dbg_evt_pub_ok"]   = gDbgEvtPubOk;
+    char buf[512];
     serializeJson(doc, buf, sizeof(buf));
     _server.sendHeader("Access-Control-Allow-Origin", "*");
     _server.send(200, "application/json", buf);

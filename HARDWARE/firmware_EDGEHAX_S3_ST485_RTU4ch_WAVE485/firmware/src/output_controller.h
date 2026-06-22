@@ -6,7 +6,6 @@ struct OutputSnapshot {
     bool sirenOn;
     bool flashOn;
     bool voiceFutureOn;
-    bool sumpPumpOn;
 };
 
 class OutputController {
@@ -19,7 +18,6 @@ public:
     void setSiren(bool on);
     void setFlash(bool on);
     void setVoiceFuture(bool on);
-    void setSumpPump(bool on);
 
     const OutputSnapshot& snapshot() const { return _snap; }
 

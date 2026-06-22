@@ -22,11 +22,9 @@ constexpr uint16_t UPTIME_HIGH          = 0x0068;  // 40105
 constexpr uint16_t RELAY_SIREN_STATUS   = 0x00C8;  // 40201
 constexpr uint16_t RELAY_FLASH_STATUS   = 0x00C9;
 constexpr uint16_t RELAY_BARRIER_STATUS = 0x00CA;
-constexpr uint16_t RELAY_PUMP_STATUS    = 0x00CB;
 constexpr uint16_t CMD_SIREN            = 0x012C;  // 40301
 constexpr uint16_t CMD_FLASH            = 0x012D;
 constexpr uint16_t CMD_BARRIER          = 0x012E;
-constexpr uint16_t CMD_PUMP             = 0x012F;
 constexpr uint16_t BATTERY_VOLTAGE_X100 = 0x0190; // 40401
 constexpr uint16_t ADC_STATUS           = 0x0192;
 }
@@ -40,7 +38,6 @@ struct RemoteBoxStatus {
     bool     sirenOn       = false;
     bool     flashOn       = false;
     bool     barrierOn     = false;
-    bool     pumpOn        = false;
     uint32_t pollTimeMs    = 0;
     uint32_t lastAckMs     = 0;
     // ST485 4CH extension
@@ -66,7 +63,6 @@ public:
 
     // Command interface (safe to call from safety loop)
     void setSirenFlash(bool sirenOn, bool flashOn);
-    void setPump(bool on);
     bool manualSetSirenFlash(RtuBus bus, bool sirenOn, bool flashOn);
     bool manualSetSingleRelay(RtuBus bus, uint8_t coilIdx, bool on);
     void suspendAutoControl(uint32_t durationMs = 900000UL);
@@ -85,8 +81,6 @@ private:
     bool _pendingSirenFlash    = false;
     bool _pendingSiren         = false;
     bool _pendingFlash         = false;
-    bool _pendingPump          = false;
-    bool _pendingPumpState     = false;
     uint32_t _manualHoldoffUntilMs = 0;
 
     // ST485 relay confirmation state
@@ -102,8 +96,7 @@ private:
     ConfirmState _rightConfirm{};
 
     void pollBox(RtuBus bus, RemoteBoxStatus& status, uint8_t slaveId);
-    void sendCommands(RtuBus bus, uint8_t slaveId,
-                      bool sirenOn, bool flashOn, bool pumpOn);
+    void sendCommands(RtuBus bus, uint8_t slaveId, bool sirenOn, bool flashOn);
     void processConfirmation(RtuBus bus, RemoteBoxStatus& status,
                              uint8_t slaveId, ConfirmState& cs);
     bool autoControlSuspended(uint32_t now) const;

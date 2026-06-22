@@ -9,8 +9,8 @@
 #include "internal_flash_fifo.h"
 #include "mqtt_manager.h"
 #include "output_controller.h"
-#include "pump_controller.h"
 #include "remote_box_manager.h"
+#include "config_manager.h"
 #include "voltage_monitor.h"
 #include "wifi_manager.h"
 
@@ -29,7 +29,7 @@ void TelemetryManager::loop() {
     if ((now - _lastTelemetryMs) < _telemetryIntervalMs) return;
     _lastTelemetryMs = now;
 
-    char payload[768];
+    char payload[1024];
     buildTelemetryJson(payload, sizeof(payload));
     send("telemetry", payload);
 
@@ -55,16 +55,23 @@ uint32_t TelemetryManager::dynamicInterval() const {
     if (isDanger(fs) || level >= 400) return 2000UL;
     if (level >= 300)                  return 5000UL;
     if (level > 0)                     return 10000UL;
-    return 180000UL;
+    return (uint32_t)ConfigManager::getInstance().get().telemetryIdleIntervalSeconds * 1000UL;
 }
 
 void TelemetryManager::buildTelemetryJson(char* out, size_t outSize) const {
-    StaticJsonDocument<768> doc;
-    doc["device_id"]    = _deviceId;
-    doc["firmware"]     = FIRMWARE_VERSION;
-    doc["uptime_ms"]    = millis();
-    doc["free_heap"]    = ESP.getFreeHeap();
+    StaticJsonDocument<1024> doc;
+    doc["device_id"]        = _deviceId;
+    doc["firmware_version"] = FIRMWARE_VERSION;
+    doc["uptime_s"]         = millis() / 1000UL;
+    doc["free_heap"]        = ESP.getFreeHeap();
 
+    // WiFi
+    const auto& wifi = WifiManager::getInstance();
+    doc["wifi_rssi"]  = wifi.rssi();
+    doc["ssid"]       = wifi.configuredSsid();
+    doc["local_ip"]   = wifi.localIp();
+
+    // Primary RS485 sensor
     const auto& dyp  = DypSensor::getInstance().snapshot();
     doc["water_level_mm"]  = dyp.waterLevelMm;
     doc["distance_mm"]     = dyp.distanceMm;
@@ -72,24 +79,30 @@ void TelemetryManager::buildTelemetryJson(char* out, size_t outSize) const {
     doc["sensor_detected"] = dyp.detected;
     doc["zero_dist_mm"]    = DypSensor::getInstance().zeroDistanceMm();
 
+    // Flood state
     const auto& fsm = FloodStateMachine::getInstance().snapshot();
-    doc["flood_state"]  = floodStateStr(fsm.state);
-    doc["l1_active"]    = fsm.l1Active;
-    doc["l2_active"]    = fsm.l2Active;
+    doc["flood_state"]   = floodStateStr(fsm.state);
+    doc["switch_300mm"]  = fsm.l1Active;
+    doc["switch_500mm"]  = fsm.l2Active;
 
+    // Relay status as object (matches backend relay_status field)
     const auto& out_c = OutputController::getInstance().snapshot();
-    doc["relay_siren"]  = out_c.sirenOn;
-    doc["relay_flash"]  = out_c.flashOn;
-    doc["relay_pump"]   = out_c.sumpPumpOn;
+    JsonObject relay = doc.createNestedObject("relay_status");
+    relay["siren"] = out_c.sirenOn;
+    relay["flash"] = out_c.flashOn;
 
-    const auto& pump = PumpController::getInstance().snapshot();
-    doc["pump_running"] = pump.running;
-
+    // INA219 power monitor
     const auto& vmon = VoltageMonitor::getInstance().snapshot();
-    doc["battery_v"]    = serialized(String(vmon.voltage, 2));
-    doc["battery_ma"]   = serialized(String(vmon.currentMa, 0));
-    doc["batt_low"]     = vmon.lowBattery;
+    doc["battery_voltage"] = serialized(String(vmon.voltage, 2));
+    doc["battery_ma"]      = serialized(String(vmon.currentMa, 1));
+    doc["battery_mw"]      = serialized(String(vmon.powerMw, 0));
+    doc["batt_low"]        = vmon.lowBattery;
+    const char* inaStatus  = !vmon.ready          ? "ERROR"
+                           : vmon.criticalBattery  ? "CRITICAL"
+                           : vmon.lowBattery        ? "LOW" : "OK";
+    doc["ina_status"]      = inaStatus;
 
+    // Remote RTU boxes
     const auto& left  = RemoteBoxManager::getInstance().leftStatus();
     const auto& right = RemoteBoxManager::getInstance().rightStatus();
     JsonObject lb = doc.createNestedObject("remote_left");
@@ -111,13 +124,14 @@ void TelemetryManager::buildTelemetryJson(char* out, size_t outSize) const {
 void TelemetryManager::buildEventJson(char* out, size_t outSize,
                                        const char* type, const char* detail) const {
     StaticJsonDocument<256> doc;
-    doc["device_id"] = _deviceId;
-    doc["event"]     = type;
-    doc["uptime_ms"] = millis();
-    if (detail && detail[0]) doc["detail"] = detail;
-    const auto& fsm  = FloodStateMachine::getInstance().snapshot();
-    doc["state"]     = floodStateStr(fsm.state);
-    doc["level_mm"]  = fsm.waterLevelMm;
+    doc["device_id"]  = _deviceId;
+    doc["event_type"] = type;
+    doc["uptime_ms"]  = millis();
+    const auto& fsm   = FloodStateMachine::getInstance().snapshot();
+    doc["water_level_mm"] = fsm.waterLevelMm;
+    JsonObject det    = doc.createNestedObject("details");
+    det["flood_state"] = floodStateStr(fsm.state);
+    if (detail && detail[0]) det["reason"] = detail;
     serializeJson(doc, out, outSize);
 }
 

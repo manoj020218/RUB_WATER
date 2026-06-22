@@ -1209,6 +1209,7 @@
     }
 
     if (!state.ble.initialized) {
+      try { await ble.requestPermissions(); } catch (_) { /* web/iOS skip */ }
       await ble.initialize({ androidNeverForLocation: false });
       state.ble.initialized = true;
     }

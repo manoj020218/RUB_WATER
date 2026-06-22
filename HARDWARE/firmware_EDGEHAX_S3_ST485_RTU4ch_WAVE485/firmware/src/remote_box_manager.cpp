@@ -208,7 +208,6 @@ bool pollGenericRelayBox(RtuBus bus, RemoteBoxStatus& status, uint8_t slaveId) {
     status.sirenOn = (coils[0] & 0x01U) != 0;
     status.flashOn = (coils[0] & 0x02U) != 0;
     status.barrierOn = genericRelayCountForModel(model) >= 4 ? ((coils[0] & 0x08U) != 0) : false;
-    status.pumpOn = false;
     status.lastAckMs = millis();
     return true;
 }
@@ -278,27 +277,16 @@ void RemoteBoxManager::loop() {
     if (cfg.leftRemoteEnabled) {
         pollBox(RtuBus::LEFT, _left, leftSlaveId);
         if (_pendingSirenFlash) {
-            sendCommands(RtuBus::LEFT, leftSlaveId,
-                         _pendingSiren, _pendingFlash, _left.pumpOn);
-        }
-        if (_pendingPump) {
-            sendCommands(RtuBus::LEFT, leftSlaveId,
-                         _left.sirenOn, _left.flashOn, _pendingPumpState);
+            sendCommands(RtuBus::LEFT, leftSlaveId, _pendingSiren, _pendingFlash);
         }
     }
     if (cfg.rightRemoteEnabled) {
         pollBox(RtuBus::RIGHT, _right, rightSlaveId);
         if (_pendingSirenFlash) {
-            sendCommands(RtuBus::RIGHT, rightSlaveId,
-                         _pendingSiren, _pendingFlash, _right.pumpOn);
-        }
-        if (_pendingPump) {
-            sendCommands(RtuBus::RIGHT, rightSlaveId,
-                         _right.sirenOn, _right.flashOn, _pendingPumpState);
+            sendCommands(RtuBus::RIGHT, rightSlaveId, _pendingSiren, _pendingFlash);
         }
     }
     _pendingSirenFlash = false;
-    _pendingPump       = false;
 }
 
 void RemoteBoxManager::setSirenFlash(bool sirenOn, bool flashOn) {
@@ -306,11 +294,6 @@ void RemoteBoxManager::setSirenFlash(bool sirenOn, bool flashOn) {
     _pendingSirenFlash = true;
     _pendingSiren      = sirenOn;
     _pendingFlash      = flashOn;
-}
-
-void RemoteBoxManager::setPump(bool on) {
-    _pendingPump      = true;
-    _pendingPumpState = on;
 }
 
 void RemoteBoxManager::suspendAutoControl(uint32_t durationMs) {
@@ -495,7 +478,7 @@ void RemoteBoxManager::pollBox(RtuBus bus, RemoteBoxStatus& status, uint8_t slav
         status.sirenOn   = relays[0] == 1;
         status.flashOn   = relays[1] == 1;
         status.barrierOn = relays[2] == 1;
-        status.pumpOn    = relays[3] == 1;
+        (void)relays[3];  // relay[3] was pump — no longer used
     }
 
     // Read battery (40401 = 1 reg)
@@ -511,10 +494,9 @@ void RemoteBoxManager::pollBox(RtuBus bus, RemoteBoxStatus& status, uint8_t slav
 }
 
 void RemoteBoxManager::sendCommands(RtuBus bus, uint8_t slaveId,
-                                    bool sirenOn, bool flashOn, bool pumpOn)
+                                    bool sirenOn, bool flashOn)
 {
 #ifdef ST485_RTU4CH_WAVE485_MODE
-    (void)pumpOn;
     auto& status = (bus == RtuBus::LEFT) ? _left : _right;
     auto& cs     = (bus == RtuBus::LEFT) ? _leftConfirm : _rightConfirm;
     const bool voiceOn = sirenOn;  // R3 (voice) follows siren/danger state
@@ -531,7 +513,6 @@ void RemoteBoxManager::sendCommands(RtuBus bus, uint8_t slaveId,
     cs.wantVoice = voiceOn;
     return;
 #elif defined(GENERIC_REMOTE_RELAY_MODE)
-    (void)pumpOn;
     auto& status = (bus == RtuBus::LEFT) ? _left : _right;
     if (!writeGenericRelayOutputs(bus, slaveId, sirenOn, flashOn)) {
         status.online = false;
@@ -553,11 +534,6 @@ void RemoteBoxManager::sendCommands(RtuBus bus, uint8_t slaveId,
     r = rtu.writeSingle(bus, slaveId, RemoteReg::CMD_FLASH, flashOn ? 1 : 0);
     if (!r.ok) {
         Serial.printf("[RTU] CMD_FLASH write failed on %s bus\n",
-                      bus == RtuBus::LEFT ? "left" : "right");
-    }
-    r = rtu.writeSingle(bus, slaveId, RemoteReg::CMD_PUMP, pumpOn ? 1 : 0);
-    if (!r.ok) {
-        Serial.printf("[RTU] CMD_PUMP write failed on %s bus\n",
                       bus == RtuBus::LEFT ? "left" : "right");
     }
 #endif

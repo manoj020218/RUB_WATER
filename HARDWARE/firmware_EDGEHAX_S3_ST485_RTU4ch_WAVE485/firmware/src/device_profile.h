@@ -40,7 +40,6 @@
 #define PIN_RELAY_SIREN          6      // LOW = ON
 #define PIN_RELAY_FLASH          7
 #define PIN_RELAY_VOICE_FUTURE   8
-#define PIN_RELAY_SUMP_PUMP      16
 
 #define RELAY_ON_LEVEL           LOW
 #define RELAY_OFF_LEVEL          HIGH

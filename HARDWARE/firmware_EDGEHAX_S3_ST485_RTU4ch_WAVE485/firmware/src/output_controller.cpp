@@ -8,8 +8,7 @@ OutputController& OutputController::getInstance() {
 }
 
 void OutputController::begin() {
-    const int relays[] = { PIN_RELAY_SIREN, PIN_RELAY_FLASH,
-                           PIN_RELAY_VOICE_FUTURE, PIN_RELAY_SUMP_PUMP };
+    const int relays[] = { PIN_RELAY_SIREN, PIN_RELAY_FLASH, PIN_RELAY_VOICE_FUTURE };
     for (int p : relays) {
         pinMode(p, OUTPUT);
         digitalWrite(p, RELAY_OFF_LEVEL);
@@ -22,7 +21,6 @@ void OutputController::safeOff() {
     setSiren(false);
     setFlash(false);
     setVoiceFuture(false);
-    setSumpPump(false);
 }
 
 void OutputController::setSiren(bool on) {
@@ -38,11 +36,6 @@ void OutputController::setFlash(bool on) {
 void OutputController::setVoiceFuture(bool on) {
     writeRelay(PIN_RELAY_VOICE_FUTURE, on);
     _snap.voiceFutureOn = on;
-}
-
-void OutputController::setSumpPump(bool on) {
-    writeRelay(PIN_RELAY_SUMP_PUMP, on);
-    _snap.sumpPumpOn = on;
 }
 
 void OutputController::writeRelay(int pin, bool on) {
