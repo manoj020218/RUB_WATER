@@ -14,6 +14,7 @@ void storage_reset_defaults(DeviceConfig &cfg) {
     cfg.sensor_interval_ms   = DEFAULT_SENSOR_INTERVAL_MS;
     cfg.device_name[0]       = '\0';
     cfg.config_version       = CONFIG_VERSION;
+    strlcpy(cfg.password, DEFAULT_PASSWORD, sizeof(cfg.password));
 }
 
 void storage_init() {
@@ -32,6 +33,7 @@ void storage_load(DeviceConfig &cfg) {
     cfg.ssid_hidden         = prefs.getUChar("ssid_hid",  cfg.ssid_hidden);
     cfg.sensor_interval_ms  = prefs.getUInt("sens_ms",   cfg.sensor_interval_ms);
     cfg.config_version      = prefs.getUInt("cfg_ver",   cfg.config_version);
+    prefs.getString("password", cfg.password, sizeof(cfg.password));
 }
 
 void storage_save(const DeviceConfig &cfg) {
@@ -43,4 +45,12 @@ void storage_save(const DeviceConfig &cfg) {
     prefs.putUChar("ssid_hid",  cfg.ssid_hidden);
     prefs.putUInt("sens_ms",    cfg.sensor_interval_ms);
     prefs.putUInt("cfg_ver",   cfg.config_version);
+    prefs.putString("password", cfg.password);
+}
+
+void storage_clear() {
+    Preferences p;
+    p.begin(NVS_NAMESPACE, false);
+    p.clear();
+    p.end();
 }

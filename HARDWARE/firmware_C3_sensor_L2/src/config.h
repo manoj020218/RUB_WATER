@@ -28,8 +28,8 @@
 #define RELAY2_HYSTERESIS_MM      50
 
 // ─── Firmware Identity ────────────────────────────────────────────────────────
-#define FIRMWARE_VERSION        "1.3.0"
-#define FIRMWARE_DATE           "2026-06-06"
+#define FIRMWARE_VERSION        "1.4.0"
+#define FIRMWARE_DATE           "2026-06-23"
 
 // ─── WiFi AP ─────────────────────────────────────────────────────────────────
 #define AP_CHANNEL               6
@@ -55,4 +55,4 @@
 #define DEFAULT_SENSOR_INTERVAL_MS 1000   // ms between ultrasonic reads (100–180000)
 #define DEFAULT_PASSWORD        "Hanuman#2026"
 #define NVS_NAMESPACE           "fgsens"
-#define CONFIG_VERSION           1
+#define CONFIG_VERSION           2

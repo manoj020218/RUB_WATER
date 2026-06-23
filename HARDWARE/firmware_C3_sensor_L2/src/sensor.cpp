@@ -17,8 +17,7 @@ static uint32_t     lastValidMs   = 0;
 // Discard leading garbage, return true if a valid 4-byte frame is parsed
 static bool readFrame(uint32_t &dist_mm) {
     while (sensorSerial.available() > 0 && sensorSerial.peek() != 0xFF) {
-        uint8_t junk = sensorSerial.read();
-        Serial.printf("[sensor] skip byte 0x%02X\n", junk);
+        sensorSerial.read();
     }
     if (sensorSerial.available() < 4) return false;
 

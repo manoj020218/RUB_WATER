@@ -25,23 +25,26 @@ uint32_t webserver_wifi_sleep_in_s() {
 }
 
 // ─── Session ──────────────────────────────────────────────────────────────────
-static char     g_token[17]      = "";   // 16 hex chars + null
-static uint32_t g_token_expires  = 0;
+static char     g_token[17]          = "";   // 16 hex chars + null
+static uint32_t g_token_refreshed_ms = 0;   // millis() at last create/refresh
 
 static void session_create() {
     uint32_t a = esp_random(), b = esp_random();
     snprintf(g_token, sizeof(g_token), "%08X%08X", a, b);
-    g_token_expires = millis() + SESSION_TIMEOUT_MS;
+    g_token_refreshed_ms = millis();
 }
 
 static bool session_valid() {
     if (g_token[0] == '\0') return false;
-    if (millis() > g_token_expires) { g_token[0] = '\0'; return false; }
+    // Overflow-safe: use subtraction (same pattern as relay/sensor timers)
+    if ((millis() - g_token_refreshed_ms) >= SESSION_TIMEOUT_MS) {
+        g_token[0] = '\0'; return false;
+    }
     String cookie = server.header("Cookie");
     String needle = String("sess=") + g_token;
     if (cookie.indexOf(needle) < 0) return false;
-    g_token_expires    = millis() + SESSION_TIMEOUT_MS;  // refresh session
-    g_last_activity_ms = millis();                        // reset WiFi idle timer
+    g_token_refreshed_ms = millis();   // refresh session
+    g_last_activity_ms   = millis();   // reset WiFi idle timer
     return true;
 }
 
@@ -209,6 +212,17 @@ a.logout{float:right;font-size:12px;color:#dc3545;text-decoration:none}
 <button id="ssid-btn" class="btn-outline" onclick="toggleSsid()">Hide SSID</button>
 </div>
 <div id="ssid-msg" class="msg"></div>
+</div>
+
+<div class="card">
+<h3>Change Password</h3>
+<p class="hint">Changes the login password stored on this device. You will need the new password on next login.</p>
+<label>Current Password</label>
+<div class="pw-wrap"><input id="cp-cur" type="password" autocomplete="current-password"><span class="eye" onclick="var i=document.getElementById('cp-cur');i.type=i.type=='password'?'text':'password'">&#128065;</span></div>
+<label>New Password (4–31 characters)</label>
+<div class="pw-wrap"><input id="cp-new" type="password" autocomplete="new-password"><span class="eye" onclick="var i=document.getElementById('cp-new');i.type=i.type=='password'?'text':'password'">&#128065;</span></div>
+<div class="btn-row"><button class="btn-green" onclick="changePassword()">Change Password</button></div>
+<div id="cp-msg" class="msg"></div>
 </div>
 
 <div class="card">
@@ -387,6 +401,16 @@ function uploadOta(){
   xhr.open('POST','/update');
   xhr.send(fd);
 }
+function changePassword(){
+  var cur=document.getElementById('cp-cur').value;
+  var nw=document.getElementById('cp-new').value;
+  if(!cur){showMsg('cp-msg','Enter current password',false);return;}
+  if(nw.length<4||nw.length>31){showMsg('cp-msg','New password must be 4–31 characters',false);return;}
+  fetch('/api/change-password',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({current_password:cur,new_password:nw})}).then(function(r){return r.json();}).then(function(d){
+    showMsg('cp-msg',d.ok?'Password changed successfully':('Error: '+d.error),d.ok);
+    if(d.ok){document.getElementById('cp-cur').value='';document.getElementById('cp-new').value='';}
+  }).catch(function(){showMsg('cp-msg','Request failed',false);});
+}
 poll();
 </script>
 </body></html>)FGSENS";
@@ -409,7 +433,7 @@ static void handle_get_login()  { serve_login(); }
 
 static void handle_post_login() {
     String pw = server.arg("password");
-    if (pw == DEFAULT_PASSWORD) {
+    if (pw.equals(g_cfg->password)) {
         session_create();
         server.sendHeader("Set-Cookie",
             String("sess=") + g_token + "; Path=/; HttpOnly");
@@ -430,26 +454,49 @@ static void handle_logout() {
 static void handle_api_status() {
     if (!session_valid()) { send_json(403, err_json("Forbidden")); return; }
 
-    String j = "{";
-    j += "\"device_name\":\"";  j += g_cfg->device_name; j += "\",";
-    j += "\"ble_id\":\"";       j += g_cfg->device_name; j += "\",";
-    j += "\"raw_distance_mm\":";  j += g_state->raw_distance_mm;  j += ",";
-    j += "\"zero_distance_mm\":"; j += g_cfg->zero_distance_mm;   j += ",";
-    j += "\"water_level_mm\":";   j += g_state->water_level_mm;   j += ",";
-    j += "\"level1_threshold_mm\":"; j += g_cfg->level1_threshold_mm; j += ",";
-    j += "\"level2_threshold_mm\":"; j += g_cfg->level2_threshold_mm; j += ",";
-    j += "\"relay1\":"; j += (g_state->relay1 ? "true" : "false"); j += ",";
-    j += "\"relay2\":"; j += (g_state->relay2 ? "true" : "false"); j += ",";
-    j += "\"sensor_status\":\""; j += (g_state->sensor_ok ? "OK" : "FAULT"); j += "\",";
-    j += "\"trigger_delay_s\":";  j += g_cfg->trigger_delay_s;  j += ",";
-    j += "\"clear_delay_s\":";    j += g_cfg->clear_delay_s;    j += ",";
-    j += "\"ssid_hidden\":";      j += (g_cfg->ssid_hidden ? "true" : "false"); j += ",";
-    j += "\"uptime_seconds\":";  j += g_state->uptime_s;           j += ",";
-    j += "\"config_version\":";  j += g_cfg->config_version; j += ",";
-    j += "\"sensor_interval_ms\":"; j += g_cfg->sensor_interval_ms; j += ",";
-    j += "\"wifi_sleep_in_s\":";   j += webserver_wifi_sleep_in_s(); j += ",";
-    j += "\"firmware_version\":\""; j += FIRMWARE_VERSION; j += "\",";
-    j += "\"firmware_date\":\"";    j += FIRMWARE_DATE;    j += "\"}";
+    char j[640];
+    snprintf(j, sizeof(j),
+        "{"
+        "\"device_name\":\"%s\","
+        "\"ble_id\":\"%s\","
+        "\"raw_distance_mm\":%u,"
+        "\"zero_distance_mm\":%u,"
+        "\"water_level_mm\":%u,"
+        "\"level1_threshold_mm\":%u,"
+        "\"level2_threshold_mm\":%u,"
+        "\"relay1\":%s,"
+        "\"relay2\":%s,"
+        "\"sensor_status\":\"%s\","
+        "\"trigger_delay_s\":%u,"
+        "\"clear_delay_s\":%u,"
+        "\"ssid_hidden\":%s,"
+        "\"uptime_seconds\":%u,"
+        "\"config_version\":%u,"
+        "\"sensor_interval_ms\":%u,"
+        "\"wifi_sleep_in_s\":%u,"
+        "\"firmware_version\":\"%s\","
+        "\"firmware_date\":\"%s\""
+        "}",
+        g_cfg->device_name,
+        g_cfg->device_name,
+        g_state->raw_distance_mm,
+        g_cfg->zero_distance_mm,
+        g_state->water_level_mm,
+        g_cfg->level1_threshold_mm,
+        g_cfg->level2_threshold_mm,
+        g_state->relay1 ? "true" : "false",
+        g_state->relay2 ? "true" : "false",
+        g_state->sensor_ok ? "OK" : "FAULT",
+        g_cfg->trigger_delay_s,
+        g_cfg->clear_delay_s,
+        g_cfg->ssid_hidden ? "true" : "false",
+        g_state->uptime_s,
+        g_cfg->config_version,
+        g_cfg->sensor_interval_ms,
+        webserver_wifi_sleep_in_s(),
+        FIRMWARE_VERSION,
+        FIRMWARE_DATE
+    );
     send_json(200, j);
 }
 
@@ -538,6 +585,34 @@ static void handle_api_ssid_hidden() {
     ESP.restart();
 }
 
+static void handle_api_change_password() {
+    if (!session_valid()) { send_json(403, err_json("Forbidden")); return; }
+
+    String body = server.arg("plain");
+    auto parseStr = [&](const char *key) -> String {
+        int idx = body.indexOf(key);
+        if (idx < 0) return "";
+        idx = body.indexOf('"', body.indexOf(':', idx) + 1) + 1;
+        int end = body.indexOf('"', idx);
+        if (end < 0) return "";
+        return body.substring(idx, end);
+    };
+
+    String cur = parseStr("\"current_password\"");
+    String nw  = parseStr("\"new_password\"");
+
+    if (!cur.equals(g_cfg->password)) {
+        send_json(400, err_json("Current password incorrect")); return;
+    }
+    if (nw.length() < 4 || nw.length() > 31) {
+        send_json(400, err_json("New password must be 4-31 characters")); return;
+    }
+    strlcpy(g_cfg->password, nw.c_str(), sizeof(g_cfg->password));
+    g_cfg->config_version++;
+    storage_save(*g_cfg);
+    send_json(200, ok_json());
+}
+
 static void handle_not_found() {
     server.sendHeader("Location", "/");
     server.send(302, "text/plain", "");
@@ -559,8 +634,9 @@ void webserver_init(DeviceConfig *cfg, AppState *state) {
     server.on("/api/status", HTTP_GET,  handle_api_status);
     server.on("/api/set-zero", HTTP_POST, handle_api_set_zero);
     server.on("/api/config",   HTTP_POST, handle_api_config);
-    server.on("/api/reboot",      HTTP_POST, handle_api_reboot);
-    server.on("/api/ssid-hidden", HTTP_POST, handle_api_ssid_hidden);
+    server.on("/api/reboot",           HTTP_POST, handle_api_reboot);
+    server.on("/api/ssid-hidden",      HTTP_POST, handle_api_ssid_hidden);
+    server.on("/api/change-password",  HTTP_POST, handle_api_change_password);
 
     // OTA firmware upload
     server.on("/update", HTTP_POST,

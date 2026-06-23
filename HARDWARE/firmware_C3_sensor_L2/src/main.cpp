@@ -2,6 +2,7 @@
 #include <WiFi.h>
 #include <NimBLEDevice.h>
 #include "esp_pm.h"
+#include "esp_task_wdt.h"
 #include "config.h"
 #include "storage.h"
 #include "sensor.h"
@@ -30,10 +31,29 @@ void setup() {
         digitalWrite(STATUS_LED_PIN, LOW);  delay(120);
     }
 
-    // BOOT button (GPIO9, active-LOW): hold on power-up to force SSID visible this session
+    // BOOT button (GPIO9, active-LOW):
+    //   hold < 10 s at power-up → force SSID visible this session
+    //   hold ≥ 10 s at power-up → factory reset (clear NVS, restart)
     pinMode(9, INPUT_PULLUP);
     delay(100);
-    bool boot_held = (digitalRead(9) == LOW);
+    bool boot_held = false;
+    if (digitalRead(9) == LOW) {
+        boot_held = true;
+        uint32_t hold_start = millis();
+        while (digitalRead(9) == LOW) {
+            uint32_t held_ms = millis() - hold_start;
+            if (held_ms >= 10000) {
+                Serial.println("[setup] BOOT held 10 s — factory reset, clearing NVS");
+                storage_clear();
+                delay(200);
+                ESP.restart();
+            }
+            // Blink: slow (500 ms) for first 3 s, fast (150 ms) after to signal reset imminent
+            uint32_t period = (held_ms < 3000) ? 500 : 150;
+            digitalWrite(STATUS_LED_PIN, (held_ms / period) % 2);
+            delay(50);
+        }
+    }
 
     // ── Thermal: CPU frequency + automatic light sleep ────────────────────────
     // CPU halved from 160→80 MHz; idles down to 40 MHz when quiet.
@@ -58,15 +78,21 @@ void setup() {
     uint8_t hidden = (boot_held ? 0 : g_cfg.ssid_hidden);
     if (boot_held) Serial.println("[WiFi] BOOT held — forcing SSID visible this session");
 
-    // Open network (no password) — auth is on the HTTP login page
-    bool apOk = WiFi.softAP(g_cfg.device_name, "", AP_CHANNEL, hidden, AP_MAX_CONNECTIONS);
+    // Per-device WPA2 key derived from last 3 MAC bytes — unique per unit
+    uint8_t mac[6];
+    WiFi.macAddress(mac);
+    char ap_key[13];
+    snprintf(ap_key, sizeof(ap_key), "FGS-%02X%02X%02X", mac[3], mac[4], mac[5]);
+
+    bool apOk = WiFi.softAP(g_cfg.device_name, ap_key, AP_CHANNEL, hidden, AP_MAX_CONNECTIONS);
     // ── Thermal: TX power 11→8.5 dBm ─────────────────────────────────────────
     // Device operates <5 m from the phone. 8.5 dBm (~7 mW) is ample; saves
     // ~40% RF transmit power vs the previous 11 dBm setting.
     WiFi.setTxPower(WIFI_POWER_8_5dBm);
-    Serial.printf("[WiFi] softAP '%s' %s  hidden=%d  IP: %s\n",
+    Serial.printf("[WiFi] softAP '%s' %s  key='%s'  hidden=%d  IP: %s\n",
         g_cfg.device_name,
         apOk ? "OK" : "FAILED",
+        ap_key,
         hidden,
         WiFi.softAPIP().toString().c_str());
 
@@ -74,6 +100,10 @@ void setup() {
     relay_init();
     led_init();
     webserver_init(&g_cfg, &g_state);
+
+    // Hardware watchdog: reset device if loop() hangs for >30 s
+    esp_task_wdt_init(30, true);
+    esp_task_wdt_add(NULL);
 
     // BLE — advertise device identity (name only, no services needed)
     NimBLEDevice::init(std::string(g_cfg.device_name));
@@ -88,6 +118,8 @@ void setup() {
 }
 
 void loop() {
+    esp_task_wdt_reset();
+
     // Rate-limited sensor read — interval configurable from web UI
     static uint32_t g_last_sensor_ms = 0;
     uint32_t        now              = millis();
