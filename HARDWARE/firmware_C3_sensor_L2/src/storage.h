@@ -12,6 +12,7 @@ struct DeviceConfig {
     uint8_t  ssid_hidden;        // 1 = hidden AP, 0 = visible
     uint32_t sensor_interval_ms; // ms between ultrasonic reads (100–180000)
     char     password[32];       // login password, changeable via UI
+    uint8_t  auto_restart_hours; // reboot every N hours (0 = disabled)
 };
 
 void storage_init();

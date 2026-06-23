@@ -53,6 +53,7 @@
 #define DEFAULT_CLEAR_DELAY_S   300
 #define DEFAULT_ZERO_MM        1200
 #define DEFAULT_SENSOR_INTERVAL_MS 1000   // ms between ultrasonic reads (100–180000)
+#define DEFAULT_AUTO_RESTART_HOURS  24    // reboot every N hours; 0 = disabled
 #define DEFAULT_PASSWORD        "Hanuman#2026"
 #define NVS_NAMESPACE           "fgsens"
 #define CONFIG_VERSION           2

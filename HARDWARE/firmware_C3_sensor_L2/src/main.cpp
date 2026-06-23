@@ -114,6 +114,15 @@ void setup() {
 void loop() {
     esp_task_wdt_reset();
 
+    // Scheduled auto-restart — all settings persist in NVS, restored on next boot
+    if (g_cfg.auto_restart_hours > 0 &&
+        millis() >= (uint32_t)g_cfg.auto_restart_hours * 3600000UL) {
+        Serial.printf("[auto-restart] %u h elapsed — rebooting (NVS settings preserved)\n",
+                      g_cfg.auto_restart_hours);
+        delay(200);
+        ESP.restart();
+    }
+
     // Rate-limited sensor read — interval configurable from web UI
     static uint32_t g_last_sensor_ms = 0;
     uint32_t        now              = millis();

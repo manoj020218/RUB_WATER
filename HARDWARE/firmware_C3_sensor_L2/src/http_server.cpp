@@ -161,6 +161,7 @@ a.logout{float:right;font-size:12px;color:#dc3545;text-decoration:none}
 <div class="row"><span class="lbl">Level 1 Threshold</span><span class="val"><span id="th1">-</span> mm</span></div>
 <div class="row"><span class="lbl">Level 2 Threshold</span><span class="val"><span id="th2">-</span> mm</span></div>
 <div class="row"><span class="lbl">Uptime</span><span class="val" id="up">-</span></div>
+<div class="row"><span class="lbl">Next Auto-Restart</span><span class="val" id="nar">-</span></div>
 </div>
 
 <div class="card">
@@ -194,6 +195,9 @@ a.logout{float:right;font-size:12px;color:#dc3545;text-decoration:none}
 <label>Sensor Read Interval (ms) — how often the ultrasonic sensor is polled</label>
 <input type="number" id="sens_ms" min="100" max="180000" value="1000" oninput="updateSensHint()">
 <div id="sens-hint" style="font-size:12px;color:#0d6e56;margin:3px 0 6px 2px"></div>
+<label>Auto-Restart Interval (h) — 0 = disabled &nbsp;|&nbsp; 1–168 h = reboot every N hours (all settings saved in memory, nothing lost)</label>
+<input type="number" id="ar_h" min="0" max="168" value="24" oninput="updateArHint()">
+<div id="ar-hint" style="font-size:12px;color:#0d6e56;margin:3px 0 6px 2px"></div>
 <div class="btn-row">
 <button class="btn-green" onclick="saveConfig()">Save</button>
 <button class="btn-red" onclick="doReboot()">Reboot Device</button>
@@ -280,10 +284,15 @@ function poll(){
     setIfUnfocused('trig',d.trigger_delay_s);
     setIfUnfocused('clr',d.clear_delay_s);
     setIfUnfocused('sens_ms',d.sensor_interval_ms);
+    setIfUnfocused('ar_h',d.auto_restart_hours);
     updateSensHint();
+    updateArHint();
     var u=d.uptime_seconds;
     var h=Math.floor(u/3600),m=Math.floor((u%3600)/60),s=u%60;
     document.getElementById('up').textContent=(h?h+'h ':'')+( m?m+'m ':'')+s+'s';
+    var nar=document.getElementById('nar');
+    if(d.auto_restart_hours===0){nar.textContent='Disabled';}
+    else{var rs=d.restart_in_s,rh=Math.floor(rs/3600),rm=Math.floor((rs%3600)/60);nar.textContent=(rh?rh+'h ':'')+rm+'m';}
     updateHints();
   }).catch(function(){});
   setTimeout(poll,2000);
@@ -295,6 +304,15 @@ function updateSensHint(){
   h.style.color='#0d6e56';
   var s=(v/1000).toFixed(v<1000?1:0);
   h.textContent='Sensor polled every '+s+' s — lower = more responsive, higher = cooler device';
+}
+function updateArHint(){
+  var v=parseInt(document.getElementById('ar_h').value);
+  var h=document.getElementById('ar-hint');
+  if(isNaN(v)||v<0||v>168){h.style.color='#dc3545';h.textContent='Must be 0–168 h';return;}
+  if(v===0){h.style.color='#888';h.textContent='Auto-restart disabled — device runs until manually rebooted';return;}
+  var d=Math.floor(v/24),r=v%24;
+  h.style.color='#0d6e56';
+  h.textContent='Device restarts every '+(d?d+'d ':'')+( r?r+'h ':'')+' — settings restored from memory automatically';
 }
 function updateHints(){
   var zero=parseInt(document.getElementById('zd').textContent)||0;
@@ -351,6 +369,7 @@ function saveConfig(){
   var trig=parseInt(document.getElementById('trig').value);
   var clr=parseInt(document.getElementById('clr').value);
   var sensMs=parseInt(document.getElementById('sens_ms').value);
+  var arH=parseInt(document.getElementById('ar_h').value);
   var zero=parseInt(document.getElementById('zd').textContent)||0;
   if(isNaN(l1)||l1<=0){showMsg('cfg-msg','Level 1 must be > 0 mm',false);return;}
   if(zero>0&&l1>=zero){showMsg('cfg-msg','Level 1 ('+l1+' mm) must be less than Zero reference ('+zero+' mm) — raise sensor or lower threshold',false);return;}
@@ -360,10 +379,11 @@ function saveConfig(){
   if(isNaN(trig)||trig<1||trig>3600){showMsg('cfg-msg','Trigger delay must be 1–3600 s',false);return;}
   if(isNaN(clr)||clr<1||clr>3600){showMsg('cfg-msg','Clear delay must be 1–3600 s',false);return;}
   if(isNaN(sensMs)||sensMs<100||sensMs>180000){showMsg('cfg-msg','Sensor interval must be 100–180,000 ms',false);return;}
+  if(isNaN(arH)||arH<0||arH>168){showMsg('cfg-msg','Auto-restart must be 0–168 h',false);return;}
   fetch('/api/config',{
     method:'POST',
     headers:{'Content-Type':'application/json'},
-    body:JSON.stringify({level1_threshold_mm:l1,level2_threshold_mm:l2,trigger_delay_s:trig,clear_delay_s:clr,sensor_interval_ms:sensMs})
+    body:JSON.stringify({level1_threshold_mm:l1,level2_threshold_mm:l2,trigger_delay_s:trig,clear_delay_s:clr,sensor_interval_ms:sensMs,auto_restart_hours:arH})
   }).then(function(r){return r.json();}).then(function(d){
     showMsg('cfg-msg',d.ok?'Settings saved':('Error: '+d.error),d.ok);
   }).catch(function(){showMsg('cfg-msg','Request failed',false);});
@@ -454,7 +474,12 @@ static void handle_logout() {
 static void handle_api_status() {
     if (!session_valid()) { send_json(403, err_json("Forbidden")); return; }
 
-    char j[640];
+    uint32_t ar_target_ms = (uint32_t)g_cfg->auto_restart_hours * 3600000UL;
+    uint32_t now_ms       = millis();
+    uint32_t restart_in_s = (g_cfg->auto_restart_hours > 0 && now_ms < ar_target_ms)
+                            ? (ar_target_ms - now_ms) / 1000UL : 0;
+
+    char j[700];
     snprintf(j, sizeof(j),
         "{"
         "\"device_name\":\"%s\","
@@ -473,6 +498,8 @@ static void handle_api_status() {
         "\"uptime_seconds\":%u,"
         "\"config_version\":%u,"
         "\"sensor_interval_ms\":%u,"
+        "\"auto_restart_hours\":%u,"
+        "\"restart_in_s\":%u,"
         "\"wifi_sleep_in_s\":%u,"
         "\"firmware_version\":\"%s\","
         "\"firmware_date\":\"%s\""
@@ -493,6 +520,8 @@ static void handle_api_status() {
         g_state->uptime_s,
         g_cfg->config_version,
         g_cfg->sensor_interval_ms,
+        (uint32_t)g_cfg->auto_restart_hours,
+        restart_in_s,
         webserver_wifi_sleep_in_s(),
         FIRMWARE_VERSION,
         FIRMWARE_DATE
@@ -521,7 +550,7 @@ static void handle_api_config() {
     if (!session_valid()) { send_json(403, err_json("Forbidden")); return; }
 
     String body = server.arg("plain");
-    int l1 = -1, l2 = -1, trig = -1, clr = -1, sens_ms = -1;
+    int l1 = -1, l2 = -1, trig = -1, clr = -1, sens_ms = -1, ar_h = -1;
 
     auto parseField = [&](const char *key) -> int {
         int idx = body.indexOf(key);
@@ -535,6 +564,7 @@ static void handle_api_config() {
     trig    = parseField("\"trigger_delay_s\"");
     clr     = parseField("\"clear_delay_s\"");
     sens_ms = parseField("\"sensor_interval_ms\"");
+    ar_h    = parseField("\"auto_restart_hours\"");
 
     if (l1 <= 0 || l2 <= 0) {
         send_json(400, err_json("Missing or invalid fields")); return;
@@ -554,12 +584,16 @@ static void handle_api_config() {
     if (sens_ms < 100 || sens_ms > 180000) {
         send_json(400, err_json("Sensor interval must be 100-180000 ms")); return;
     }
+    if (ar_h < 0 || ar_h > 168) {
+        send_json(400, err_json("Auto-restart must be 0-168 h")); return;
+    }
 
     g_cfg->level1_threshold_mm = (uint32_t)l1;
     g_cfg->level2_threshold_mm = (uint32_t)l2;
     g_cfg->trigger_delay_s     = (uint32_t)trig;
     g_cfg->clear_delay_s       = (uint32_t)clr;
     g_cfg->sensor_interval_ms  = (uint32_t)sens_ms;
+    g_cfg->auto_restart_hours  = (uint8_t)ar_h;
     g_cfg->config_version++;
     storage_save(*g_cfg);
     led_signal_config_saved();

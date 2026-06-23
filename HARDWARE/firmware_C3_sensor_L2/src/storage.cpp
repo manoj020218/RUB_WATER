@@ -15,6 +15,7 @@ void storage_reset_defaults(DeviceConfig &cfg) {
     cfg.device_name[0]       = '\0';
     cfg.config_version       = CONFIG_VERSION;
     strlcpy(cfg.password, DEFAULT_PASSWORD, sizeof(cfg.password));
+    cfg.auto_restart_hours = DEFAULT_AUTO_RESTART_HOURS;
 }
 
 void storage_init() {
@@ -34,6 +35,7 @@ void storage_load(DeviceConfig &cfg) {
     cfg.sensor_interval_ms  = prefs.getUInt("sens_ms",   cfg.sensor_interval_ms);
     cfg.config_version      = prefs.getUInt("cfg_ver",   cfg.config_version);
     prefs.getString("password", cfg.password, sizeof(cfg.password));
+    cfg.auto_restart_hours = prefs.getUChar("ar_h", cfg.auto_restart_hours);
 }
 
 void storage_save(const DeviceConfig &cfg) {
@@ -46,6 +48,7 @@ void storage_save(const DeviceConfig &cfg) {
     prefs.putUInt("sens_ms",    cfg.sensor_interval_ms);
     prefs.putUInt("cfg_ver",   cfg.config_version);
     prefs.putString("password", cfg.password);
+    prefs.putUChar("ar_h", cfg.auto_restart_hours);
 }
 
 void storage_clear() {
