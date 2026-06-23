@@ -3,7 +3,7 @@
 #include "device_profile.h"
 
 namespace {
-constexpr uint32_t kDebounceMs = 50UL;
+constexpr uint32_t kDebounceMs = 500UL;
 }
 
 ConfirmationInputs& ConfirmationInputs::getInstance() {
@@ -12,7 +12,7 @@ ConfirmationInputs& ConfirmationInputs::getInstance() {
 }
 
 void ConfirmationInputs::begin() {
-    pinMode(PIN_CONFIRM_LEVEL1, INPUT_PULLUP);
+    pinMode(PIN_CONFIRM_LEVEL1, INPUT);         // external 1K pull-up on hardware
     pinMode(PIN_CONFIRM_LEVEL2, INPUT_PULLUP);
     _l1StableMs = millis();
     _l2StableMs = millis();

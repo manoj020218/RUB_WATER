@@ -3,9 +3,9 @@
 **Firmware folder:** `firmware_EDGEHAX_S3_ST485_RTU4ch_WAVE485/firmware`  
 **Firmware name:** `EH-S3-WSTTL-ST485-RL-MAX485-DYP-L1L2-LVT`  
 **Active build flag:** `ST485_RTU4CH_WAVE485_MODE`  
-**Version:** 0.2.0  &nbsp;|&nbsp; **Release date:** 2026-06-08  
+**Version:** 0.2.1  &nbsp;|&nbsp; **Release date:** 2026-06-23  
 **MCU board:** Edgehax ESP32-S3-WROOM-1 N16R8 (16 MB flash, 8 MB OPI PSRAM)  
-**Last flashed:** 2026-06-19 — Left RS485 COMM_LOST fix (GPIO17/18), RF removed
+**Last flashed:** 2026-06-23 — GPIO4 PCB short workaround (moved L1 to GPIO6), debounce 500ms, INPUT mode
 
 > **RF TRIGGER PINS PERMANENTLY REMOVED (2026-06-19)**  
 > Client confirmed RF trigger feature is not used and will not be used on this project.  
@@ -112,9 +112,9 @@ DYP-A01 sensor           │                                          │
 |----------|------|
 | DYP sensor RX (via MAX485) | 21 |
 | DYP sensor TX | -1 (sensor auto-TX, S3 never transmits) |
-| Confirm Level 1 (dry contact input) | 4 |
+| Confirm Level 1 (dry contact input) | ~~4~~ → **6** (GPIO4 shorted on PCB — see note below) |
 | Confirm Level 2 (dry contact input) | 5 |
-| Local relay: siren | 6 |
+| Local relay: siren | N/A (no local relays — ST485 RTU used) |
 | Local relay: flash | 7 |
 | INA219 SDA | 47 |
 | INA219 SCL | 46 |
@@ -408,7 +408,33 @@ In `processConfirmation()`: `millis() + 5000UL` = retry check after 5 s
 
 ---
 
-## 17. Known Limitations / Future Work
+## 17. GPIO4 PCB Short — Root Cause & Fix (2026-06-23)
+
+**Symptom:** L1 Active stuck = YES permanently even after switch input removed. Alarm never cleared.
+
+**Root cause:** GPIO4 socket on the Edgehax PCB has an internal short to GND (~218 Ω path measured). Confirmed by:
+- GPIO4 = 0.59V with external 1K pull-up to 3.3V → implies ~218 Ω to GND
+- Removing S3 module from socket → GPIO4 immediately reads 3.23V (chip is fine, socket is shorted)
+- GPIO5 unaffected (3.23V clean)
+
+**Fix applied:**
+- `device_profile.h`: `PIN_CONFIRM_LEVEL1` moved from GPIO4 → **GPIO6** (confirmed free — no local relays used, ST485 RTU handles all relay outputs)
+- `confirmation_inputs.cpp`: `PIN_CONFIRM_LEVEL1` mode changed from `INPUT_PULLUP` → `INPUT` (external 1K pull-up resistor on hardware)
+- `confirmation_inputs.cpp`: debounce increased 50ms → **500ms** (DYP 40kHz EMI coupling via GND, flood application tolerates 500ms delay easily)
+
+**Hardware changes required on physical wiring:**
+- Move L1 switch wire from GPIO4 header pin → GPIO6 header pin
+- External 1K pull-up resistor: 3.3V → 1K → GPIO6 (replaces internal pullup)
+- 104nF ceramic cap: GPIO6 → GND (RC low-pass filter, cuts off DYP 40kHz noise)
+- GPIO4 pin: leave disconnected
+
+**Do not use GPIO4** for any future function on this board variant — PCB socket is shorted.
+
+---
+
+## 18. Known Limitations / Future Work
+
+
 
 | Item | Status |
 |------|--------|

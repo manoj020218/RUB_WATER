@@ -33,7 +33,7 @@
 #define PIN_PRIMARY_DYP_TX       (-1)   // TX not wired — auto-direction MAX485 handles DE/RE
 
 // ── Two-level confirmation inputs ─────────────────────────────────────────────
-#define PIN_CONFIRM_LEVEL1       4      // INPUT_PULLUP, LOW = active
+#define PIN_CONFIRM_LEVEL1       6      // INPUT, ext 1K pull-up; GPIO4 shorted on PCB
 #define PIN_CONFIRM_LEVEL2       5      // INPUT_PULLUP, LOW = active
 
 // ── Local relay outputs (active-LOW relay board) ──────────────────────────────
