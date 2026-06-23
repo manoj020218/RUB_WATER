@@ -78,21 +78,15 @@ void setup() {
     uint8_t hidden = (boot_held ? 0 : g_cfg.ssid_hidden);
     if (boot_held) Serial.println("[WiFi] BOOT held — forcing SSID visible this session");
 
-    // Per-device WPA2 key derived from last 3 MAC bytes — unique per unit
-    uint8_t mac[6];
-    WiFi.macAddress(mac);
-    char ap_key[13];
-    snprintf(ap_key, sizeof(ap_key), "FGS-%02X%02X%02X", mac[3], mac[4], mac[5]);
-
-    bool apOk = WiFi.softAP(g_cfg.device_name, ap_key, AP_CHANNEL, hidden, AP_MAX_CONNECTIONS);
+    // Open network — auth is on the HTTP login page; hide SSID via web UI after install
+    bool apOk = WiFi.softAP(g_cfg.device_name, "", AP_CHANNEL, hidden, AP_MAX_CONNECTIONS);
     // ── Thermal: TX power 11→8.5 dBm ─────────────────────────────────────────
     // Device operates <5 m from the phone. 8.5 dBm (~7 mW) is ample; saves
     // ~40% RF transmit power vs the previous 11 dBm setting.
     WiFi.setTxPower(WIFI_POWER_8_5dBm);
-    Serial.printf("[WiFi] softAP '%s' %s  key='%s'  hidden=%d  IP: %s\n",
+    Serial.printf("[WiFi] softAP '%s' %s  hidden=%d  IP: %s\n",
         g_cfg.device_name,
         apOk ? "OK" : "FAILED",
-        ap_key,
         hidden,
         WiFi.softAPIP().toString().c_str());
 
