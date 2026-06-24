@@ -12,6 +12,7 @@ extern uint32_t gDbgLastEvtMs;
 extern bool     gDbgEvtConn;
 extern bool     gDbgEvtPubOk;
 
+#include "alert_action_sheet.h"
 #include "config_manager.h"
 #include "device_profile.h"
 #include "dyp_sensor.h"
@@ -61,6 +62,37 @@ uint16_t genericRelayAddressRegisterFromModel(uint8_t model) {
 
 const char* genericRelayModelLabel(uint8_t model) {
     return model >= kGenericRelayModel4Ch ? "4CH" : "2CH";
+}
+
+void publishActionSheetReportEvent(const char* source, const char* reason = nullptr) {
+    char sheetJson[2048];
+    if (!AlertActionSheetManager::getInstance().buildJson(sheetJson, sizeof(sheetJson))) {
+        return;
+    }
+
+    StaticJsonDocument<3072> doc;
+    doc["device_id"] = MqttManager::getInstance().deviceId();
+    doc["hardware_id"] = MqttManager::getInstance().hardwareId();
+    doc["event_type"] = "DEVICE_ACTION_SHEET_REPORT";
+    doc["action_sheet_version"] = AlertActionSheetManager::getInstance().version();
+    doc["source"] = source;
+
+    JsonObject details = doc.createNestedObject("details");
+    details["action_sheet_version"] = AlertActionSheetManager::getInstance().version();
+    details["source"] = source;
+    if (reason && reason[0]) {
+        doc["reason"] = reason;
+        details["reason"] = reason;
+    }
+
+    StaticJsonDocument<2048> sheetDoc;
+    if (deserializeJson(sheetDoc, sheetJson) == DeserializationError::Ok) {
+        details["action_sheet"] = sheetDoc.as<JsonVariantConst>();
+    }
+
+    char payload[3072];
+    serializeJson(doc, payload, sizeof(payload));
+    TelemetryManager::getInstance().publishEventPayload(payload);
 }
 
 struct GenericRelayStatusSnapshot {
@@ -275,6 +307,12 @@ void LocalWebserver::setupRoutes() {
         sendCorsHeaders();
         _server.send(204, "text/plain", "");
     });
+    _server.on("/action-sheet",        HTTP_GET,  [this]{ handleActionSheet(); });
+    _server.on("/action-sheet",        HTTP_POST, [this]{ handleActionSheetPost(); });
+    _server.on("/action-sheet",        HTTP_OPTIONS, [this]{
+        sendCorsHeaders();
+        _server.send(204, "text/plain", "");
+    });
     _server.on("/diagnostics",         HTTP_GET,  [this]{ handleDiagnostics(); });
     _server.on("/diagnostics",         HTTP_POST, [this]{ handleDiagnosticsPost(); });
     _server.on("/relay-test",          HTTP_GET,  [this]{ handleRelayTest(); });
@@ -375,7 +413,7 @@ String LocalWebserver::htmlFooter() {
 
 String LocalWebserver::navBar(const char* active) {
     const char* pages[][2] = {
-        {"/status","Status"},{"/wifi","WiFi Setup"},{"/config","Config"},{"/calibration","Calibrate"},
+        {"/status","Status"},{"/wifi","WiFi Setup"},{"/config","Config"},{"/action-sheet","Action Sheet"},{"/calibration","Calibrate"},
         {"/identity","Identity"},{"/relay-test","Relay Test"},{"/remote-test","Remote"},
         {"/diagnostics","Diagnostics"},{"/firmware-upload","OTA"},
         {"/reboot","Reboot"},{"/logout","Logout"}
@@ -556,7 +594,7 @@ void LocalWebserver::handleConfig() {
             _server.send(401, "application/json", "{\"message\":\"unauthorized\"}");
             return;
         }
-        char json[768];
+        char json[1024];
         if (!ConfigManager::getInstance().buildJson(json, sizeof(json))) {
             sendCorsHeaders();
             _server.send(500, "application/json", "{\"message\":\"config_encode_failed\"}");
@@ -650,21 +688,21 @@ void LocalWebserver::handleConfigPost() {
         if (oldMode != ConfigManager::getInstance().sensorLogicMode()) {
             TelemetryManager::getInstance().publishEvent("SENSOR_MODE_CHANGED", "APK_LOCAL_HTTP");
         }
-        char cfgJson[768];
+        char cfgJson[1024];
         if (!ConfigManager::getInstance().buildJson(cfgJson, sizeof(cfgJson))) {
             sendCorsHeaders();
             _server.send(500, "application/json", "{\"message\":\"config_encode_failed\"}");
             return;
         }
-        StaticJsonDocument<1024> respDoc;
+        StaticJsonDocument<1536> respDoc;
         respDoc["status"] = "SUCCESS";
         respDoc["reboot_scheduled"] = rebootAfter;
         respDoc["current_config_version"] = ConfigManager::getInstance().get().configVersion;
-        StaticJsonDocument<768> cfgDoc;
+        StaticJsonDocument<1024> cfgDoc;
         if (deserializeJson(cfgDoc, cfgJson) == DeserializationError::Ok) {
             respDoc["current_config"] = cfgDoc.as<JsonVariantConst>();
         }
-        char json[1024];
+        char json[1536];
         serializeJson(respDoc, json, sizeof(json));
         sendCorsHeaders();
         _server.send(200, "application/json", json);
@@ -721,6 +759,154 @@ void LocalWebserver::handleConfigPost() {
         String html = htmlHeader("Config") + navBar("config");
         html += "<div class='card'><p class='err'>Error: " + reason + "</p>"
                 "<a href='/config'>Back</a></div>";
+        html += htmlFooter();
+        _server.send(400, "text/html", html);
+    }
+}
+
+void LocalWebserver::handleActionSheet() {
+    if (wantsJsonResponse()) {
+        if (!checkAuth() && !checkLocalPinAuth()) {
+            sendCorsHeaders();
+            _server.send(401, "application/json", "{\"message\":\"unauthorized\"}");
+            return;
+        }
+        char json[2048];
+        if (!AlertActionSheetManager::getInstance().buildJson(json, sizeof(json))) {
+            sendCorsHeaders();
+            _server.send(500, "application/json", "{\"message\":\"action_sheet_encode_failed\"}");
+            return;
+        }
+        sendCorsHeaders();
+        _server.send(200, "application/json", json);
+        return;
+    }
+
+    if (!checkAuth()) { sendUnauth(); return; }
+    const auto& sheet = AlertActionSheetManager::getInstance().get();
+
+    auto modeOptions = [](AlertRelayMode mode) {
+        String html;
+        html += "<option value='OFF'";
+        if (mode == AlertRelayMode::OFF) html += " selected";
+        html += ">OFF</option>";
+        html += "<option value='CONTINUOUS_ON'";
+        if (mode == AlertRelayMode::CONTINUOUS_ON) html += " selected";
+        html += ">CONTINUOUS_ON</option>";
+        html += "<option value='PULSE_REPEAT'";
+        if (mode == AlertRelayMode::PULSE_REPEAT) html += " selected";
+        html += ">PULSE_REPEAT</option>";
+        return html;
+    };
+
+    String html = htmlHeader("Action Sheet") + navBar("action-sheet");
+    html += "<div class='card'><h2>Configurable Alert Action Sheet</h2>"
+            "<p>Action starts only after a confirmed alert. Red overrides Orange immediately. "
+            "Manual relay tests remain separate from these automatic actions.</p>"
+            "<p class='warn'>Safety rule: RED cannot be saved with all three relays OFF from local WebUI.</p>"
+            "<form method='POST' action='/action-sheet'>";
+
+    const struct {
+        const char* key;
+        const char* label;
+        const AlertLevelActionSheet* levelSheet;
+    } levels[] = {
+        {"orange", "ORANGE Confirmed Alert", &sheet.orange},
+        {"red", "RED Confirmed Danger", &sheet.red}
+    };
+
+    for (const auto& level : levels) {
+        html += "<h3 style='margin-top:22px'>" + String(level.label) + "</h3>";
+        html += "<table><tr><th>Relay</th><th>Enabled</th><th>Mode</th><th>ON sec</th><th>OFF sec</th><th>Repeat sec</th><th>Pulse sec</th></tr>";
+        for (uint8_t relayIndex = 0; relayIndex < 3; relayIndex++) {
+            const AlertRelayAction& relay = level.levelSheet->relays[relayIndex];
+            const String prefix = String(level.key) + "_r" + String(relayIndex + 1);
+            html += "<tr><td><b>R" + String(relayIndex + 1) + " " + AlertActionSheetManager::relayName(relayIndex) + "</b></td>";
+            html += "<td><select name='" + prefix + "_enabled'>"
+                    "<option value='1'" + String(relay.enabled ? " selected" : "") + ">Yes</option>"
+                    "<option value='0'" + String(!relay.enabled ? " selected" : "") + ">No</option></select></td>";
+            html += "<td><select name='" + prefix + "_mode'>" + modeOptions(relay.mode) + "</select></td>";
+            html += "<td><input type='number' min='0' max='3600' name='" + prefix + "_on' value='" + String(relay.onTimeSec) + "'></td>";
+            html += "<td><input type='number' min='0' max='3600' name='" + prefix + "_off' value='" + String(relay.offTimeSec) + "'></td>";
+            html += "<td><input type='number' min='0' max='3600' name='" + prefix + "_repeat' value='" + String(relay.repeatIntervalSec) + "'></td>";
+            html += "<td><input type='number' min='0' max='3600' name='" + prefix + "_pulse' value='" + String(relay.pulseDurationSec) + "'></td></tr>";
+        }
+        html += "</table>";
+    }
+
+    html += "<button type='submit'>Save Action Sheet</button></form></div>";
+    html += htmlFooter();
+    _server.send(200, "text/html", html);
+}
+
+void LocalWebserver::handleActionSheetPost() {
+    const bool jsonRequest = wantsJsonResponse();
+    if (jsonRequest) {
+        if (!checkLocalPinAuth()) {
+            sendCorsHeaders();
+            _server.send(401, "application/json", "{\"message\":\"invalid_local_pin\"}");
+            return;
+        }
+        const String body = _server.arg("plain");
+        if (body.length() == 0) {
+            sendCorsHeaders();
+            _server.send(400, "application/json", "{\"message\":\"empty_json_body\"}");
+            return;
+        }
+        String reason;
+        if (!AlertActionSheetManager::getInstance().applyJson(body.c_str(), reason, "APK_LOCAL_HTTP", nullptr, true, false)) {
+            sendCorsHeaders();
+            String err = "{\"message\":\"" + reason + "\"}";
+            _server.send(400, "application/json", err);
+            return;
+        }
+        publishActionSheetReportEvent("APK_LOCAL_HTTP");
+        char json[2048];
+        if (!AlertActionSheetManager::getInstance().buildJson(json, sizeof(json))) {
+            sendCorsHeaders();
+            _server.send(500, "application/json", "{\"message\":\"action_sheet_encode_failed\"}");
+            return;
+        }
+        sendCorsHeaders();
+        _server.send(200, "application/json", json);
+        return;
+    }
+
+    if (!checkAuth()) { sendUnauth(); return; }
+
+    StaticJsonDocument<3072> doc;
+    doc["red_all_off_override"] = false;
+    JsonArray actions = doc.createNestedArray("actions");
+    const char* levelKeys[] = {"orange", "red"};
+    const char* levelNames[] = {"ORANGE", "RED"};
+
+    for (uint8_t levelIndex = 0; levelIndex < 2; levelIndex++) {
+        for (uint8_t relayIndex = 0; relayIndex < 3; relayIndex++) {
+            const String prefix = String(levelKeys[levelIndex]) + "_r" + String(relayIndex + 1);
+            JsonObject item = actions.createNestedObject();
+            item["alert_level"] = levelNames[levelIndex];
+            item["relay_number"] = relayIndex + 1;
+            item["relay_name"] = AlertActionSheetManager::relayName(relayIndex);
+            item["enabled"] = (_server.arg(prefix + "_enabled") == "1");
+            item["mode"] = _server.arg(prefix + "_mode");
+            item["on_time_sec"] = _server.arg(prefix + "_on").toInt();
+            item["off_time_sec"] = _server.arg(prefix + "_off").toInt();
+            item["repeat_interval_sec"] = _server.arg(prefix + "_repeat").toInt();
+            item["pulse_duration_sec"] = _server.arg(prefix + "_pulse").toInt();
+        }
+    }
+
+    char json[2048];
+    serializeJson(doc, json, sizeof(json));
+    String reason;
+    if (AlertActionSheetManager::getInstance().applyJson(json, reason, "FIRMWARE_WEBUI", nullptr, true, false)) {
+        publishActionSheetReportEvent("FIRMWARE_WEBUI");
+        _server.sendHeader("Location", "/action-sheet");
+        _server.send(302, "text/plain", "");
+    } else {
+        String html = htmlHeader("Action Sheet") + navBar("action-sheet");
+        html += "<div class='card'><p class='err'>Error: " + reason + "</p>"
+                "<a href='/action-sheet'>Back</a></div>";
         html += htmlFooter();
         _server.send(400, "text/html", html);
     }
@@ -926,6 +1112,7 @@ void LocalWebserver::handleRelayTestPost() {
 #endif
 
     auto& out = OutputController::getInstance();
+    out.suspendAutoControl(30000UL);
     const String relay = _server.arg("relay");
     if      (relay == "siren")    { out.setSiren(true);          delay(3000); out.setSiren(false); }
     else if (relay == "flash")    { out.setFlash(true);          delay(5000); out.setFlash(false); }
@@ -1536,7 +1723,7 @@ void LocalWebserver::handleIdentityPost() {
 }
 
 void LocalWebserver::handleApiStatus() {
-    StaticJsonDocument<768> doc;
+    StaticJsonDocument<1536> doc;
     const auto& cfg = ConfigManager::getInstance().get();
     const auto& fsm = FloodStateMachine::getInstance().snapshot();
     const auto& vmon = VoltageMonitor::getInstance().snapshot();
@@ -1567,6 +1754,9 @@ void LocalWebserver::handleApiStatus() {
     doc["sensor_confirmation_wait_sec"] = cfg.mismatchDurationSeconds;
     doc["sensor_mount_height_mm"] = cfg.zeroDistanceMm;
     doc["current_config_version"] = cfg.configVersion;
+    doc["current_action_sheet_version"] = AlertActionSheetManager::getInstance().version();
+    doc["action_sheet_sync_source"] = AlertActionSheetManager::getInstance().lastSyncSource();
+    doc["action_sheet_last_sync_at"] = AlertActionSheetManager::getInstance().lastSyncAt();
     doc["battery_voltage"] = vmon.voltage;
     doc["battery_current_ma"] = vmon.currentMa;
     doc["api_server"]     = DEFAULT_HTTP_BASE_URL;
@@ -1579,7 +1769,7 @@ void LocalWebserver::handleApiStatus() {
     doc["dbg_last_evt_ms"]  = gDbgLastEvtMs;
     doc["dbg_evt_conn"]     = gDbgEvtConn;
     doc["dbg_evt_pub_ok"]   = gDbgEvtPubOk;
-    char buf[768];
+    char buf[1536];
     serializeJson(doc, buf, sizeof(buf));
     sendCorsHeaders();
     _server.send(200, "application/json", buf);
