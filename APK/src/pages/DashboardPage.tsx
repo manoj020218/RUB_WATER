@@ -60,6 +60,8 @@ function alertStatusLabel(status?: string) {
   }
 }
 
+const _dashCache: Record<string, DashboardData> = {};
+
 function RtuCard({ side, rtu, hasData }: { side: string; rtu?: RtuStatus; hasData: boolean }) {
   const online = hasData && !!rtu?.online;
   const batt = hasData ? (rtu?.batt ?? '--') : '--';
@@ -103,7 +105,8 @@ function RtuCard({ side, rtu, hasData }: { side: string; rtu?: RtuStatus; hasDat
 export default function DashboardPage() {
   const { state, dispatch, canOperate, showToast } = useApp();
   const navigate = useNavigate();
-  const [data, setData] = useState<DashboardData | null>(null);
+  const locationId = state.selectedLocationId;
+  const [data, setData] = useState<DashboardData | null>(() => (locationId ? (_dashCache[locationId] ?? null) : null));
   const [tick, setTick] = useState(0);
   const [elapsed, setElapsed] = useState('--:--:--');
   const [nowStr, setNowStr] = useState('');
@@ -114,12 +117,11 @@ export default function DashboardPage() {
   const clockRef = useRef<ReturnType<typeof setInterval> | null>(null);
   const incidentStartRef = useRef<string | null>(null);
 
-  const locationId = state.selectedLocationId;
-
   const refresh = useCallback(async () => {
     if (!locationId) return;
     try {
       const d = await fetchDashboard(locationId);
+      _dashCache[locationId] = d;
       setData(d);
       setApiOk(true);
       if (d.latest) dispatch({ type: 'SET_TELEMETRY', telemetry: d.latest });
@@ -183,9 +185,9 @@ export default function DashboardPage() {
   const mountHeight = Number(config?.sensor_mount_height_mm || loc?.mount_height_mm || 1200);
   const waterLevel = Number(latest?.water_level_mm ?? 0);
   const devOnline = (data?.device?.status || '').toUpperCase() === 'ONLINE';
-  const floodState = latest?.flood_state ?? (devOnline ? 'CLEAR' : 'OFFLINE');
-  const meta = floodMeta(floodState);
   const hasData = !!latest;
+  const floodState = latest?.flood_state ?? ((hasData || devOnline) ? 'CLEAR' : 'OFFLINE');
+  const meta = floodMeta(floodState);
 
   const alertMm = Number(config?.alert_level_mm ?? 200);
   const dangerMm = Number(config?.danger_level_mm ?? 500);

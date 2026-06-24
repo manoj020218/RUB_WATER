@@ -1,16 +1,19 @@
 {
   "android": {
-    "version": "1.0.1",
-    "versionCode": 2,
-    "releasedAt": "2026-06-06",
-    "releasedLabel": "06 Jun 2026",
+    "version": "1.0.6",
+    "versionCode": 7,
+    "releasedAt": "2026-06-24",
+    "releasedLabel": "24 Jun 2026",
     "minimumSupportedVersionCode": 1,
     "forceUpdate": false,
-    "fileName": "FloodGuard-v1.0.1-release.apk",
-    "downloadPath": "/downloads/floodguard/android/FloodGuard-v1.0.1-release.apk",
+    "fileName": "FloodGuard-v1.0.6-release.apk",
+    "downloadPath": "/downloads/floodguard/android/FloodGuard-v1.0.6-release.apk",
     "notes": [
-      "Latest June 6, 2026 mobile app build for FloodGuard.",
-      "Adds in-app version visibility and VPS-based release tracking."
+      "Live page data persists when switching tabs — no more blank screen on return.",
+      "Audit timeline now shows timestamps on each event with CSV and TXT download.",
+      "Mute Alarm and Dry Run open RTU/relay selector modals — dispatches MQTT commands directly.",
+      "User isolation fix: each admin only sees users they created.",
+      "Device Status flicker fixed — stable CLEAR/OFFLINE based on telemetry data."
     ]
   }
 }

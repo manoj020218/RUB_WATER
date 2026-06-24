@@ -227,6 +227,7 @@ export interface AuditLog {
   location_id?: string;
   device_id?: string;
   user_id?: string;
+  timestamp?: string;
   created_at?: string;
   details?: Record<string, unknown>;
 }
