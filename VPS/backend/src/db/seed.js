@@ -60,6 +60,7 @@ function seedIfEmpty() {
       department_id: 'dept_001',
       assigned_location_ids: ['RUB043'],
       is_active: true,
+      created_by: 'user_vendor_001',
       created_at: new Date().toISOString(),
       updated_at: new Date().toISOString()
     },
@@ -73,6 +74,7 @@ function seedIfEmpty() {
       department_id: 'dept_001',
       assigned_location_ids: ['RUB043'],
       is_active: true,
+      created_by: 'user_vendor_001',
       created_at: new Date().toISOString(),
       updated_at: new Date().toISOString()
     },
@@ -86,6 +88,7 @@ function seedIfEmpty() {
       department_id: 'dept_001',
       assigned_location_ids: ['RUB057'],
       is_active: true,
+      created_by: 'user_vendor_001',
       created_at: new Date().toISOString(),
       updated_at: new Date().toISOString()
     },
@@ -99,6 +102,7 @@ function seedIfEmpty() {
       department_id: 'dept_001',
       assigned_location_ids: ['RUB071'],
       is_active: true,
+      created_by: 'user_vendor_001',
       created_at: new Date().toISOString(),
       updated_at: new Date().toISOString()
     }

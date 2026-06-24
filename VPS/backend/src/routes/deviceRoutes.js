@@ -17,6 +17,8 @@ router.post('/commands/:commandId/ack', deviceController.ackCommand);
 router.post('/command_ack', deviceController.ackCommandLegacy);
 router.post('/config_ack', deviceController.ackConfig);
 router.get('/:deviceId/config', deviceController.getDeviceConfig);
+router.get('/:deviceId/action-sheet', deviceController.getDeviceActionSheet);
+router.post('/:deviceId/action-sheet/report', deviceController.reportDeviceActionSheet);
 router.get('/:deviceId/firmware/latest', deviceController.getLatestFirmware);
 
 module.exports = router;

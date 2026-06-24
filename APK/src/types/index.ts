@@ -70,6 +70,40 @@ export interface DeviceConfig {
   device_reported?: Record<string, unknown> | null;
 }
 
+export interface AlertActionItem {
+  alert_level: 'ORANGE' | 'RED';
+  relay_number: 1 | 2 | 3;
+  relay_name: string;
+  enabled: boolean;
+  mode: 'OFF' | 'CONTINUOUS_ON' | 'PULSE_REPEAT';
+  on_time_sec: number;
+  off_time_sec: number;
+  repeat_interval_sec: number;
+  pulse_duration_sec: number;
+}
+
+export interface DeviceActionSheet {
+  device_id: string;
+  location_id?: string;
+  action_sheet_version?: number;
+  current_action_sheet_version?: number;
+  version?: number;
+  red_all_off_override?: boolean;
+  actions: AlertActionItem[];
+  pending_sync?: boolean;
+  last_sync_at?: string | null;
+  last_sync_status?: string | null;
+  last_sync_message?: string | null;
+  last_sync_source?: string | null;
+  last_reported_action_sheet_version?: number | null;
+  device_reported_at?: string | null;
+  device_reported?: Record<string, unknown> | null;
+  pending_update_id?: string | null;
+  state?: string;
+  updated_at?: string | null;
+  updated_by?: string | null;
+}
+
 // ── Telemetry ─────────────────────────────────────────────────────────────────
 export interface RtuStatus {
   online: boolean;
@@ -107,6 +141,9 @@ export interface Telemetry {
   sensor_mode?: string;
   sensor_confirmation_wait_sec?: number;
   current_config_version?: number;
+  current_action_sheet_version?: number;
+  action_sheet_sync_source?: string;
+  action_sheet_last_sync_at?: string;
   flood_state?: string;
   l1_active?: boolean;
   l2_active?: boolean;

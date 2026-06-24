@@ -4,11 +4,13 @@ const deviceRepository = require('../repositories/deviceRepository');
 const locationRepository = require('../repositories/locationRepository');
 const commandRepository = require('../repositories/commandRepository');
 const deviceConfigRepository = require('../repositories/deviceConfigRepository');
+const deviceActionSheetRepository = require('../repositories/deviceActionSheetRepository');
 const { createTelemetryRecord } = require('../models/telemetryModel');
 const { createEventRecord } = require('../models/eventModel');
 const incidentService = require('./incidentService');
 const notificationService = require('./notificationService');
 const auditService = require('./auditService');
+const alertActionLogService = require('./alertActionLogService');
 const { publishRealtime } = require('./realtimeBus');
 const { notFound } = require('../utils/errors');
 const { toIso } = require('../utils/time');
@@ -17,6 +19,7 @@ const {
   sensorLogicModeFromConfig,
   sensorModeFromConfig
 } = require('./deviceConfigService');
+const { syncReportedActionSheet } = require('./deviceActionSheetService');
 
 function shapeConfig(config = {}) {
   return {
@@ -59,6 +62,9 @@ function shapeTelemetry(record) {
     sensor_mode: record.sensor_mode || 'BOTH_ACTIVE',
     sensor_confirmation_wait_sec: record.sensor_confirmation_wait_sec ?? record.mismatch_duration_seconds ?? null,
     current_config_version: record.current_config_version ?? null,
+    current_action_sheet_version: record.current_action_sheet_version ?? null,
+    action_sheet_sync_source: record.action_sheet_sync_source || null,
+    action_sheet_last_sync_at: record.action_sheet_last_sync_at || null,
     alert_level: record.alert_level || 'NORMAL',
     alert_status: record.alert_status || 'IDLE',
     alert_source: record.alert_source || 'NONE',
@@ -101,6 +107,29 @@ function notifyForAlert(event, alert) {
       event
     );
   }
+}
+
+function maybeWriteAlertActionLog(event) {
+  const type = String(event.event_type || '').toUpperCase();
+  if (!['ALERT_ACTION_APPLIED', 'ALERT_ACTION_ESCALATED', 'ALERT_ACTION_CLEARED'].includes(type)) {
+    return null;
+  }
+  const relayActions = event.details?.relay_actions_applied || [];
+  const status = String(event.alert_status || (type === 'ALERT_ACTION_CLEARED' ? 'CLEARED' : (type === 'ALERT_ACTION_ESCALATED' ? 'ESCALATED' : 'CONFIRMED'))).toUpperCase();
+  return alertActionLogService.createAlertActionLog({
+    locationId: event.location_id,
+    deviceId: event.device_id,
+    hardwareId: event.hardware_id || null,
+    alertLevel: event.alert_level,
+    alertStatus: status,
+    waterLevelMm: event.water_level_mm,
+    sensorSource: event.details?.sensor_source || event.alert_source,
+    actionSheetVersion: event.details?.action_sheet_version || event.action_sheet_version || null,
+    relayActionsApplied: relayActions,
+    triggeredBy: event.details?.triggered_by || event.source || 'AUTO',
+    timestamp: event.timestamp,
+    userId: event.details?.user_id || null
+  });
 }
 
 function writeSensorModeAudit({ locationId, deviceId, oldMode, newMode, source, currentConfigVersion }) {
@@ -392,6 +421,9 @@ function ingestTelemetry(payload) {
     last_alert_reason: record.alert_reason,
     last_pending_alert_level: record.pending_alert_level,
     last_current_config_version: record.current_config_version,
+    last_current_action_sheet_version: record.current_action_sheet_version,
+    last_action_sheet_sync_source: record.action_sheet_sync_source || null,
+    last_action_sheet_last_sync_at: record.action_sheet_last_sync_at || null,
     hardware_id: record.hardware_id || device.hardware_id || null,
     last_reported_device_id: deviceRepository.normalizeDeviceId(payload.device_id || record.device_id),
     mqtt_route_id: record.mqtt_route_id || device.mqtt_route_id || device._id,
@@ -404,6 +436,16 @@ function ingestTelemetry(payload) {
       locationId: record.location_id,
       reportedConfig: record.config,
       reportedVersion: record.current_config_version,
+      reportedAt: record.timestamp,
+      source: 'telemetry'
+    });
+  }
+
+  if (record.current_action_sheet_version) {
+    syncReportedActionSheet({
+      deviceId: record.device_id,
+      locationId: record.location_id,
+      reportedVersion: record.current_action_sheet_version,
       reportedAt: record.timestamp,
       source: 'telemetry'
     });
@@ -453,7 +495,8 @@ function ingestEvent(payload) {
     last_alert_level: alert.alertLevel,
     last_alert_status: alert.alertStatus,
     last_alert_source: alert.alertSource,
-    last_alert_reason: alert.reason
+    last_alert_reason: alert.reason,
+    last_current_action_sheet_version: Number(event.current_action_sheet_version || event.details?.action_sheet_version || 0) || null
   });
 
   let incident = null;
@@ -501,6 +544,22 @@ function ingestEvent(payload) {
       }
     });
   }
+
+  if (event.event_type === 'DEVICE_ACTION_SHEET_REPORT') {
+    syncReportedActionSheet({
+      deviceId: event.device_id,
+      locationId: event.location_id,
+      reportedSheet: event.details?.action_sheet || null,
+      reportedVersion: event.current_action_sheet_version || event.details?.action_sheet_version || event.action_sheet_version || null,
+      reportedAt: event.timestamp,
+      source: event.source || event.details?.source || 'device_report',
+      status: event.details?.status || event.status || 'SUCCESS',
+      reason: event.reason || event.details?.reason || null,
+      updateId: event.details?.update_id || event.update_id || null
+    });
+  }
+
+  maybeWriteAlertActionLog(event);
 
   if (event.event_type === 'LOCAL_CONFIG_CHANGED') {
     auditService.writeAuditLog({
@@ -691,6 +750,7 @@ function getLocationDashboard(locationId) {
   const latest = shapeTelemetry(telemetryItems[0] || null);
   const heartbeat = heartbeatItems[0] || null;
   const savedConfig = device ? deviceConfigRepository.getCurrentByDevice(device._id) : null;
+  const savedActionSheet = device ? deviceActionSheetRepository.getCurrentByDevice(device._id) : null;
   const config = savedConfig
     ? shapeConfig(savedConfig)
     : shapeConfig({
@@ -750,8 +810,10 @@ function getLocationDashboard(locationId) {
       alert_status: device.last_alert_status || null,
       alert_reason: device.last_alert_reason || null,
       sensor_mode: device.last_sensor_mode || null,
-      current_config_version: device.last_current_config_version || null
+      current_config_version: device.last_current_config_version || null,
+      current_action_sheet_version: device.last_current_action_sheet_version || null
     } : null,
+    action_sheet: savedActionSheet ? savedActionSheet : null,
     latest,
     heartbeat: heartbeat ? {
       received_at: heartbeat.timestamp,

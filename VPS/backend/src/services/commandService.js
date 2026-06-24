@@ -7,6 +7,9 @@ const { assertPermission } = require('./rbacService');
 const auditService = require('./auditService');
 const incidentService = require('./incidentService');
 const notificationService = require('./notificationService');
+const { publishDeviceMessage } = require('../mqtt/outboundPublisher');
+
+const RELAY_COIL = { siren: 0, flash: 1, voice: 2 };
 
 function assertUserLocationAccess(user, locationId) {
   if (!user) {
@@ -88,32 +91,50 @@ function issueCommand({ command, permissionName, locationId, deviceId, payload, 
   return issued;
 }
 
-function issueMuteAlarm({ locationId, deviceId, authContext, ipAddress }) {
-  return issueCommand({
+function issueMuteAlarm({ locationId, deviceId, rtu = 'both', authContext, ipAddress }) {
+  const buses = rtu === 'left' ? ['left'] : rtu === 'right' ? ['right'] : ['left', 'right'];
+  const cmd = issueCommand({
     command: 'MUTE_ALARM',
     permissionName: 'MUTE_ALARM',
     locationId,
     deviceId,
-    payload: {},
+    payload: { rtu, buses },
     authContext,
     ipAddress
   });
+  buses.forEach((bus) => {
+    publishDeviceMessage(cmd.device_id, 'command', { cmd: 'relay_all_off', bus });
+  });
+  return cmd;
 }
 
-function issueDryRun({ locationId, deviceId, outputs, authContext, ipAddress }) {
-  const payload = {
-    outputs: Array.isArray(outputs) && outputs.length > 0 ? outputs : ['siren', 'beacon', 'voice']
-  };
+function issueDryRun({ locationId, deviceId, rtu = 'right', relays, authContext, ipAddress }) {
+  const bus = rtu === 'left' ? 'left' : 'right';
+  const selectedRelays = Array.isArray(relays) && relays.length > 0
+    ? relays.filter((r) => RELAY_COIL[r] !== undefined)
+    : ['siren', 'flash', 'voice'];
+  const coils = selectedRelays.map((r) => RELAY_COIL[r]);
 
-  return issueCommand({
+  const cmd = issueCommand({
     command: 'DRY_RUN',
     permissionName: 'DRY_RUN',
     locationId,
     deviceId,
-    payload,
+    payload: { rtu: bus, relays: selectedRelays, coils },
     authContext,
     ipAddress
   });
+
+  coils.forEach((coil) => {
+    publishDeviceMessage(cmd.device_id, 'command', { cmd: 'relay', bus, coil, state: true });
+  });
+  setTimeout(() => {
+    coils.forEach((coil) => {
+      publishDeviceMessage(cmd.device_id, 'command', { cmd: 'relay', bus, coil, state: false });
+    });
+  }, 5000);
+
+  return cmd;
 }
 
 function issueForceClear({ locationId, deviceId, reason, authContext, ipAddress }) {

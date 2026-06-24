@@ -17,6 +17,13 @@
   box-sizing: border-box;
 }
 
+svg {
+  display: inline-block;
+  overflow: hidden;
+  flex-shrink: 0;
+  vertical-align: middle;
+}
+
 body {
   margin: 0;
   font-family: "Segoe UI", Tahoma, Arial, sans-serif;

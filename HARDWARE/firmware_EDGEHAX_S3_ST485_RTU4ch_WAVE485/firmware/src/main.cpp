@@ -4,6 +4,8 @@
 #include <WiFi.h>
 #include <esp_mac.h>
 
+#include "alert_action_runner.h"
+#include "alert_action_sheet.h"
 #include "ble_provisioning.h"
 #include "config_manager.h"
 #include "confirmation_inputs.h"
@@ -22,6 +24,7 @@
 #include "status_led.h"
 #include "telemetry_manager.h"
 #include "voltage_monitor.h"
+#include "vps_action_sheet_hook.h"
 #include "vps_ota_hook.h"
 #include "wifi_manager.h"
 
@@ -58,7 +61,7 @@ static bool gApReopenedManually = false;
 
 struct PendingMqttMessage {
     char topic[96]{};
-    char payload[1536]{};
+    char payload[3072]{};
 };
 
 static PendingMqttMessage gPendingMqttQueue[6];
@@ -82,6 +85,10 @@ static void onMqttCommand(const char* topic, const char* payload);
 static void checkDailyReboot();
 static bool enqueuePendingPublish(const char* topic, const char* payload);
 static bool flushOnePendingPublish();
+static void enqueueActionSheetReportEvent(const char* source,
+                                          const char* updateId = nullptr,
+                                          const char* status = "SUCCESS",
+                                          const char* reason = nullptr);
 static void buildHardwareId(char* out, size_t outSize);
 
 // ── setup ─────────────────────────────────────────────────────────────────────
@@ -100,6 +107,7 @@ void setup() {
 
     // Core modules
     ConfigManager::getInstance().begin();
+    AlertActionSheetManager::getInstance().begin();
     DypSensor::getInstance().begin();
     ConfirmationInputs::getInstance().begin();
     FloodStateMachine::getInstance().begin();
@@ -132,6 +140,7 @@ void setup() {
         }
     }
     Serial.printf("[MAIN] device_id=%s hardware_id=%s\n", gDeviceId, gHardwareId);
+    AlertActionRunner::getInstance().begin(gDeviceId, gHardwareId);
 
 #ifdef SENSOR_TEST_MODE
     Serial.println("[MAIN] *** SENSOR TEST MODE — WiFi/MQTT/BLE/OTA disabled ***");
@@ -169,6 +178,7 @@ void setup() {
     HttpFallback::getInstance().begin(gDeviceId, gHardwareId, gDeviceToken);
     TelemetryManager::getInstance().begin(gDeviceId, gHardwareId);
     OtaManager::getInstance().begin();
+    VpsActionSheetHook::getInstance().begin(gDeviceId, gHardwareId, gDeviceToken);
     VpsOtaHook::getInstance().begin(gDeviceId, gHardwareId, gDeviceToken);
 #endif  // SENSOR_TEST_MODE
 
@@ -282,6 +292,7 @@ void loop() {
 
     // ── OTA ────────────────────────────────────────────────────────────────
     OtaManager::getInstance().loop();
+    VpsActionSheetHook::getInstance().loop();
     VpsOtaHook::getInstance().loop();
 
     // ── CONFIG button for AP maintenance ──────────────────────────────────
@@ -298,24 +309,7 @@ void loop() {
 
 // ── Output coordinator ────────────────────────────────────────────────────────
 static void updateOutputsFromState() {
-    const auto& snap = FloodStateMachine::getInstance().snapshot();
-    const FloodState fs = snap.state;
-    auto& out = OutputController::getInstance();
-    auto& rem = RemoteBoxManager::getInstance();
-
-    const bool dangerActive = isDanger(fs);
-    const bool alertActive  = isAlertOrDanger(fs);
-
-    out.setSiren(dangerActive);
-    out.setFlash(alertActive);
-    // Voice/future relay: not activated automatically
-
-    // Command remote boxes
-    if (alertActive) {
-        rem.setSirenFlash(dangerActive, true);
-    } else {
-        rem.setSirenFlash(false, false);
-    }
+    AlertActionRunner::getInstance().loop();
 }
 
 // ── MQTT command handler ──────────────────────────────────────────────────────
@@ -364,6 +358,50 @@ static bool flushOnePendingPublish() {
     gPendingMqttHead = (uint8_t)((gPendingMqttHead + 1U) % queueLen);
     gPendingMqttCount--;
     return true;
+}
+
+static void enqueueActionSheetReportEvent(const char* source,
+                                          const char* updateId,
+                                          const char* status,
+                                          const char* reason) {
+    char sheetJson[2048];
+    if (!AlertActionSheetManager::getInstance().buildJson(sheetJson, sizeof(sheetJson))) {
+        return;
+    }
+
+    StaticJsonDocument<3072> doc;
+    doc["device_id"] = gDeviceId;
+    doc["hardware_id"] = gHardwareId;
+    doc["event_type"] = "DEVICE_ACTION_SHEET_REPORT";
+    doc["action_sheet_version"] = AlertActionSheetManager::getInstance().version();
+    doc["source"] = source;
+    doc["status"] = status;
+    if (updateId && updateId[0]) {
+        doc["update_id"] = updateId;
+    }
+    if (reason && reason[0]) {
+        doc["reason"] = reason;
+    }
+
+    JsonObject details = doc.createNestedObject("details");
+    details["action_sheet_version"] = AlertActionSheetManager::getInstance().version();
+    details["source"] = source;
+    details["status"] = status;
+    if (updateId && updateId[0]) {
+        details["update_id"] = updateId;
+    }
+    if (reason && reason[0]) {
+        details["reason"] = reason;
+    }
+
+    StaticJsonDocument<2048> sheetDoc;
+    if (deserializeJson(sheetDoc, sheetJson) == DeserializationError::Ok) {
+        details["action_sheet"] = sheetDoc.as<JsonVariantConst>();
+    }
+
+    char payload[3072];
+    serializeJson(doc, payload, sizeof(payload));
+    enqueuePendingPublish(MqttManager::getInstance().eventTopic().c_str(), payload);
 }
 
 static void onMqttCommand(const char* topic, const char* payload) {
@@ -424,6 +462,29 @@ static void onMqttCommand(const char* topic, const char* payload) {
         Serial.println("[CMD] Remote reboot — will restart after PUBACK");
         gPendingReboot = true;
         success = true;
+    }
+    if (cmd == "action_sheet_update") {
+        char sheetBuf[2048];
+        size_t n = 0;
+        const char* updateId = doc["update_id"] | doc["command_id"] | "";
+        const char* source = doc["source"] | "VPS_MQTT";
+        const char* syncAt = doc["updated_at"] | doc["last_sync_at"] | "";
+        const bool allowRedAllOffOverride =
+            doc["vendor_super_admin_override"] | doc["allow_red_all_off_override"] | false;
+        if (!doc["action_sheet"].isNull()) {
+            n = serializeJson(doc["action_sheet"], sheetBuf, sizeof(sheetBuf));
+        } else {
+            n = serializeJson(doc, sheetBuf, sizeof(sheetBuf));
+        }
+        if (n == 0) {
+            reason = "action_sheet_payload_empty";
+        } else if (AlertActionSheetManager::getInstance().applyJson(
+                       sheetBuf, reason, source, syncAt, false, allowRedAllOffOverride)) {
+            success = true;
+            enqueueActionSheetReportEvent(source, updateId, "SUCCESS", nullptr);
+        } else {
+            enqueueActionSheetReportEvent(source, updateId, "REJECTED", reason.c_str());
+        }
     }
     if (cmd == "ota") {
         const char* url = doc["url"] | "";

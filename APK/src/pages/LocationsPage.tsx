@@ -17,7 +17,7 @@ export default function LocationsPage() {
   const navigate = useNavigate();
   const [loading, setLoading] = useState(false);
 
-  // Ã¢â€â‚¬Ã¢â€â‚¬ Add location Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬
+  // Ã¢-â‚¬Ã¢-â‚¬ Add location Ã¢-â‚¬Ã¢-â‚¬Ã¢-â‚¬Ã¢-â‚¬Ã¢-â‚¬Ã¢-â‚¬Ã¢-â‚¬Ã¢-â‚¬Ã¢-â‚¬Ã¢-â‚¬Ã¢-â‚¬Ã¢-â‚¬Ã¢-â‚¬Ã¢-â‚¬Ã¢-â‚¬Ã¢-â‚¬Ã¢-â‚¬Ã¢-â‚¬Ã¢-â‚¬Ã¢-â‚¬Ã¢-â‚¬Ã¢-â‚¬Ã¢-â‚¬Ã¢-â‚¬Ã¢-â‚¬Ã¢-â‚¬Ã¢-â‚¬Ã¢-â‚¬Ã¢-â‚¬Ã¢-â‚¬Ã¢-â‚¬Ã¢-â‚¬Ã¢-â‚¬Ã¢-â‚¬Ã¢-â‚¬Ã¢-â‚¬Ã¢-â‚¬Ã¢-â‚¬Ã¢-â‚¬Ã¢-â‚¬Ã¢-â‚¬Ã¢-â‚¬Ã¢-â‚¬Ã¢-â‚¬Ã¢-â‚¬Ã¢-â‚¬Ã¢-â‚¬Ã¢-â‚¬Ã¢-â‚¬Ã¢-â‚¬Ã¢-â‚¬Ã¢-â‚¬Ã¢-â‚¬Ã¢-â‚¬Ã¢-â‚¬Ã¢-â‚¬Ã¢-â‚¬Ã¢-â‚¬Ã¢-â‚¬Ã¢-â‚¬
   const [addId, setAddId] = useState('');
   const [addName, setAddName] = useState('');
   const [addDesc, setAddDesc] = useState('');
@@ -25,7 +25,7 @@ export default function LocationsPage() {
   const [addDept, setAddDept] = useState('');
   const [addStatus, setAddStatus] = useState('');
 
-  // Ã¢â€â‚¬Ã¢â€â‚¬ Register device Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬
+  // Ã¢-â‚¬Ã¢-â‚¬ Register device Ã¢-â‚¬Ã¢-â‚¬Ã¢-â‚¬Ã¢-â‚¬Ã¢-â‚¬Ã¢-â‚¬Ã¢-â‚¬Ã¢-â‚¬Ã¢-â‚¬Ã¢-â‚¬Ã¢-â‚¬Ã¢-â‚¬Ã¢-â‚¬Ã¢-â‚¬Ã¢-â‚¬Ã¢-â‚¬Ã¢-â‚¬Ã¢-â‚¬Ã¢-â‚¬Ã¢-â‚¬Ã¢-â‚¬Ã¢-â‚¬Ã¢-â‚¬Ã¢-â‚¬Ã¢-â‚¬Ã¢-â‚¬Ã¢-â‚¬Ã¢-â‚¬Ã¢-â‚¬Ã¢-â‚¬Ã¢-â‚¬Ã¢-â‚¬Ã¢-â‚¬Ã¢-â‚¬Ã¢-â‚¬Ã¢-â‚¬Ã¢-â‚¬Ã¢-â‚¬Ã¢-â‚¬Ã¢-â‚¬Ã¢-â‚¬Ã¢-â‚¬Ã¢-â‚¬Ã¢-â‚¬Ã¢-â‚¬Ã¢-â‚¬Ã¢-â‚¬Ã¢-â‚¬Ã¢-â‚¬Ã¢-â‚¬Ã¢-â‚¬Ã¢-â‚¬Ã¢-â‚¬Ã¢-â‚¬Ã¢-â‚¬Ã¢-â‚¬Ã¢-â‚¬
   const [devAddId, setDevAddId] = useState('');
   const [devAddLoc, setDevAddLoc] = useState('');
   const [devAddStatus, setDevAddStatus] = useState('');
@@ -36,7 +36,7 @@ export default function LocationsPage() {
     location_id?: string;
   }[]>([]);
 
-  // Ã¢â€â‚¬Ã¢â€â‚¬ Edit location Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬
+  // Ã¢-â‚¬Ã¢-â‚¬ Edit location Ã¢-â‚¬Ã¢-â‚¬Ã¢-â‚¬Ã¢-â‚¬Ã¢-â‚¬Ã¢-â‚¬Ã¢-â‚¬Ã¢-â‚¬Ã¢-â‚¬Ã¢-â‚¬Ã¢-â‚¬Ã¢-â‚¬Ã¢-â‚¬Ã¢-â‚¬Ã¢-â‚¬Ã¢-â‚¬Ã¢-â‚¬Ã¢-â‚¬Ã¢-â‚¬Ã¢-â‚¬Ã¢-â‚¬Ã¢-â‚¬Ã¢-â‚¬Ã¢-â‚¬Ã¢-â‚¬Ã¢-â‚¬Ã¢-â‚¬Ã¢-â‚¬Ã¢-â‚¬Ã¢-â‚¬Ã¢-â‚¬Ã¢-â‚¬Ã¢-â‚¬Ã¢-â‚¬Ã¢-â‚¬Ã¢-â‚¬Ã¢-â‚¬Ã¢-â‚¬Ã¢-â‚¬Ã¢-â‚¬Ã¢-â‚¬Ã¢-â‚¬Ã¢-â‚¬Ã¢-â‚¬Ã¢-â‚¬Ã¢-â‚¬Ã¢-â‚¬Ã¢-â‚¬Ã¢-â‚¬Ã¢-â‚¬Ã¢-â‚¬Ã¢-â‚¬Ã¢-â‚¬Ã¢-â‚¬Ã¢-â‚¬Ã¢-â‚¬Ã¢-â‚¬Ã¢-â‚¬Ã¢-â‚¬
   const [editingId, setEditingId] = useState<string | null>(null);
   const [editLocId, setEditLocId] = useState('');
   const [editName, setEditName] = useState('');
@@ -131,7 +131,7 @@ export default function LocationsPage() {
 
   async function handleAddLocation() {
     if (!addId.trim() || !addName.trim()) { setAddStatus('Location ID and Name are required.'); return; }
-    setAddStatus('AddingÃ¢â‚¬Â¦');
+    setAddStatus('Adding...');
     try {
       await addLocation({ location_id: addId.trim(), location_name: addName.trim(), description: addDesc.trim() || undefined, mount_height_mm: addMount ? Number(addMount) : undefined, department_id: addDept.trim() || undefined });
       setAddStatus('Location added.');
@@ -148,10 +148,10 @@ export default function LocationsPage() {
     const id = devAddId.trim().toUpperCase();
     const loc = devAddLoc.trim();
     if (!id) { setDevAddStatus('Device ID required.'); return; }
-    setDevAddStatus('RegisteringÃ¢â‚¬Â¦');
+    setDevAddStatus('Registering...');
     try {
       if (loc) {
-        // bindDevice auto-creates if new, or rebinds if already registered Ã¢â‚¬â€ no "already exists" error
+        // bindDevice auto-creates if new, or rebinds if already registered  - no "already exists" error
         await bindDevice(loc, id);
         setDevAddStatus(`Device ${id} linked to ${loc}.`);
       } else {
@@ -189,7 +189,7 @@ export default function LocationsPage() {
           </div>
         </div>
 
-        {loading && <div className="empty">Loading locationsÃ¢â‚¬Â¦</div>}
+        {loading && <div className="empty">Loading locations...</div>}
 
         <div className="list" id="location-list">
           {!loading && locations.length === 0 && (
@@ -275,7 +275,7 @@ export default function LocationsPage() {
                     />
                     {editLocId.trim().toUpperCase() !== locId && (
                       <div style={{ fontSize: 11, color: '#d97706', marginBottom: 4, padding: '4px 8px', background: '#fffbeb', borderRadius: 6, border: '1px solid #fcd34d' }}>
-                        ID change: old location will be deleted and recreated as {editLocId.trim().toUpperCase() || 'Ã¢â‚¬Â¦'}
+                        ID change: old location will be deleted and recreated as {editLocId.trim().toUpperCase() || '...'}
                       </div>
                     )}
                     <input
@@ -308,7 +308,7 @@ export default function LocationsPage() {
                         disabled={editSaving}
                       >
                         <FiCheck size={12} style={{ marginRight: 4 }} />
-                        {editSaving ? 'SavingÃ¢â‚¬Â¦' : 'Save'}
+                        {editSaving ? 'Saving...' : 'Save'}
                       </button>
                       <button
                         className="ghost-btn"
@@ -351,7 +351,7 @@ export default function LocationsPage() {
               return unassigned.length > 0 ? (
                 <div style={{ marginBottom: 10 }}>
                   <div style={{ fontSize: 11, fontWeight: 700, color: '#15803d', textTransform: 'uppercase', marginBottom: 4 }}>
-                    Cloud Devices Ã¢â‚¬â€ Not Yet Assigned
+                    Cloud Devices  - Not Yet Assigned
                   </div>
                   {unassigned.map((d) => (
                     <button
@@ -371,7 +371,7 @@ export default function LocationsPage() {
             <div className="admin-2col">
               <input className="inp" value={devAddId} onChange={(e) => setDevAddId(e.target.value)} placeholder="Device ID (e.g. RUB044-CTRL01)" />
               <select className="inp" value={devAddLoc} onChange={(e) => setDevAddLoc(e.target.value)}>
-                <option value="">No location Ã¢â‚¬â€ bind later</option>
+                <option value="">No location  - bind later</option>
                 {locations.map((l) => <option key={l.id} value={l.location_id || l.id}>{l.location_name}</option>)}
               </select>
             </div>

@@ -207,18 +207,18 @@ bool pollGenericRelayBox(RtuBus bus, RemoteBoxStatus& status, uint8_t slaveId) {
     status.batteryVoltage = 0.0f;
     status.sirenOn = (coils[0] & 0x01U) != 0;
     status.flashOn = (coils[0] & 0x02U) != 0;
+    status.voiceOn = genericRelayCountForModel(model) >= 4 ? ((coils[0] & 0x04U) != 0) : false;
     status.barrierOn = genericRelayCountForModel(model) >= 4 ? ((coils[0] & 0x08U) != 0) : false;
     status.lastAckMs = millis();
     return true;
 }
 
-bool writeGenericRelayOutputs(RtuBus bus, uint8_t slaveId, bool sirenOn, bool flashOn) {
+bool writeGenericRelayOutputs(RtuBus bus, uint8_t slaveId, bool sirenOn, bool flashOn, bool voiceOn) {
     const uint8_t model = genericRelayModelForBus(bus);
     const uint8_t relayCount = genericRelayCountForModel(model);
     const uint16_t firstCoil = genericRelayFirstCoilForModel(model);
     const uint16_t primaryOnValue = genericRelayPrimaryOnValueForModel(model);
     const uint16_t alternateOnValue = genericRelayAlternateOnValueForModel(model);
-    const bool voiceOn = sirenOn;  // relay 3 follows danger/siren state
     const bool spareOn = false;    // relay 4 reserved for future barrier use
 
     if (!writeGenericRelayCoil(bus, slaveId, firstCoil + 0, sirenOn, primaryOnValue, alternateOnValue)) return false;
@@ -250,7 +250,7 @@ void RemoteBoxManager::loop() {
     if (!cfg.leftRemoteEnabled && !cfg.rightRemoteEnabled) return;
 
     const uint32_t now = millis();
-    if (autoControlSuspended(now)) return;
+    const bool suspended = autoControlSuspended(now);
 
 #ifdef ST485_RTU4CH_WAVE485_MODE
     if (cfg.leftRemoteEnabled)
@@ -271,29 +271,47 @@ void RemoteBoxManager::loop() {
     const FloodState fs = FloodStateMachine::getInstance().snapshot().state;
     _pollIntervalMs = isAlertOrDanger(fs) ? 5000UL : 30000UL;
 
+    if (!suspended && _autoDesiredValid) {
+        const bool changed = !_lastSentValid
+                          || _desiredSiren != _lastSentSiren
+                          || _desiredFlash != _lastSentFlash
+                          || _desiredVoice != _lastSentVoice;
+        if (changed && (now - _lastCommandMs) >= 200UL) {
+            if (cfg.leftRemoteEnabled) {
+                sendCommands(RtuBus::LEFT, leftSlaveId, _desiredSiren, _desiredFlash, _desiredVoice);
+            }
+            if (cfg.rightRemoteEnabled) {
+                sendCommands(RtuBus::RIGHT, rightSlaveId, _desiredSiren, _desiredFlash, _desiredVoice);
+            }
+            _lastSentValid = true;
+            _lastSentSiren = _desiredSiren;
+            _lastSentFlash = _desiredFlash;
+            _lastSentVoice = _desiredVoice;
+            _lastCommandMs = now;
+        }
+    }
+
     if ((now - _lastPollMs) < _pollIntervalMs) return;
     _lastPollMs = now;
 
     if (cfg.leftRemoteEnabled) {
         pollBox(RtuBus::LEFT, _left, leftSlaveId);
-        if (_pendingSirenFlash) {
-            sendCommands(RtuBus::LEFT, leftSlaveId, _pendingSiren, _pendingFlash);
-        }
     }
     if (cfg.rightRemoteEnabled) {
         pollBox(RtuBus::RIGHT, _right, rightSlaveId);
-        if (_pendingSirenFlash) {
-            sendCommands(RtuBus::RIGHT, rightSlaveId, _pendingSiren, _pendingFlash);
-        }
     }
-    _pendingSirenFlash = false;
+}
+
+void RemoteBoxManager::setAutoOutputs(bool sirenOn, bool flashOn, bool voiceOn) {
+    if (autoControlSuspended(millis())) return;
+    _autoDesiredValid = true;
+    _desiredSiren = sirenOn;
+    _desiredFlash = flashOn;
+    _desiredVoice = voiceOn;
 }
 
 void RemoteBoxManager::setSirenFlash(bool sirenOn, bool flashOn) {
-    if (autoControlSuspended(millis())) return;
-    _pendingSirenFlash = true;
-    _pendingSiren      = sirenOn;
-    _pendingFlash      = flashOn;
+    setAutoOutputs(sirenOn, flashOn, sirenOn);
 }
 
 void RemoteBoxManager::suspendAutoControl(uint32_t durationMs) {
@@ -323,7 +341,7 @@ bool RemoteBoxManager::manualSetSirenFlash(RtuBus bus, bool sirenOn, bool flashO
 #elif defined(GENERIC_REMOTE_RELAY_MODE)
     const uint8_t slaveId = genericRelaySlaveIdForBus(bus);
     auto& status = (bus == RtuBus::LEFT) ? _left : _right;
-    if (!writeGenericRelayOutputs(bus, slaveId, sirenOn, flashOn)) {
+    if (!writeGenericRelayOutputs(bus, slaveId, sirenOn, flashOn, sirenOn)) {
         status.online = false;
         return false;
     }
@@ -494,12 +512,11 @@ void RemoteBoxManager::pollBox(RtuBus bus, RemoteBoxStatus& status, uint8_t slav
 }
 
 void RemoteBoxManager::sendCommands(RtuBus bus, uint8_t slaveId,
-                                    bool sirenOn, bool flashOn)
+                                    bool sirenOn, bool flashOn, bool voiceOn)
 {
 #ifdef ST485_RTU4CH_WAVE485_MODE
     auto& status = (bus == RtuBus::LEFT) ? _left : _right;
     auto& cs     = (bus == RtuBus::LEFT) ? _leftConfirm : _rightConfirm;
-    const bool voiceOn = sirenOn;  // R3 (voice) follows siren/danger state
     if (!writeST485Outputs(bus, slaveId, sirenOn, flashOn, voiceOn, false)) {
         status.online = false;
         return;
@@ -514,7 +531,7 @@ void RemoteBoxManager::sendCommands(RtuBus bus, uint8_t slaveId,
     return;
 #elif defined(GENERIC_REMOTE_RELAY_MODE)
     auto& status = (bus == RtuBus::LEFT) ? _left : _right;
-    if (!writeGenericRelayOutputs(bus, slaveId, sirenOn, flashOn)) {
+    if (!writeGenericRelayOutputs(bus, slaveId, sirenOn, flashOn, voiceOn)) {
         status.online = false;
         Serial.printf("[RTU] Generic relay write failed on %s bus\n",
                       bus == RtuBus::LEFT ? "left" : "right");

@@ -85,12 +85,12 @@ function RtuCard({ side, rtu, hasData }: { side: string; rtu?: RtuStatus; hasDat
         </span>
       </div>
       <div className="relay-row rtu-relay-row">
-        {(['siren', 'flash', 'voice', 'boom'] as const).map((relayName) => {
+        {(['siren', 'flash', 'voice'] as const).map((relayName) => {
           const on = hasData && !!rtu?.[relayName];
           return (
             <div key={relayName} className={`relay-item${on ? ' relay-on' : ''}`}>
               <div className="relay-led" />
-              <div className="relay-label">{relayName === 'boom' ? 'Boom/Barrier' : relayName.charAt(0).toUpperCase() + relayName.slice(1)}</div>
+              <div className="relay-label">{relayName.charAt(0).toUpperCase() + relayName.slice(1)}</div>
               <div className="relay-status">{hasData ? (on ? 'ON' : 'OFF') : '--'}</div>
             </div>
           );
@@ -108,6 +108,7 @@ export default function DashboardPage() {
   const [elapsed, setElapsed] = useState('--:--:--');
   const [nowStr, setNowStr] = useState('');
   const [apiOk, setApiOk] = useState<boolean | null>(null);
+  const [sysExpanded, setSysExpanded] = useState(false);
   const timerRef = useRef<ReturnType<typeof setInterval> | null>(null);
   const elapsedRef = useRef<ReturnType<typeof setInterval> | null>(null);
   const clockRef = useRef<ReturnType<typeof setInterval> | null>(null);
@@ -181,10 +182,10 @@ export default function DashboardPage() {
   const incident = data?.incident;
   const mountHeight = Number(config?.sensor_mount_height_mm || loc?.mount_height_mm || 1200);
   const waterLevel = Number(latest?.water_level_mm ?? 0);
-  const floodState = latest?.flood_state ?? (data?.device?.status === 'ONLINE' ? 'CLEAR' : 'OFFLINE');
+  const devOnline = (data?.device?.status || '').toUpperCase() === 'ONLINE';
+  const floodState = latest?.flood_state ?? (devOnline ? 'CLEAR' : 'OFFLINE');
   const meta = floodMeta(floodState);
   const hasData = !!latest;
-  const devOnline = (data?.device?.status || '').toUpperCase() === 'ONLINE';
 
   const alertMm = Number(config?.alert_level_mm ?? 200);
   const dangerMm = Number(config?.danger_level_mm ?? 500);
@@ -241,26 +242,39 @@ export default function DashboardPage() {
         </div>
 
         <div style={{ background: '#f8fafc', border: '1px solid #e2e8f0', borderRadius: 10, padding: '10px 12px', marginBottom: 10 }}>
-          <div style={{ fontSize: 10, fontWeight: 800, textTransform: 'uppercase', color: '#475569', marginBottom: 8, letterSpacing: '0.05em' }}>System Status</div>
-          {([
-            { icon: <FiRadio size={12} />, label: 'Device ID', value: loc?.device_id ?? '--', ok: !!loc?.device_id },
-            { icon: <FiRadio size={12} />, label: 'Hardware ID', value: hardwareId || '--', ok: hardwareId !== '--' },
-            { icon: <FiActivity size={12} />, label: 'Device Status', value: meta.label, ok: meta.cls !== 'off', cls: meta.cls },
-            { icon: <FiWifi size={12} />, label: 'Device Online', value: devOnline ? 'Online' : 'Offline', ok: devOnline },
-            { icon: <FiWifi size={12} />, label: 'Wi-Fi RSSI', value: hasData ? `${latest?.rssi ?? '--'} dBm` : '--', ok: hasData && (latest?.rssi ?? 0) > -75 },
-            { icon: <FiServer size={12} />, label: 'Local IP', value: deviceLocalIp, ok: deviceLocalIp !== '--' },
-            { icon: <FiServer size={12} />, label: 'API Server', value: apiServerValue || '--', ok: apiServerValue !== '--' },
-            { icon: <FiCloud size={12} />, label: 'Cloud API', value: apiOk == null ? 'Checking...' : apiOk ? 'UP' : 'DOWN', ok: apiOk === true },
-            { icon: <FiCloud size={12} />, label: 'MQTT Connected', value: mqttConnected ? 'Connected' : 'Disconnected', ok: !!mqttConnected },
-            { icon: <FiCloud size={12} />, label: 'MQTT Route', value: mqttRouteId || '--', ok: mqttRouteId !== '--' }
-          ] as { icon: React.ReactNode; label: string; value: string; ok: boolean; cls?: string }[]).map(({ icon, label, value, ok, cls }) => (
-            <div key={label} style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', paddingBottom: 5, marginBottom: 5, borderBottom: '1px solid #f1f5f9' }}>
-              <div style={{ display: 'flex', alignItems: 'center', gap: 6, color: '#64748b', fontSize: 12 }}>
-                {icon}<span>{label}</span>
-              </div>
-              <span className={`chip${cls ? ` ${cls}` : ok ? '' : ' off'}`} style={{ fontSize: 10, padding: '2px 8px' }}>{value}</span>
+          <div
+            onClick={() => setSysExpanded((v) => !v)}
+            style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', cursor: 'pointer', userSelect: 'none' }}
+          >
+            <div style={{ fontSize: 10, fontWeight: 800, textTransform: 'uppercase', color: '#475569', letterSpacing: '0.05em' }}>System Status</div>
+            <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+              <span className={`chip${meta.cls ? ` ${meta.cls}` : devOnline ? '' : ' off'}`} style={{ fontSize: 10, padding: '2px 8px' }}>{meta.label}</span>
+              <span style={{ fontSize: 11, color: '#94a3b8' }}>{sysExpanded ? '▲' : '▼'}</span>
             </div>
-          ))}
+          </div>
+          {sysExpanded && (
+            <div style={{ marginTop: 8 }}>
+              {([
+                { icon: <FiRadio size={12} />, label: 'Device ID', value: loc?.device_id ?? '--', ok: !!loc?.device_id },
+                { icon: <FiRadio size={12} />, label: 'Hardware ID', value: hardwareId || '--', ok: hardwareId !== '--' },
+                { icon: <FiActivity size={12} />, label: 'Device Status', value: meta.label, ok: meta.cls !== 'off', cls: meta.cls },
+                { icon: <FiWifi size={12} />, label: 'Device Online', value: devOnline ? 'Online' : 'Offline', ok: devOnline },
+                { icon: <FiWifi size={12} />, label: 'Wi-Fi RSSI', value: hasData ? `${latest?.rssi ?? latest?.wifi_rssi ?? '--'} dBm` : '--', ok: hasData && ((latest?.rssi ?? latest?.wifi_rssi ?? 0) as number) > -75 },
+                { icon: <FiServer size={12} />, label: 'Local IP', value: deviceLocalIp, ok: deviceLocalIp !== '--' },
+                { icon: <FiServer size={12} />, label: 'API Server', value: apiServerValue || '--', ok: apiServerValue !== '--' },
+                { icon: <FiCloud size={12} />, label: 'Cloud API', value: apiOk == null ? 'Checking...' : apiOk ? 'UP' : 'DOWN', ok: apiOk === true },
+                { icon: <FiCloud size={12} />, label: 'MQTT Connected', value: mqttConnected ? 'Connected' : 'Disconnected', ok: !!mqttConnected },
+                { icon: <FiCloud size={12} />, label: 'MQTT Route', value: mqttRouteId || '--', ok: mqttRouteId !== '--' }
+              ] as { icon: React.ReactNode; label: string; value: string; ok: boolean; cls?: string }[]).map(({ icon, label, value, ok, cls }) => (
+                <div key={label} style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', paddingBottom: 5, marginBottom: 5, borderBottom: '1px solid #f1f5f9' }}>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: 6, color: '#64748b', fontSize: 12 }}>
+                    {icon}<span>{label}</span>
+                  </div>
+                  <span className={`chip${cls ? ` ${cls}` : ok ? '' : ' off'}`} style={{ fontSize: 10, padding: '2px 8px' }}>{value}</span>
+                </div>
+              ))}
+            </div>
+          )}
         </div>
 
         <div style={{ background: '#fff7ed', border: '1px solid #fed7aa', borderRadius: 10, padding: '10px 12px', marginBottom: 10 }}>
@@ -317,7 +331,7 @@ export default function DashboardPage() {
           </div>
           <div className="mini-card">
             <div className="mini-label"><FiWifi size={12} style={{ marginRight: 4 }} />Wi-Fi RSSI</div>
-            <div className="mini-value">{hasData ? `${latest?.rssi ?? '--'} dBm` : '--'}</div>
+            <div className="mini-value">{hasData ? `${latest?.rssi ?? latest?.wifi_rssi ?? '--'} dBm` : '--'}</div>
           </div>
           <div className="mini-card">
             <div className="mini-label"><FiClock size={12} style={{ marginRight: 4 }} />Heartbeat</div>

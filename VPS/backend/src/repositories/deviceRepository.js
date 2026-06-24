@@ -378,7 +378,10 @@ function renameReferences(previousId, nextId) {
     'deviceLifecycleHistory',
     'commands',
     'deviceConfigs',
-    'deviceConfigHistory'
+    'deviceConfigHistory',
+    'deviceActionSheets',
+    'deviceActionSheetHistory',
+    'alertActionLogs'
   ].forEach(updateDeviceIdField);
 }
 

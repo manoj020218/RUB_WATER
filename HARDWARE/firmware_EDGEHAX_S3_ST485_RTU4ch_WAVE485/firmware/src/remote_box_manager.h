@@ -62,6 +62,7 @@ public:
     void loop();  // call from main loop; throttles internally
 
     // Command interface (safe to call from safety loop)
+    void setAutoOutputs(bool sirenOn, bool flashOn, bool voiceOn);
     void setSirenFlash(bool sirenOn, bool flashOn);
     bool manualSetSirenFlash(RtuBus bus, bool sirenOn, bool flashOn);
     bool manualSetSingleRelay(RtuBus bus, uint8_t coilIdx, bool on);
@@ -78,9 +79,15 @@ private:
     uint32_t _lastPollMs       = 0;
     uint32_t _pollIntervalMs   = 30000UL;  // 30s normal, 5s alert/danger
 
-    bool _pendingSirenFlash    = false;
-    bool _pendingSiren         = false;
-    bool _pendingFlash         = false;
+    bool _autoDesiredValid     = false;
+    bool _desiredSiren         = false;
+    bool _desiredFlash         = false;
+    bool _desiredVoice         = false;
+    bool _lastSentValid        = false;
+    bool _lastSentSiren        = false;
+    bool _lastSentFlash        = false;
+    bool _lastSentVoice        = false;
+    uint32_t _lastCommandMs    = 0;
     uint32_t _manualHoldoffUntilMs = 0;
 
     // ST485 relay confirmation state
@@ -96,7 +103,7 @@ private:
     ConfirmState _rightConfirm{};
 
     void pollBox(RtuBus bus, RemoteBoxStatus& status, uint8_t slaveId);
-    void sendCommands(RtuBus bus, uint8_t slaveId, bool sirenOn, bool flashOn);
+    void sendCommands(RtuBus bus, uint8_t slaveId, bool sirenOn, bool flashOn, bool voiceOn);
     void processConfirmation(RtuBus bus, RemoteBoxStatus& status,
                              uint8_t slaveId, ConfirmState& cs);
     bool autoControlSuspended(uint32_t now) const;

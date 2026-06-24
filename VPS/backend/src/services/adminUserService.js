@@ -58,7 +58,7 @@ function canManageUser(authUser, targetUser) {
   }
 
   if (authUser.role === ROLE.VENDOR_SUPER_ADMIN) {
-    return true;
+    return targetUser.created_by === authUser._id;
   }
 
   if (authUser.role === ROLE.DEMO_SUPER_ADMIN) {
@@ -110,7 +110,7 @@ function listManagedUsers(authContext) {
   let users;
 
   if (actor.role === ROLE.VENDOR_SUPER_ADMIN) {
-    users = userRepository.listAll().filter((user) => canManageUser(actor, user));
+    users = userRepository.listAll().filter((user) => user.created_by === actor._id);
   } else if (actor.role === ROLE.DEMO_SUPER_ADMIN) {
     users = userRepository.listAll().filter((user) => user.created_by === actor._id);
   } else if (actor.role === ROLE.DEPARTMENT_SUPER_ADMIN) {

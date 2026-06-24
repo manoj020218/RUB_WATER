@@ -16,6 +16,9 @@ const dataStore = {
   commands: [],
   deviceConfigs: [],
   deviceConfigHistory: [],
+  deviceActionSheets: [],
+  deviceActionSheetHistory: [],
+  alertActionLogs: [],
   vendors: [],
   projects: []
 };

@@ -35,7 +35,9 @@ function createEventRecord(payload) {
       ? { current_config: payload.current_config }
       : {}),
     ...(payload.boot_status ? { boot_status: payload.boot_status } : {}),
-    ...(payload.current_config_version ? { current_config_version: payload.current_config_version } : {})
+    ...(payload.current_config_version ? { current_config_version: payload.current_config_version } : {}),
+    ...(payload.action_sheet_version ? { action_sheet_version: payload.action_sheet_version } : {}),
+    ...(payload.current_action_sheet_version ? { current_action_sheet_version: payload.current_action_sheet_version } : {})
   };
 
   return {
@@ -54,6 +56,7 @@ function createEventRecord(payload) {
     alert_status: String(payload.alert_status || details.alert_status || derivedStatus).toUpperCase(),
     alert_source: String(payload.alert_source || details.alert_source || 'NONE').toUpperCase(),
     current_config_version: Number(payload.current_config_version || details.current_config_version || 0),
+    current_action_sheet_version: Number(payload.current_action_sheet_version || payload.action_sheet_version || details.current_action_sheet_version || details.action_sheet_version || 0),
     details
   };
 }

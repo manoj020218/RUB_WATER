@@ -5,6 +5,7 @@ function muteAlarm(req, res, next) {
     const command = commandService.issueMuteAlarm({
       locationId: req.body.location_id,
       deviceId: req.body.device_id,
+      rtu: req.body.rtu || 'both',
       authContext: req.auth,
       ipAddress: req.ip
     });
@@ -20,7 +21,8 @@ function dryRun(req, res, next) {
     const command = commandService.issueDryRun({
       locationId: req.body.location_id,
       deviceId: req.body.device_id,
-      outputs: req.body.outputs,
+      rtu: req.body.rtu || 'right',
+      relays: req.body.relays,
       authContext: req.auth,
       ipAddress: req.ip
     });

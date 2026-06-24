@@ -2,6 +2,7 @@ const deviceService = require('../services/deviceService');
 const commandService = require('../services/commandService');
 const firmwareService = require('../services/firmwareService');
 const deviceConfigService = require('../services/deviceConfigService');
+const deviceActionSheetService = require('../services/deviceActionSheetService');
 const deviceProvisionService = require('../services/deviceProvisionService');
 const deviceRepository = require('../repositories/deviceRepository');
 
@@ -139,6 +140,32 @@ function getLatestFirmware(req, res, next) {
   }
 }
 
+function getDeviceActionSheet(req, res, next) {
+  try {
+    const device = resolveDeviceIdentity(req);
+    const data = deviceActionSheetService.getDeviceActionSheetForSync({
+      deviceId: device?._id || req.params.deviceId,
+      currentVersion: Number(req.query.current_version || 0)
+    });
+    res.json({ ok: true, data });
+  } catch (error) {
+    next(error);
+  }
+}
+
+function reportDeviceActionSheet(req, res, next) {
+  try {
+    const device = resolveDeviceIdentity(req);
+    const data = deviceActionSheetService.reportDeviceActionSheet({
+      deviceId: device?._id || req.params.deviceId,
+      payload: req.body || {}
+    });
+    res.json({ ok: true, data });
+  } catch (error) {
+    next(error);
+  }
+}
+
 module.exports = {
   registerDevice,
   ingestTelemetry,
@@ -148,5 +175,7 @@ module.exports = {
   ackCommandLegacy,
   ackConfig,
   getDeviceConfig,
-  getLatestFirmware
+  getLatestFirmware,
+  getDeviceActionSheet,
+  reportDeviceActionSheet
 };

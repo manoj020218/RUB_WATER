@@ -1,12 +1,12 @@
 import { apiRequest } from './client';
-import { DeviceConfig } from '@/types';
+import { DeviceActionSheet, DeviceConfig } from '@/types';
 
-export async function muteAlarm(locationId: string, deviceId: string) {
-  return apiRequest('/commands/mute', { method: 'POST', auth: true, body: { location_id: locationId, device_id: deviceId } });
+export async function muteAlarm(locationId: string, deviceId: string, opts?: { rtu?: 'left' | 'right' | 'both' }) {
+  return apiRequest('/commands/mute', { method: 'POST', auth: true, body: { location_id: locationId, device_id: deviceId, rtu: opts?.rtu ?? 'both' } });
 }
 
-export async function dryRun(locationId: string, deviceId: string) {
-  return apiRequest('/commands/dry-run', { method: 'POST', auth: true, body: { location_id: locationId, device_id: deviceId } });
+export async function dryRun(locationId: string, deviceId: string, opts?: { rtu?: 'left' | 'right'; relays?: string[] }) {
+  return apiRequest('/commands/dry-run', { method: 'POST', auth: true, body: { location_id: locationId, device_id: deviceId, rtu: opts?.rtu ?? 'right', relays: opts?.relays } });
 }
 
 export async function forceClear(locationId: string, deviceId: string, reason: string) {
@@ -27,6 +27,22 @@ export async function pushDeviceConfig(deviceId: string) {
 
 export async function fetchDeviceConfigHistory(deviceId: string) {
   return apiRequest<DeviceConfig[]>(`/devices/${deviceId}/config/history`, { auth: true });
+}
+
+export async function fetchDeviceActionSheet(deviceId: string) {
+  return apiRequest<DeviceActionSheet>(`/devices/${deviceId}/action-sheet`, { auth: true });
+}
+
+export async function saveDeviceActionSheet(deviceId: string, payload: Partial<DeviceActionSheet>) {
+  return apiRequest<DeviceActionSheet>(`/devices/${deviceId}/action-sheet`, { method: 'PUT', auth: true, body: payload });
+}
+
+export async function pushDeviceActionSheet(deviceId: string) {
+  return apiRequest<DeviceActionSheet>(`/devices/${deviceId}/action-sheet/push`, { method: 'POST', auth: true });
+}
+
+export async function fetchDeviceActionSheetHistory(deviceId: string) {
+  return apiRequest<DeviceActionSheet[]>(`/devices/${deviceId}/action-sheet/history`, { auth: true });
 }
 
 export async function fetchAllDeviceConfigs() {
