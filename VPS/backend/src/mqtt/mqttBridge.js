@@ -18,14 +18,15 @@ function resolveMqttLibrary() {
   return mqttLib;
 }
 
-function buildSubscriptions(topicBase) {
-  return [
+function buildSubscriptions(topicBases) {
+  const bases = Array.isArray(topicBases) ? topicBases : [topicBases];
+  return [...new Set(bases.filter(Boolean).flatMap((topicBase) => ([
     `${topicBase}/+/telemetry`,
     `${topicBase}/+/event`,
     `${topicBase}/+/heartbeat`,
     `${topicBase}/+/command_ack`,
     `${topicBase}/+/config_ack`
-  ];
+  ])))];
 }
 
 function startMqttBridge() {
@@ -60,7 +61,7 @@ function startMqttBridge() {
     // eslint-disable-next-line no-console
     console.log(`[FloodGuard MQTT] Connected to ${env.mqttUrl}`);
 
-    const subscriptions = buildSubscriptions(env.mqttTopicBase);
+    const subscriptions = buildSubscriptions(env.mqttTopicAliases || env.mqttTopicBase);
     subscriptions.forEach((topic) => {
       client.subscribe(topic, { qos: 1 }, (err) => {
         if (err) {
@@ -77,7 +78,7 @@ function startMqttBridge() {
   client.on('message', (topic, message) => {
     try {
       const outcome = handleIncomingMqttMessage(topic, message, {
-        topicBase: env.mqttTopicBase
+        topicBases: env.mqttTopicAliases || env.mqttTopicBase
       });
 
       if (!outcome.handled) {

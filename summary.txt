@@ -1,0 +1,51 @@
+i just did dry run created one Test/123456 as dept super admin user   
+  now he login then without adding any location why he is seeing some   
+  dummy RUB43 location in live tab ? in audit time line at audit page   
+  here device id based data and location based data should come, seemd  
+  some dummy data is there now. also at create user page Dept Super     
+  admin should not see the role of Vendor super admin, , how dept super 
+   admin can creat user of top level ? ,  also should not abe able to   
+  see the user which are not created by him, at login page dept super   
+  admin and below hat level users no need to show API base URL .. first 
+   confirm you runderstanding so that we can make a professional app    
+
+● Good catch — let me confirm my understanding of all 5 issues before   
+  touching any code:
+
+  1. Dummy RUB43 location showing for new dept user — There's hardcoded 
+  test/seed data in the locations list that appears even for users with 
+  no assigned locations. Need to find and remove it, or fix the
+  locations query to be strictly filtered to the user's assigned        
+  location IDs (empty list = empty screen).
+  2. Audit page — dummy data, mixed device/location data — Audit        
+  timeline is probably pulling from hardcoded seed data or not filtering   by the user's assigned locations. It should only show audit events   
+  for locations assigned to the logged-in user, and show both device ID 
+  and location name together on each entry (not separate).
+  3. User creation — Dept Super Admin sees Vendor Super Admin role — The   role dropdown on the Create User page should be filtered based on the   creator's own role. A DEPARTMENT_SUPER_ADMIN should only see
+  department-level roles (DEPARTMENT_VIEWER, DEPARTMENT_OPERATOR, etc.) 
+  — not VENDOR_* roles at all.
+  4. Dept Super Admin cannot create top-level users — Same as point 3:  
+  role options in the create form should be strictly limited to roles   
+  the creator is allowed to assign (their own level or below within     
+  their domain).
+  5. Login page — API Base URL field hidden for dept users — The API    
+  Base URL input is only relevant for vendor field deployment (pointing 
+  to a custom VPS). Dept super admin and all department-level users     
+  logging in via the production URL should never see or need this field.   It should only appear for vendor-level roles or as an advanced/debug 
+  option.
+
+  Is my understanding correct? Specifically:
+  - For point 2, should the audit page show all audit events for the    
+  user's locations, or only events that that user performed?
+  - For point 5, should the API URL field be completely hidden for dept 
+  logins, or shown only in an "Advanced" collapsed section?
+ 
+✻ Sautéed for 24s
+
+❯ - point 2- show all audit venet related to the users location those   
+  are link with the login user , for point 5- complete hide API URL ,   
+  as after Suepr DEPT admin no one intersted in tech details they are   
+  users so use of app for them must be super easy , no tech knowledge   
+  they want from app , a proper function should be there . now 
+  implement all code and updat eme what have you done
+  

@@ -10,6 +10,26 @@ function normalizeDeviceId(value) {
   return String(value || '').trim().toUpperCase();
 }
 
+function resolveDeviceFromRequest(req) {
+  const routeRef = normalizeDeviceId(req.params.deviceId);
+  const hardwareId = normalizeDeviceId(
+    req.headers['x-hardware-id']
+    || req.body?.hardware_id
+    || req.query?.hardware_id
+    || ''
+  );
+  const deviceId = normalizeDeviceId(
+    req.query?.device_id
+    || req.body?.device_id
+    || routeRef
+  );
+  return deviceRepository.resolveByIdentity({
+    deviceId,
+    hardwareId,
+    routeId: routeRef
+  });
+}
+
 function ensureJobDir() {
   fs.mkdirSync(path.dirname(jobFilePath), { recursive: true });
 }
@@ -19,7 +39,7 @@ function loadJobs() {
     if (!fs.existsSync(jobFilePath)) {
       return [];
     }
-    const raw = fs.readFileSync(jobFilePath, 'utf8').replace(/^﻿/, '').trim();
+    const raw = fs.readFileSync(jobFilePath, 'utf8').replace(/^\uFEFF/, '').trim();
     if (!raw) {
       return [];
     }
@@ -38,22 +58,38 @@ function saveJobs(jobs) {
   fs.renameSync(tmp, jobFilePath);
 }
 
-function findActiveJob(jobs, deviceId) {
+function jobMatchesDevice(job, device, routeRef = '') {
+  if (!job || !device) {
+    return false;
+  }
+  const aliases = new Set([
+    normalizeDeviceId(device._id),
+    normalizeDeviceId(device.hardware_id),
+    normalizeDeviceId(device.mqtt_route_id),
+    normalizeDeviceId(routeRef)
+  ].filter(Boolean));
+  return aliases.has(normalizeDeviceId(job.device_id))
+    || aliases.has(normalizeDeviceId(job.hardware_id))
+    || aliases.has(normalizeDeviceId(job.route_id));
+}
+
+function findActiveJob(jobs, device, routeRef = '') {
   return jobs
-    .filter((job) => normalizeDeviceId(job.device_id) === deviceId && !terminalStatuses.has(String(job.status || '').toLowerCase()))
+    .filter((job) => jobMatchesDevice(job, device, routeRef)
+      && !terminalStatuses.has(String(job.status || '').toLowerCase()))
     .sort((left, right) => new Date(right.updated_at || right.created_at || 0).getTime() - new Date(left.updated_at || left.created_at || 0).getTime())[0] || null;
 }
 
 function getPendingOtaJob(req, res, next) {
   try {
-    const deviceId = normalizeDeviceId(req.params.deviceId);
-    const device = deviceRepository.findById(deviceId);
+    const routeRef = normalizeDeviceId(req.params.deviceId);
+    const device = resolveDeviceFromRequest(req);
     if (!device) {
       throw notFound('Device not found');
     }
 
     const jobs = loadJobs();
-    const job = findActiveJob(jobs, deviceId);
+    const job = findActiveJob(jobs, device, routeRef);
     if (!job) {
       return res.json({ ok: true, data: { pending: false } });
     }
@@ -71,6 +107,9 @@ function getPendingOtaJob(req, res, next) {
       ok: true,
       data: {
         pending: true,
+        device_id: device._id,
+        hardware_id: device.hardware_id || null,
+        route_id: device.mqtt_route_id || device.hardware_id || device._id,
         job_id: String(job.job_id || ''),
         version: String(job.version || ''),
         url: String(job.url || ''),
@@ -89,14 +128,18 @@ function getPendingOtaJob(req, res, next) {
 
 function reportOtaJob(req, res, next) {
   try {
-    const deviceId = normalizeDeviceId(req.params.deviceId);
+    const routeRef = normalizeDeviceId(req.params.deviceId);
+    const device = resolveDeviceFromRequest(req);
+    if (!device) {
+      throw notFound('Device not found');
+    }
     const jobId = String(req.body?.job_id || '').trim();
     if (!jobId) {
       throw badRequest('job_id is required');
     }
 
     const jobs = loadJobs();
-    const job = jobs.find((item) => normalizeDeviceId(item.device_id) === deviceId && String(item.job_id) === jobId);
+    const job = jobs.find((item) => jobMatchesDevice(item, device, routeRef) && String(item.job_id) === jobId);
     if (!job) {
       throw notFound('OTA job not found for device');
     }
@@ -116,6 +159,9 @@ function reportOtaJob(req, res, next) {
       }
     }
 
+    job.device_id = device._id;
+    job.hardware_id = device.hardware_id || job.hardware_id || null;
+    job.route_id = device.mqtt_route_id || device.hardware_id || device._id;
     if (req.body?.error) {
       job.last_error = String(req.body.error);
     }
@@ -130,6 +176,9 @@ function reportOtaJob(req, res, next) {
     }
     if (req.body?.hardware_version) {
       job.reported_hardware_version = String(req.body.hardware_version);
+    }
+    if (req.body?.device_id) {
+      job.last_reported_device_id = normalizeDeviceId(req.body.device_id);
     }
 
     job.last_reported_at = now;
@@ -156,3 +205,4 @@ module.exports = {
   getPendingOtaJob,
   reportOtaJob
 };
+

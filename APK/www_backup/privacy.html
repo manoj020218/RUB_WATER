@@ -1,0 +1,245 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Privacy Policy — FloodGuard by Jenix Technology</title>
+  <meta name="description" content="Privacy Policy for FloodGuard by Jenix Technology. Learn how we collect, use, and protect your data in our IoT flood monitoring system.">
+  <meta name="robots" content="index, follow">
+  <link rel="canonical" href="https://floodguard.jenix.in/privacy.html">
+  <link rel="icon" href="./app-icon-192.png" type="image/png">
+  <style>
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+    :root {
+      --blue-900: #1e3a8a;
+      --blue-800: #1e40af;
+      --blue-700: #1d4ed8;
+      --blue-100: #dbeafe;
+      --cyan-500: #06b6d4;
+      --cyan-400: #22d3ee;
+      --text:     #0f172a;
+      --sub:      #475569;
+      --border:   #e2e8f0;
+    }
+    html { scroll-behavior: smooth; }
+    body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; color: var(--text); background: #fff; line-height: 1.7; }
+
+    /* Topbar */
+    .topbar { position: sticky; top: 0; z-index: 100; background: rgba(30,58,138,0.97); backdrop-filter: blur(8px); padding: 0 5%; height: 60px; display: flex; align-items: center; justify-content: space-between; }
+    .topbar-brand { color: #fff; font-size: 18px; font-weight: 800; letter-spacing: -0.02em; text-decoration: none; display: flex; align-items: center; gap: 8px; }
+    .nav-links { display: flex; gap: 6px; align-items: center; }
+    .nav-link { color: rgba(255,255,255,0.8); text-decoration: none; font-size: 13px; padding: 6px 12px; border-radius: 6px; transition: background 0.15s; }
+    .nav-link:hover { background: rgba(255,255,255,0.1); color: #fff; }
+    .nav-cta { background: var(--cyan-500); color: #fff !important; font-weight: 600; border-radius: 8px; padding: 7px 16px !important; }
+
+    /* Page header */
+    .page-header { background: linear-gradient(135deg, var(--blue-900) 0%, #0c1b4a 100%); color: #fff; padding: 56px 5% 48px; }
+    .page-header-inner { max-width: 800px; margin: 0 auto; }
+    .breadcrumb { font-size: 12px; color: rgba(255,255,255,0.5); margin-bottom: 16px; }
+    .breadcrumb a { color: rgba(255,255,255,0.55); text-decoration: none; }
+    .breadcrumb a:hover { color: #fff; }
+    .page-header h1 { font-size: clamp(24px, 4vw, 40px); font-weight: 900; margin-bottom: 12px; }
+    .page-header p { color: rgba(255,255,255,0.7); font-size: 15px; }
+
+    /* Content */
+    .content-wrap { max-width: 800px; margin: 0 auto; padding: 48px 5% 72px; }
+    .update-badge { display: inline-flex; align-items: center; gap: 6px; background: var(--blue-100); color: var(--blue-700); font-size: 12px; font-weight: 600; padding: 4px 12px; border-radius: 20px; margin-bottom: 32px; }
+    h2 { font-size: 20px; font-weight: 800; color: var(--text); margin: 36px 0 12px; padding-top: 8px; border-top: 1px solid var(--border); }
+    h2:first-of-type { border-top: none; margin-top: 0; }
+    h3 { font-size: 15px; font-weight: 700; color: var(--blue-800); margin: 20px 0 8px; }
+    p { font-size: 15px; color: var(--sub); margin-bottom: 14px; }
+    ul, ol { margin: 0 0 14px 20px; }
+    li { font-size: 15px; color: var(--sub); margin-bottom: 6px; }
+    a { color: var(--blue-700); }
+    .highlight-box { background: #f0f9ff; border-left: 4px solid var(--cyan-500); border-radius: 0 8px 8px 0; padding: 16px 20px; margin: 20px 0; }
+    .highlight-box p { margin: 0; color: #0c4a6e; font-size: 14px; }
+    table { width: 100%; border-collapse: collapse; margin: 16px 0 24px; font-size: 14px; }
+    th { background: var(--blue-900); color: #fff; padding: 10px 14px; text-align: left; font-weight: 600; }
+    td { padding: 10px 14px; border-bottom: 1px solid var(--border); color: var(--sub); vertical-align: top; }
+    tr:nth-child(even) td { background: #f8fafc; }
+
+    /* Footer */
+    footer { background: #0f172a; color: rgba(255,255,255,0.5); padding: 32px 5%; }
+    .footer-inner { max-width: 800px; margin: 0 auto; display: flex; justify-content: space-between; flex-wrap: wrap; gap: 12px; font-size: 12px; align-items: center; }
+    .footer-inner a { color: rgba(255,255,255,0.45); text-decoration: none; }
+    .footer-inner a:hover { color: #fff; }
+    .footer-links { display: flex; gap: 16px; flex-wrap: wrap; }
+
+    @media (max-width: 600px) {
+      .nav-links .nav-link:not(.nav-cta) { display: none; }
+      .footer-inner { flex-direction: column; align-items: flex-start; gap: 8px; }
+    }
+  </style>
+</head>
+<body>
+
+<nav class="topbar" role="navigation">
+  <a class="topbar-brand" href="/">🌊 FloodGuard</a>
+  <div class="nav-links">
+    <a class="nav-link" href="/">Home</a>
+    <a class="nav-link" href="/terms.html">Terms</a>
+    <a class="nav-link nav-cta" href="/app">Open App</a>
+  </div>
+</nav>
+
+<div class="page-header">
+  <div class="page-header-inner">
+    <p class="breadcrumb"><a href="/">Home</a> &rsaquo; Privacy Policy</p>
+    <h1>Privacy Policy</h1>
+    <p>FloodGuard by Jenix Technology — IoT Flood Monitoring System</p>
+  </div>
+</div>
+
+<div class="content-wrap">
+  <div class="update-badge">Last updated: 23 May 2026</div>
+
+  <div class="highlight-box">
+    <p><strong>Summary:</strong> FloodGuard collects only the minimum data needed to deliver flood alerts and operate the monitoring system. We do not sell your data, show you ads, or share your information with third parties for commercial purposes. All data is stored securely on servers in India.</p>
+  </div>
+
+  <h2>1. Who We Are</h2>
+  <p>FloodGuard is an IoT-based real-time flood monitoring and early warning system developed and operated by <strong>Jenix Technology</strong>, a technology company based in India.</p>
+  <p><strong>Contact:</strong> <a href="mailto:jenixindia@gmail.com">jenixindia@gmail.com</a></p>
+  <p>This Privacy Policy applies to the FloodGuard mobile application (Android APK), the web dashboard at <a href="https://floodguard.jenix.in">floodguard.jenix.in</a>, and all related cloud services.</p>
+
+  <h2>2. Information We Collect</h2>
+
+  <h3>2.1 Account Information</h3>
+  <ul>
+    <li><strong>Login ID</strong> — a username or employee ID assigned by your organisation's administrator</li>
+    <li><strong>Password</strong> — stored as a cryptographic hash (bcrypt); we never store or transmit plaintext passwords</li>
+    <li><strong>Name and role</strong> — provided by your administrator when creating your account</li>
+  </ul>
+
+  <h3>2.2 Device and Usage Data</h3>
+  <ul>
+    <li><strong>Session information</strong> — device name, app type (Android/PWA), login timestamp, and IP address logged at sign-in</li>
+    <li><strong>App usage</strong> — actions taken within the app (alarm mute, force-clear, config changes) are recorded in an audit trail for operational accountability</li>
+  </ul>
+
+  <h3>2.3 Push Notification Token (FCM)</h3>
+  <ul>
+    <li>When you install the FloodGuard Android app and grant notification permission, a <strong>Firebase Cloud Messaging (FCM) token</strong> is generated by Google and stored on our servers</li>
+    <li>This token is used <strong>exclusively</strong> to send you flood alert notifications relevant to your assigned locations</li>
+    <li>The FCM token identifies your device installation — it does not contain your personal identity</li>
+    <li>You can revoke notification permission at any time through your device's app settings</li>
+  </ul>
+
+  <h3>2.4 IoT Device Data</h3>
+  <ul>
+    <li><strong>Water level readings</strong> — sensor data from field-deployed flood monitoring hardware, transmitted via MQTT to our cloud backend</li>
+    <li><strong>Device heartbeats</strong> — connectivity status signals sent periodically by each monitoring unit</li>
+    <li><strong>GPS / location</strong> — we do not collect your phone's GPS location; site locations are manually configured by administrators</li>
+  </ul>
+
+  <h3>2.5 Information We Do NOT Collect</h3>
+  <ul>
+    <li>We do not collect your contacts, call logs, photos, or files</li>
+    <li>We do not collect your phone number (unless you provide it voluntarily for SMS alerts)</li>
+    <li>We do not track your location in the background</li>
+    <li>We do not use cookies for advertising or analytics</li>
+  </ul>
+
+  <h2>3. How We Use Your Information</h2>
+  <table>
+    <thead>
+      <tr><th>Purpose</th><th>Data Used</th><th>Legal Basis</th></tr>
+    </thead>
+    <tbody>
+      <tr><td>Authenticate your login and maintain your session</td><td>Login ID, password hash, session token</td><td>Contract / Legitimate interest</td></tr>
+      <tr><td>Deliver flood alert push notifications to your device</td><td>FCM token, assigned location IDs</td><td>Consent (notification permission)</td></tr>
+      <tr><td>Display live water level data and alarm status in the dashboard</td><td>IoT sensor data, device status</td><td>Contract / Legitimate interest</td></tr>
+      <tr><td>Audit trail for operational accountability and compliance</td><td>Action logs, user ID, timestamps</td><td>Legitimate interest / Legal obligation</td></tr>
+      <tr><td>System reliability and debugging</td><td>Error logs, session metadata</td><td>Legitimate interest</td></tr>
+    </tbody>
+  </table>
+
+  <h2>4. Push Notifications (FCM)</h2>
+  <p>FloodGuard uses <strong>Firebase Cloud Messaging (FCM)</strong> by Google to deliver real-time flood alert notifications. When a water level sensor crosses a configured threshold, a push notification is sent to all users assigned to that monitoring location.</p>
+  <p>Notification content may include:</p>
+  <ul>
+    <li>Location name and alert level (Alert / Danger / Clear)</li>
+    <li>Water level reading in millimetres</li>
+    <li>Timestamp of the event</li>
+  </ul>
+  <p>FCM tokens are stored on our servers in India and are never shared with third parties for commercial purposes. Google's FCM service processes notification delivery in accordance with <a href="https://policies.google.com/privacy" target="_blank" rel="noopener">Google's Privacy Policy</a>.</p>
+  <p>To stop receiving push notifications, you can:</p>
+  <ul>
+    <li>Disable notifications for FloodGuard in your Android device settings, or</li>
+    <li>Ask your administrator to deactivate your account</li>
+  </ul>
+
+  <h2>5. Data Storage and Security</h2>
+  <ul>
+    <li>All data is stored on servers located in India</li>
+    <li>Data is transmitted over encrypted HTTPS/TLS connections</li>
+    <li>Passwords are hashed with bcrypt (industry-standard, one-way)</li>
+    <li>Authentication uses short-lived JWT tokens with a 30-day expiry</li>
+    <li>MQTT device communications use credential-based authentication</li>
+    <li>Access to the system is role-based; users can only see data for their assigned locations</li>
+  </ul>
+
+  <h2>6. Data Sharing</h2>
+  <p>We do <strong>not</strong> sell, rent, or trade your personal information. We may share data only in the following limited circumstances:</p>
+  <ul>
+    <li><strong>Your organisation's administrator</strong> — account management and audit log review within your own organisation</li>
+    <li><strong>Firebase / Google (FCM)</strong> — solely for notification delivery; governed by Google's Privacy Policy</li>
+    <li><strong>Legal obligation</strong> — if required by Indian law, court order, or government authority</li>
+  </ul>
+
+  <h2>7. Data Retention</h2>
+  <ul>
+    <li><strong>Account data</strong> — retained for the duration of the service agreement with your organisation, then deleted within 30 days of contract termination</li>
+    <li><strong>Audit logs</strong> — retained for 365 days for operational and compliance purposes</li>
+    <li><strong>Sensor telemetry</strong> — retained for 90 days in detailed form; compacted or deleted thereafter</li>
+    <li><strong>FCM tokens</strong> — deleted when your account is deactivated or when you revoke notification permission</li>
+    <li><strong>Session tokens</strong> — expire after 30 days or on logout</li>
+  </ul>
+
+  <h2>8. Your Rights</h2>
+  <p>Under applicable Indian privacy laws, you have the right to:</p>
+  <ul>
+    <li>Access the personal data we hold about you</li>
+    <li>Request correction of inaccurate data</li>
+    <li>Request deletion of your account and associated personal data</li>
+    <li>Withdraw consent for push notifications at any time (via device settings)</li>
+    <li>Raise a complaint with your organisation's administrator or contact us directly</li>
+  </ul>
+  <p>To exercise these rights, contact us at <a href="mailto:jenixindia@gmail.com">jenixindia@gmail.com</a>.</p>
+
+  <h2>9. Children's Privacy</h2>
+  <p>FloodGuard is an enterprise / government operational system. It is not intended for use by anyone under the age of 18. We do not knowingly collect personal data from minors.</p>
+
+  <h2>10. Third-Party Services</h2>
+  <ul>
+    <li><strong>Firebase Cloud Messaging (Google)</strong> — push notification delivery. <a href="https://policies.google.com/privacy" target="_blank" rel="noopener">Google Privacy Policy</a></li>
+    <li><strong>Let's Encrypt</strong> — SSL/TLS certificate authority for encrypted connections</li>
+  </ul>
+  <p>We do not use Google Analytics, Facebook Pixel, or any advertising networks.</p>
+
+  <h2>11. Changes to This Policy</h2>
+  <p>We may update this Privacy Policy as the product evolves. When we make material changes, we will update the "Last updated" date at the top of this page. Continued use of the FloodGuard app or dashboard after changes constitutes acceptance of the updated policy.</p>
+
+  <h2>12. Contact Us</h2>
+  <p>For any privacy-related questions, data requests, or concerns:</p>
+  <ul>
+    <li><strong>Email:</strong> <a href="mailto:jenixindia@gmail.com">jenixindia@gmail.com</a></li>
+    <li><strong>Product:</strong> FloodGuard by Jenix Technology</li>
+    <li><strong>Country:</strong> India</li>
+  </ul>
+</div>
+
+<footer role="contentinfo">
+  <div class="footer-inner">
+    <span>© 2026 Jenix Technology. All rights reserved.</span>
+    <div class="footer-links">
+      <a href="/">Home</a>
+      <a href="/privacy.html">Privacy Policy</a>
+      <a href="/terms.html">Terms &amp; Conditions</a>
+      <a href="mailto:jenixindia@gmail.com">Contact</a>
+    </div>
+  </div>
+</footer>
+
+</body>
+</html>

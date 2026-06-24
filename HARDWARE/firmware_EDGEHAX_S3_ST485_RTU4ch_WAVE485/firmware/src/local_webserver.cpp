@@ -22,6 +22,7 @@ extern bool     gDbgEvtPubOk;
 #include "remote_box_manager.h"
 #include "rs485_rtu_master.h"
 #include "sd_fifo.h"
+#include "telemetry_manager.h"
 #include "voltage_monitor.h"
 #include "wifi_manager.h"
 
@@ -192,10 +193,13 @@ void LocalWebserver::buildMdnsHost(char* out, size_t outSize, const char* device
     out[w] = '\0';
 }
 
-void LocalWebserver::begin(const char* apSsid, const char* deviceId) {
+void LocalWebserver::begin(const char* apSsid, const char* deviceId, const char* hardwareId) {
     strncpy(_apSsid,    apSsid,   sizeof(_apSsid)    - 1);
     strncpy(_deviceId,  deviceId, sizeof(_deviceId)  - 1);
+    strncpy(_hardwareId, hardwareId, sizeof(_hardwareId) - 1);
     buildMdnsHost(_mdnsHost, sizeof(_mdnsHost), deviceId);
+    const char* headerKeys[] = {"Content-Type", "Accept", "Origin", "x-local-pin"};
+    _server.collectHeaders(headerKeys, sizeof(headerKeys) / sizeof(headerKeys[0]));
     setupRoutes();
     Serial.printf("[WEB] Webserver ready on port 80 (AP SSID: %s, mDNS: %s.local)\n", _apSsid, _mdnsHost);
 }
@@ -267,6 +271,10 @@ void LocalWebserver::setupRoutes() {
     _server.on("/status",              HTTP_GET,  [this]{ handleStatus(); });
     _server.on("/config",              HTTP_GET,  [this]{ handleConfig(); });
     _server.on("/config",              HTTP_POST, [this]{ handleConfigPost(); });
+    _server.on("/config",              HTTP_OPTIONS, [this]{
+        sendCorsHeaders();
+        _server.send(204, "text/plain", "");
+    });
     _server.on("/diagnostics",         HTTP_GET,  [this]{ handleDiagnostics(); });
     _server.on("/diagnostics",         HTTP_POST, [this]{ handleDiagnosticsPost(); });
     _server.on("/relay-test",          HTTP_GET,  [this]{ handleRelayTest(); });
@@ -308,6 +316,26 @@ bool LocalWebserver::checkAuth() {
     if (_loggedIn && millis() < _sessionExpMs) return true;
     _loggedIn = false;
     return false;
+}
+
+bool LocalWebserver::checkLocalPinAuth() {
+    if (!_server.hasHeader("x-local-pin")) return false;
+    return _server.header("x-local-pin") == kPassword;
+}
+
+bool LocalWebserver::wantsJsonResponse() {
+    const String contentType = _server.hasHeader("Content-Type") ? _server.header("Content-Type") : "";
+    const String accept = _server.hasHeader("Accept") ? _server.header("Accept") : "";
+    return checkLocalPinAuth()
+        || contentType.indexOf("application/json") >= 0
+        || accept.indexOf("application/json") >= 0;
+}
+
+void LocalWebserver::sendCorsHeaders() {
+    _server.sendHeader("Access-Control-Allow-Origin", "*");
+    _server.sendHeader("Access-Control-Allow-Methods", "GET, POST, OPTIONS");
+    _server.sendHeader("Access-Control-Allow-Headers", "Content-Type, x-local-pin");
+    _server.sendHeader("Access-Control-Max-Age", "600");
 }
 
 void LocalWebserver::sendUnauth() {
@@ -463,6 +491,11 @@ void LocalWebserver::handleStatus() {
     html += "<tr><th>Sensor Valid</th><td>" + String(dyp.valid ? "Yes" : "No") + "</td></tr>";
     html += "<tr><th>L1 Active</th><td>" + String(fsm.l1Active ? "YES" : "no") + "</td></tr>";
     html += "<tr><th>L2 Active</th><td>" + String(fsm.l2Active ? "YES" : "no") + "</td></tr>";
+    html += "<tr><th>Alert Level</th><td>" + String(alertLevelStr(fsm.alertLevel)) + "</td></tr>";
+    html += "<tr><th>Alert Status</th><td>" + String(alertStatusStr(fsm.alertStatus)) + "</td></tr>";
+    html += "<tr><th>Alert Source</th><td>" + String(alertSourceStr(fsm.alertSource)) + "</td></tr>";
+    html += "<tr><th>Pending Level</th><td>" + String(alertLevelStr(fsm.pendingAlertLevel)) + "</td></tr>";
+    html += "<tr><th>Reason</th><td>" + String(fsm.note) + "</td></tr>";
     html += "</table></div>";
 
     // Local relay outputs hidden — no relay board fitted on this unit.
@@ -517,6 +550,23 @@ void LocalWebserver::handleStatus() {
 }
 
 void LocalWebserver::handleConfig() {
+    if (wantsJsonResponse()) {
+        if (!checkAuth() && !checkLocalPinAuth()) {
+            sendCorsHeaders();
+            _server.send(401, "application/json", "{\"message\":\"unauthorized\"}");
+            return;
+        }
+        char json[768];
+        if (!ConfigManager::getInstance().buildJson(json, sizeof(json))) {
+            sendCorsHeaders();
+            _server.send(500, "application/json", "{\"message\":\"config_encode_failed\"}");
+            return;
+        }
+        sendCorsHeaders();
+        _server.send(200, "application/json", json);
+        return;
+    }
+
     if (!checkAuth()) { sendUnauth(); return; }
     const auto& cfg = ConfigManager::getInstance().get();
     String html = htmlHeader("Config") + navBar("config");
@@ -532,12 +582,35 @@ void LocalWebserver::handleConfig() {
             "<input type='number' name='trigger_delay_seconds' value='" + String(cfg.triggerDelaySeconds) + "'>"
             "<label>Alarm Clear Delay (sec)</label>"
             "<input type='number' name='alarm_clear_delay_seconds' value='" + String(cfg.alarmClearDelaySeconds) + "'>"
+            "<label>Sensor Input Mode</label>"
+            "<select name='sensor_mode'>"
+            "<option value='BOTH_ACTIVE'" + String(strcmp(ConfigManager::getInstance().sensorLogicMode(), "DUAL") == 0 ? " selected" : "") + ">RS485 US Sensor + Switch Type Sensor</option>"
+            "<option value='DYP_ONLY'" + String(strcmp(ConfigManager::getInstance().sensorLogicMode(), "RS485_ONLY") == 0 ? " selected" : "") + ">RS485 US Sensor Only</option>"
+            "<option value='SWITCH_ONLY'" + String(strcmp(ConfigManager::getInstance().sensorLogicMode(), "SWITCH_ONLY") == 0 ? " selected" : "") + ">Switch Type Sensor Only</option>"
+            "<option value='NO_SENSOR'" + String(strcmp(ConfigManager::getInstance().sensorLogicMode(), "NO_SENSOR") == 0 ? " selected" : "") + ">No Sensor Connected</option></select>"
+            "<label>Sensor Mount Height / Zero Distance (mm)</label>"
+            "<input type='number' name='sensor_mount_height_mm' value='" + String(cfg.zeroDistanceMm) + "'>"
+            "<label>RS485 Sensor Enabled</label>"
+            "<select name='rs485_enabled'><option value='1'" + String(cfg.rs485SensorEnabled ? " selected" : "") + ">Yes</option>"
+            "<option value='0'" + String(!cfg.rs485SensorEnabled ? " selected" : "") + ">No</option></select>"
+            "<label>Switch Sensor Enabled</label>"
+            "<select name='switch_enabled'><option value='1'" + String(cfg.switchSensorEnabled ? " selected" : "") + ">Yes</option>"
+            "<option value='0'" + String(!cfg.switchSensorEnabled ? " selected" : "") + ">No</option></select>"
+            "<label>Switch Level 1 Height (mm)</label>"
+            "<input type='number' name='switch_level_1_mm' value='" + String(cfg.switchLevel1Mm) + "'>"
+            "<label>Switch Level 2 Height (mm)</label>"
+            "<input type='number' name='switch_level_2_mm' value='" + String(cfg.switchLevel2Mm) + "'>"
+            "<label>Sensor Confirmation Wait Time (minutes)</label>"
+            "<input type='number' name='sensor_confirmation_wait_min' value='" + String((cfg.mismatchDurationSeconds + 59) / 60) + "'>"
             "<label>Left Remote Enabled</label>"
             "<select name='left_remote_enabled'><option value='1'" + String(cfg.leftRemoteEnabled?" selected":"") + ">Yes</option>"
             "<option value='0'" + String(!cfg.leftRemoteEnabled?" selected":"") + ">No</option></select>"
             "<label>Right Remote Enabled</label>"
             "<select name='right_remote_enabled'><option value='1'" + String(cfg.rightRemoteEnabled?" selected":"") + ">Yes</option>"
             "<option value='0'" + String(!cfg.rightRemoteEnabled?" selected":"") + ">No</option></select>"
+            "<label>Daily Reboot Enabled</label>"
+            "<select name='daily_reboot_enabled'><option value='1'" + String(cfg.dailyRebootEnabled ? " selected" : "") + ">Yes</option>"
+            "<option value='0'" + String(!cfg.dailyRebootEnabled ? " selected" : "") + ">No</option></select>"
             "<label>Daily Reboot Hour (0-23)</label>"
             "<input type='number' name='daily_reboot_hour' value='" + String(cfg.dailyRebootHour) + "'>"
             "<label>Daily Reboot Minute (0-59)</label>"
@@ -550,24 +623,98 @@ void LocalWebserver::handleConfig() {
 }
 
 void LocalWebserver::handleConfigPost() {
+    const bool jsonRequest = wantsJsonResponse();
+    if (jsonRequest) {
+        if (!checkLocalPinAuth()) {
+            sendCorsHeaders();
+            _server.send(401, "application/json", "{\"message\":\"invalid_local_pin\"}");
+            return;
+        }
+        const String body = _server.arg("plain");
+        if (body.length() == 0) {
+            sendCorsHeaders();
+            _server.send(400, "application/json", "{\"message\":\"empty_json_body\"}");
+            return;
+        }
+        StaticJsonDocument<640> reqDoc;
+        deserializeJson(reqDoc, body);
+        const bool rebootAfter = reqDoc["reboot_after_config_update"] | reqDoc["reboot"] | false;
+        const String oldMode = String(ConfigManager::getInstance().sensorLogicMode());
+        String reason;
+        if (!ConfigManager::getInstance().applyJson(body.c_str(), reason)) {
+            sendCorsHeaders();
+            String err = "{\"message\":\"" + reason + "\"}";
+            _server.send(400, "application/json", err);
+            return;
+        }
+        if (oldMode != ConfigManager::getInstance().sensorLogicMode()) {
+            TelemetryManager::getInstance().publishEvent("SENSOR_MODE_CHANGED", "APK_LOCAL_HTTP");
+        }
+        char cfgJson[768];
+        if (!ConfigManager::getInstance().buildJson(cfgJson, sizeof(cfgJson))) {
+            sendCorsHeaders();
+            _server.send(500, "application/json", "{\"message\":\"config_encode_failed\"}");
+            return;
+        }
+        StaticJsonDocument<1024> respDoc;
+        respDoc["status"] = "SUCCESS";
+        respDoc["reboot_scheduled"] = rebootAfter;
+        respDoc["current_config_version"] = ConfigManager::getInstance().get().configVersion;
+        StaticJsonDocument<768> cfgDoc;
+        if (deserializeJson(cfgDoc, cfgJson) == DeserializationError::Ok) {
+            respDoc["current_config"] = cfgDoc.as<JsonVariantConst>();
+        }
+        char json[1024];
+        serializeJson(respDoc, json, sizeof(json));
+        sendCorsHeaders();
+        _server.send(200, "application/json", json);
+        if (rebootAfter) {
+            delay(300);
+            ESP.restart();
+        }
+        return;
+    }
+
     if (!checkAuth()) { sendUnauth(); return; }
-    StaticJsonDocument<512> doc;
+    StaticJsonDocument<768> doc;
     auto setU16 = [&](const char* k) {
         if (_server.hasArg(k)) doc[k] = _server.arg(k).toInt();
     };
     setU16("alert_level_mm"); setU16("danger_level_mm"); setU16("danger_clear_level_mm");
     setU16("trigger_delay_seconds"); setU16("alarm_clear_delay_seconds");
+    setU16("sensor_mount_height_mm");
+    setU16("switch_level_1_mm");
+    setU16("switch_level_2_mm");
+    setU16("mismatch_duration_seconds");
+    setU16("sensor_confirmation_wait_sec");
+    if (_server.hasArg("sensor_confirmation_wait_min")) {
+        doc["sensor_confirmation_wait_sec"] = (uint16_t)(_server.arg("sensor_confirmation_wait_min").toInt() * 60);
+    }
     setU16("daily_reboot_hour"); setU16("daily_reboot_minute");
     setU16("telemetry_idle_interval_seconds");
+    if (_server.hasArg("sensor_mode"))
+        doc["sensor_mode"] = _server.arg("sensor_mode");
+    if (_server.hasArg("sensor_logic_mode"))
+        doc["sensor_logic_mode"] = _server.arg("sensor_logic_mode");
+    if (_server.hasArg("rs485_enabled"))
+        doc["rs485_enabled"]  = (_server.arg("rs485_enabled") == "1");
+    if (_server.hasArg("switch_enabled"))
+        doc["switch_enabled"] = (_server.arg("switch_enabled") == "1");
     if (_server.hasArg("left_remote_enabled"))
         doc["left_remote_enabled"]  = (_server.arg("left_remote_enabled") == "1");
     if (_server.hasArg("right_remote_enabled"))
         doc["right_remote_enabled"] = (_server.arg("right_remote_enabled") == "1");
+    if (_server.hasArg("daily_reboot_enabled"))
+        doc["daily_reboot_enabled"] = (_server.arg("daily_reboot_enabled") == "1");
 
-    char json[512];
+    char json[768];
     serializeJson(doc, json, sizeof(json));
+    const String oldMode = String(ConfigManager::getInstance().sensorLogicMode());
     String reason;
     if (ConfigManager::getInstance().applyJson(json, reason)) {
+        if (oldMode != ConfigManager::getInstance().sensorLogicMode()) {
+            TelemetryManager::getInstance().publishEvent("SENSOR_MODE_CHANGED", "FIRMWARE_WEBUI");
+        }
         _server.sendHeader("Location", "/config");
         _server.send(302, "text/plain", "");
     } else {
@@ -1323,15 +1470,16 @@ void LocalWebserver::handleIdentity() {
             "<h2>Device Identity</h2>"
             "<table>"
             "<tr><th>Current Device ID</th><td><b>" + String(_deviceId) + "</b></td></tr>"
+            "<tr><th>Hardware ID</th><td><b>" + String(_hardwareId) + "</b></td></tr>"
             "<tr><th>MQTT Host</th><td>" DEFAULT_MQTT_HOST "</td></tr>"
             "</table>"
             "<hr style='margin:16px 0'>"
             "<h3>Change Device ID</h3>"
             "<p style='color:#555;font-size:13px'>"
-            "The Device ID is used as the MQTT client ID and topic prefix. "
+            "The Device ID is the editable asset label. The Hardware ID is fixed and "
+            "is used as the long-term cloud identity whenever the broker accepts it. "
             "After saving, the device will reboot with the new ID. "
-            "Make sure the new ID is registered on the cloud (VPS) and the MQTT broker "
-            "has credentials for it before rebooting.</p>"
+            "Make sure the VPS is ready to map the new Device ID before rebooting.</p>"
             "<form method='POST' action='/identity'>"
             "<label>New Device ID</label>"
             "<input type='text' name='device_id' value='" + String(_deviceId) + "' "
@@ -1388,23 +1536,52 @@ void LocalWebserver::handleIdentityPost() {
 }
 
 void LocalWebserver::handleApiStatus() {
-    StaticJsonDocument<512> doc;
+    StaticJsonDocument<768> doc;
+    const auto& cfg = ConfigManager::getInstance().get();
+    const auto& fsm = FloodStateMachine::getInstance().snapshot();
+    const auto& vmon = VoltageMonitor::getInstance().snapshot();
+    const auto& left = RemoteBoxManager::getInstance().leftStatus();
+    const auto& right = RemoteBoxManager::getInstance().rightStatus();
     doc["device_id"]      = _deviceId;
+    doc["hardware_id"]    = _hardwareId;
     doc["product"]        = PRODUCT_PROFILE;
     doc["mac"]            = WiFi.macAddress();
     doc["firmware"]       = FIRMWARE_VERSION;
     doc["wifi_connected"] = WifiManager::getInstance().isConnected();
     doc["ip"]             = WifiManager::getInstance().localIp();
+    doc["local_ip"]       = WifiManager::getInstance().localIp();
     doc["mqtt_connected"] = MqttManager::getInstance().isConnected();
+    doc["mqtt_route_id"]  = MqttManager::getInstance().routeId();
+    doc["mqtt_topic_base"] = MqttManager::getInstance().topicBase();
+    doc["wifi_rssi"]      = WifiManager::getInstance().rssi();
+    doc["status"]         = floodStateStr(fsm.state);
+    doc["alert_level"]    = alertLevelStr(fsm.alertLevel);
+    doc["alert_status"]   = alertStatusStr(fsm.alertStatus);
+    doc["alert_source"]   = alertSourceStr(fsm.alertSource);
+    doc["alert_reason"]   = fsm.note;
+    doc["pending_alert_level"] = alertLevelStr(fsm.pendingAlertLevel);
+    doc["sensor_logic_mode"] = ConfigManager::getInstance().sensorLogicMode();
+    doc["sensor_mode"] = strcmp(ConfigManager::getInstance().sensorLogicMode(), "DUAL") == 0 ? "BOTH_ACTIVE"
+                         : (strcmp(ConfigManager::getInstance().sensorLogicMode(), "RS485_ONLY") == 0 ? "DYP_ONLY"
+                            : ConfigManager::getInstance().sensorLogicMode());
+    doc["sensor_confirmation_wait_sec"] = cfg.mismatchDurationSeconds;
+    doc["sensor_mount_height_mm"] = cfg.zeroDistanceMm;
+    doc["current_config_version"] = cfg.configVersion;
+    doc["battery_voltage"] = vmon.voltage;
+    doc["battery_current_ma"] = vmon.currentMa;
+    doc["api_server"]     = DEFAULT_HTTP_BASE_URL;
+    doc["mqtt_server"]    = DEFAULT_MQTT_HOST;
+    doc["rtu_left_online"] = left.online;
+    doc["rtu_right_online"] = right.online;
     doc["uptime_s"]       = (uint32_t)(millis() / 1000UL);
     doc["dbg_last_cmd_ms"]  = gDbgLastCmdMs;
     doc["dbg_last_cmd"]     = gDbgLastCmdStr;
     doc["dbg_last_evt_ms"]  = gDbgLastEvtMs;
     doc["dbg_evt_conn"]     = gDbgEvtConn;
     doc["dbg_evt_pub_ok"]   = gDbgEvtPubOk;
-    char buf[512];
+    char buf[768];
     serializeJson(doc, buf, sizeof(buf));
-    _server.sendHeader("Access-Control-Allow-Origin", "*");
+    sendCorsHeaders();
     _server.send(200, "application/json", buf);
 }
 

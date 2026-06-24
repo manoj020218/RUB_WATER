@@ -60,6 +60,8 @@ const domains = shift.domains || {};
 const database = shift.database || {};
 const messaging = shift.messaging || {};
 const security = shift.security || {};
+const mqttTopicBase = String(process.env.MQTT_TOPIC_BASE || messaging.mqttTopicBase || 'floodguard').trim() || 'floodguard';
+const mqttTopicAliases = [...new Set([mqttTopicBase, 'floodguard', 'rub'].filter(Boolean))];
 
 const mqttProtocol = process.env.MQTT_PROTOCOL || messaging.mqttProtocol || 'mqtt';
 const mqttHost = process.env.MQTT_HOST || messaging.mqttHost || 'api.floodguard.iotsoft.in';
@@ -92,7 +94,8 @@ module.exports = {
   mqttPort,
   mqttUser: process.env.MQTT_USER || messaging.mqttUser || '',
   mqttPass: process.env.MQTT_PASS || messaging.mqttPass || '',
-  mqttTopicBase: process.env.MQTT_TOPIC_BASE || messaging.mqttTopicBase || 'rub',
+  mqttTopicBase,
+  mqttTopicAliases,
   mqttUrl: process.env.MQTT_URL || `${mqttProtocol}://${mqttHost}:${mqttPort}`,
   deviceTokenTtlHours: readNumber('DEVICE_TOKEN_TTL_HOURS', Number(security.deviceTokenTtlHours || 720)),
   jwtSecret: process.env.JWT_SECRET || security.jwtSecret || 'floodguard-dev-secret',

@@ -1,0 +1,927 @@
+In firmware need to set two input type sensor One is DYP US sensor (at APK ui mentioned as RS485 Input sensor) Second is switch type that have two adjustable level .Level 1 and Level 2 . (at APK UI mentioned at switch type) Now firmware should have option for following conditions to respond to Right left RTU to trigger relay and alarm in APK To implement this double sensor input model Case 1 . First check user input at firmware webUI if both sensor are active . User set in web ui both sensor active then follow this process DYP sensor is primary sensor and switch sensor is conformity sensor If dyp sensor detect orange level alert but switch sensor L1 switch still not confirm this then start timing after orange level crossed if continue time run for 5 minutes (adjustable from threshold page) and switch sensor did not respond for L1 trigger or L2 trigger then at VPS set logic either Switch sensor is damaged or Some one sitting under the DYP sensor ..and set orange alert with this message at APK and store info at LOG at VPS . If with in 5 minutes L1 or L2 is crossed from switch sensor then confirm the orange level alert , set this in log at VPS and show confirm ORANGE alert in APK. If Switch Sensor L1 sensor crossed but DYP sensor still showing lower level then wait 5 minutes ( adjustable) and set this in log at VPS and start timing at VPS level if exceed 5 minutes then show orange alert at APK with message either DYP sensor damaged or some one sitting under switch sensor .. but show orange alert . If with in 5 minutes DYP sensor also increased the level then it's confirmed orange alert. Similar for danger alert Case 2 - user set at webui of firmware ( this same can also be set by MQTT from VPS or by HTTP ) that only DYP ( in UI you may write this as RS485 US sensor) sensor is used in system then all trigger logic for Right Left RTU work accordingly to its data only . Case 3 . Switch sensor only. If user set using webui only switch sensor is there then all logic of right left RTU should trigger accordingly to Level 1 and Level 2 . Level 1 for orange alert and Level 2 for Danger alert . Case 4 - both sensor are not connected to device as set by user in webui ( also from VPS ) . If this case is set then no RTU should trigger relay . All case should be set in log in VPS .. Also from APK when user try to configure data in device S3 then first it should fetch current data from device and when user try to update from APK then always set reboot of device option and once reboot done then fetch new data as in view to user at APK . New data set as ... So this will confirm that data has been set in firmware properly. Note - whatever setting we are doing from webui those should be able to do from VPS also eithe rby MQTT or by HTTP Since not using any pump so remove all pump data from firmware ..
+
+
+chat GPT reply for thi situation see if this can help in current code 
+
+???? ???? prompt/spec Codex ?? ?? ???? ??? ?? **double sensor input model**, **firmware WebUI**, **VPS/MQTT/HTTP sync**, **APK config verification**, ?? **pump removal** ?? cover ???? ???
+
+# FloodGuard Firmware + VPS + APK Update Spec
+
+## Double Sensor Input Model: DYP RS485 US Sensor + Switch Type Level Sensor
+
+Implement a double sensor input model in FloodGuard firmware, VPS logic, and APK UI.
+
+There are two possible water-level input sources:
+
+1. **DYP Ultrasonic Sensor**
+
+   * Firmware/internal name: `dyp_us_sensor`
+   * APK/UI display name: **RS485 US Sensor**
+   * This is the primary water-level sensor.
+   * It provides measured water level in mm.
+
+2. **Switch Type Level Sensor**
+
+   * Firmware/internal name: `switch_level_sensor`
+   * APK/UI display name: **Switch Type Sensor**
+   * This has two adjustable level points:
+
+     * `switch_l1` = Orange level confirmation
+     * `switch_l2` = Danger level confirmation
+   * This works as digital confirmation input.
+   * L1 means Orange level crossed.
+   * L2 means Danger level crossed.
+
+Remove all pump-related logic, UI fields, MQTT topics, API fields, logs, and relay references from firmware, VPS, and APK. This project is not using pump control.
+
+---
+
+# 1. Sensor Mode Setting
+
+Firmware WebUI must have sensor mode configuration. Same setting must also be configurable from VPS by MQTT or HTTP.
+
+Add setting:
+
+```js
+sensor_mode:
+  BOTH_ACTIVE
+  DYP_ONLY
+  SWITCH_ONLY
+  NO_SENSOR
+```
+
+APK display:
+
+```text
+Sensor Input Mode:
+1. RS485 US Sensor + Switch Type Sensor
+2. RS485 US Sensor Only
+3. Switch Type Sensor Only
+4. No Sensor Connected
+```
+
+Firmware must store this setting in NVS/persistent storage.
+
+VPS must store every change in device configuration history/log.
+
+Whenever mode changes, log:
+
+```js
+{
+  event_type: "SENSOR_MODE_CHANGED",
+  old_mode,
+  new_mode,
+  source: "FIRMWARE_WEBUI" | "APK" | "VPS_MQTT" | "VPS_HTTP",
+  changed_by_user_id,
+  timestamp
+}
+```
+
+---
+
+# 2. Threshold Settings
+
+Firmware WebUI threshold page must allow:
+
+```js
+orange_level_mm       // DYP Orange threshold, default 200 mm
+danger_level_mm       // DYP Danger threshold, default 400 mm
+
+confirm_wait_seconds_or_minutes
+// default 5 minutes
+// adjustable from threshold page
+```
+
+Use clear name:
+
+```js
+sensor_confirmation_wait_sec
+```
+
+Default:
+
+```js
+sensor_confirmation_wait_sec = 300
+```
+
+Same setting must be configurable from VPS via MQTT or HTTP.
+
+---
+
+# 3. Case 1 — Both Sensors Active
+
+If user sets:
+
+```js
+sensor_mode = BOTH_ACTIVE
+```
+
+then:
+
+* DYP RS485 US Sensor is primary sensor.
+* Switch Type Sensor is confirmation sensor.
+* Final alert can be:
+
+  * Confirmed Orange
+  * Suspected Orange
+  * Confirmed Danger
+  * Suspected Danger
+  * Normal
+  * Sensor conflict / possible sensor fault / possible obstruction
+
+## 3.1 DYP detects Orange first, Switch does not confirm
+
+Condition:
+
+```js
+dyp_level_mm >= orange_level_mm
+AND switch_l1 == false
+AND switch_l2 == false
+```
+
+Action:
+
+1. Start timer:
+
+```js
+orange_confirmation_timer_started_at
+```
+
+2. If within `sensor_confirmation_wait_sec`, switch L1 or L2 becomes active:
+
+```js
+switch_l1 == true OR switch_l2 == true
+```
+
+then:
+
+```js
+alert_level = ORANGE
+alert_status = CONFIRMED
+reason = "DYP Orange level confirmed by Switch Type Sensor"
+```
+
+Trigger:
+
+* Right RTU relay according to Orange logic
+* Left RTU relay according to Orange logic
+* APK Orange alert
+* VPS log
+
+3. If timer exceeds `sensor_confirmation_wait_sec` and switch still does not confirm:
+
+```js
+alert_level = ORANGE
+alert_status = SUSPECTED
+reason = "RS485 US Sensor crossed Orange level but Switch Type Sensor did not confirm within configured time. Possible Switch Sensor fault or obstruction/person/object below RS485 US Sensor."
+```
+
+Still show Orange alert in APK, but mark it as suspected/unconfirmed.
+
+Trigger:
+
+* Orange alert in APK
+* Right/Left RTU trigger according to Orange alert logic
+* VPS log with warning message
+
+Log event:
+
+```js
+{
+  event_type: "ORANGE_ALERT_UNCONFIRMED_DYP_FIRST",
+  alert_level: "ORANGE",
+  alert_status: "SUSPECTED",
+  dyp_level_mm,
+  switch_l1,
+  switch_l2,
+  wait_time_sec,
+  message: "RS485 US Sensor crossed Orange level but Switch Type Sensor did not confirm. Possible Switch Sensor fault or obstruction/person/object below RS485 US Sensor.",
+  timestamp
+}
+```
+
+## 3.2 Switch L1 detects Orange first, DYP does not confirm
+
+Condition:
+
+```js
+switch_l1 == true
+AND dyp_level_mm < orange_level_mm
+```
+
+Action:
+
+1. Start timer:
+
+```js
+switch_orange_confirmation_timer_started_at
+```
+
+2. If within `sensor_confirmation_wait_sec`, DYP level also reaches Orange:
+
+```js
+dyp_level_mm >= orange_level_mm
+```
+
+then:
+
+```js
+alert_level = ORANGE
+alert_status = CONFIRMED
+reason = "Switch Type Sensor L1 confirmed by RS485 US Sensor"
+```
+
+Trigger:
+
+* Orange alert in APK
+* Right/Left RTU Orange relay logic
+* VPS log
+
+3. If timer exceeds `sensor_confirmation_wait_sec` and DYP still does not confirm:
+
+```js
+alert_level = ORANGE
+alert_status = SUSPECTED
+reason = "Switch Type Sensor L1 crossed but RS485 US Sensor did not confirm within configured time. Possible RS485 US Sensor fault or obstruction/person/object below Switch Type Sensor."
+```
+
+Important: still show Orange alert and trigger Orange relay logic.
+
+Log event:
+
+```js
+{
+  event_type: "ORANGE_ALERT_UNCONFIRMED_SWITCH_FIRST",
+  alert_level: "ORANGE",
+  alert_status: "SUSPECTED",
+  dyp_level_mm,
+  switch_l1,
+  switch_l2,
+  wait_time_sec,
+  message: "Switch Type Sensor L1 crossed but RS485 US Sensor did not confirm. Possible RS485 US Sensor fault or obstruction/person/object below Switch Type Sensor.",
+  timestamp
+}
+```
+
+---
+
+# 4. Similar Logic for Danger Alert
+
+Danger logic must work similarly to Orange.
+
+## 4.1 DYP detects Danger first, Switch L2 does not confirm
+
+Condition:
+
+```js
+dyp_level_mm >= danger_level_mm
+AND switch_l2 == false
+```
+
+Action:
+
+1. Start Danger confirmation timer.
+2. If `switch_l2 == true` within configured wait time:
+
+```js
+alert_level = DANGER
+alert_status = CONFIRMED
+reason = "RS485 US Sensor Danger level confirmed by Switch Type Sensor L2"
+```
+
+3. If not confirmed within configured wait time:
+
+```js
+alert_level = DANGER
+alert_status = SUSPECTED
+reason = "RS485 US Sensor crossed Danger level but Switch Type Sensor L2 did not confirm within configured time. Possible Switch Sensor fault or obstruction/person/object below RS485 US Sensor."
+```
+
+Important: even suspected Danger must trigger Danger relay/alarm logic.
+
+Log:
+
+```js
+{
+  event_type: "DANGER_ALERT_UNCONFIRMED_DYP_FIRST",
+  alert_level: "DANGER",
+  alert_status: "SUSPECTED",
+  dyp_level_mm,
+  switch_l1,
+  switch_l2,
+  wait_time_sec,
+  message: "RS485 US Sensor crossed Danger level but Switch Type Sensor L2 did not confirm. Possible Switch Sensor fault or obstruction/person/object below RS485 US Sensor.",
+  timestamp
+}
+```
+
+## 4.2 Switch L2 detects Danger first, DYP does not confirm
+
+Condition:
+
+```js
+switch_l2 == true
+AND dyp_level_mm < danger_level_mm
+```
+
+Action:
+
+1. Start Danger confirmation timer.
+2. If DYP reaches Danger within configured wait time:
+
+```js
+alert_level = DANGER
+alert_status = CONFIRMED
+reason = "Switch Type Sensor L2 confirmed by RS485 US Sensor"
+```
+
+3. If not confirmed within configured wait time:
+
+```js
+alert_level = DANGER
+alert_status = SUSPECTED
+reason = "Switch Type Sensor L2 crossed but RS485 US Sensor did not confirm within configured time. Possible RS485 US Sensor fault or obstruction/person/object below Switch Type Sensor."
+```
+
+Important: still show Danger alert and trigger Danger relay/alarm logic.
+
+Log:
+
+```js
+{
+  event_type: "DANGER_ALERT_UNCONFIRMED_SWITCH_FIRST",
+  alert_level: "DANGER",
+  alert_status: "SUSPECTED",
+  dyp_level_mm,
+  switch_l1,
+  switch_l2,
+  wait_time_sec,
+  message: "Switch Type Sensor L2 crossed but RS485 US Sensor did not confirm. Possible RS485 US Sensor fault or obstruction/person/object below Switch Type Sensor.",
+  timestamp
+}
+```
+
+---
+
+# 5. Alert Priority
+
+Danger always has higher priority than Orange.
+
+Priority order:
+
+```text
+DANGER_CONFIRMED
+DANGER_SUSPECTED
+ORANGE_CONFIRMED
+ORANGE_SUSPECTED
+NORMAL
+NO_SENSOR_MODE
+```
+
+If L2 is active, treat as Danger even if L1 is not active.
+
+If DYP level is above Danger threshold, treat as Danger even if Orange condition also exists.
+
+---
+
+# 6. Case 2 — DYP Only / RS485 US Sensor Only
+
+If user sets:
+
+```js
+sensor_mode = DYP_ONLY
+```
+
+then firmware must ignore switch sensor input completely.
+
+Logic:
+
+```js
+if dyp_level_mm >= danger_level_mm:
+    alert_level = DANGER
+    alert_status = CONFIRMED_BY_SINGLE_SENSOR
+elif dyp_level_mm >= orange_level_mm:
+    alert_level = ORANGE
+    alert_status = CONFIRMED_BY_SINGLE_SENSOR
+else:
+    alert_level = NORMAL
+```
+
+APK must show:
+
+```text
+Sensor Mode: RS485 US Sensor Only
+```
+
+Logs:
+
+```js
+{
+  event_type: "ALERT_BY_DYP_ONLY",
+  alert_level,
+  dyp_level_mm,
+  orange_level_mm,
+  danger_level_mm,
+  timestamp
+}
+```
+
+Right/Left RTU relay and alarm must work according to DYP level only.
+
+---
+
+# 7. Case 3 — Switch Sensor Only
+
+If user sets:
+
+```js
+sensor_mode = SWITCH_ONLY
+```
+
+then firmware must ignore DYP value for alert decision.
+
+Logic:
+
+```js
+if switch_l2 == true:
+    alert_level = DANGER
+    alert_status = CONFIRMED_BY_SINGLE_SENSOR
+elif switch_l1 == true:
+    alert_level = ORANGE
+    alert_status = CONFIRMED_BY_SINGLE_SENSOR
+else:
+    alert_level = NORMAL
+```
+
+APK must show:
+
+```text
+Sensor Mode: Switch Type Sensor Only
+```
+
+Logs:
+
+```js
+{
+  event_type: "ALERT_BY_SWITCH_ONLY",
+  alert_level,
+  switch_l1,
+  switch_l2,
+  timestamp
+}
+```
+
+Right/Left RTU relay and alarm must work according to Switch L1/L2 only.
+
+---
+
+# 8. Case 4 — No Sensor Connected
+
+If user sets:
+
+```js
+sensor_mode = NO_SENSOR
+```
+
+then:
+
+* Firmware must not trigger Right RTU relay.
+* Firmware must not trigger Left RTU relay.
+* Firmware must not trigger siren/flash/voice alarm.
+* APK must show:
+
+```text
+Sensor Mode: No Sensor Connected
+Alert Logic Disabled
+```
+
+* VPS must log this mode.
+
+Important: manual test buttons may still work if admin intentionally tests relay/siren, but automatic alert trigger must remain disabled.
+
+Log:
+
+```js
+{
+  event_type: "NO_SENSOR_MODE_ACTIVE",
+  message: "Automatic alert trigger disabled because no sensor is configured.",
+  timestamp
+}
+```
+
+---
+
+# 9. Firmware WebUI Requirements
+
+Firmware WebUI must include:
+
+## Sensor Configuration Page
+
+Fields:
+
+```text
+Sensor Input Mode:
+- RS485 US Sensor + Switch Type Sensor
+- RS485 US Sensor Only
+- Switch Type Sensor Only
+- No Sensor Connected
+```
+
+## Threshold Page
+
+Fields:
+
+```text
+Orange Level in mm
+Danger Level in mm
+Sensor Confirmation Wait Time
+```
+
+Show confirmation wait time in minutes in UI, but store internally in seconds.
+
+Example:
+
+```text
+Confirmation Wait Time: 5 minutes
+```
+
+Store:
+
+```js
+sensor_confirmation_wait_sec = 300
+```
+
+## Current Sensor Status Page
+
+Show:
+
+```text
+RS485 US Sensor:
+- Connected / Disconnected
+- Current Level: ___ mm
+- Orange Threshold: ___ mm
+- Danger Threshold: ___ mm
+
+Switch Type Sensor:
+- L1: ON/OFF
+- L2: ON/OFF
+
+Current Alert:
+- Normal / Orange / Danger
+- Confirmed / Suspected / Disabled
+- Reason message
+```
+
+---
+
+# 10. VPS Configuration Sync
+
+Whatever setting is available in firmware WebUI must also be configurable from VPS.
+
+Supported methods:
+
+1. MQTT command
+2. HTTP API command
+
+Required config object:
+
+```js
+{
+  device_id,
+  sensor_mode,
+  orange_level_mm,
+  danger_level_mm,
+  sensor_confirmation_wait_sec,
+  reboot_after_config_update: true
+}
+```
+
+VPS must send config to device.
+
+Device must reply with ACK:
+
+```js
+{
+  device_id,
+  config_received: true,
+  config_applied: true,
+  reboot_scheduled: true,
+  current_config_version,
+  timestamp
+}
+```
+
+After reboot, device must publish full current configuration again:
+
+```js
+{
+  device_id,
+  boot_status: "BOOTED",
+  current_config: {
+    sensor_mode,
+    orange_level_mm,
+    danger_level_mm,
+    sensor_confirmation_wait_sec
+  },
+  firmware_version,
+  timestamp
+}
+```
+
+VPS must compare sent config vs fetched config after reboot.
+
+If match:
+
+```text
+Configuration updated successfully
+```
+
+If mismatch:
+
+```text
+Configuration update failed or partially applied
+```
+
+Store both result types in log.
+
+---
+
+# 11. APK Configuration Flow
+
+When user opens device configuration page in APK:
+
+1. APK must first fetch current data from device/VPS.
+2. Show current saved firmware config to user.
+3. User modifies config.
+4. APK sends update request to VPS.
+5. VPS sends config to device using MQTT or HTTP.
+6. Device saves config in NVS.
+7. Device must reboot if `reboot_after_config_update = true`.
+8. After reboot, device must send current config again.
+9. APK must fetch and show new config as “Active Firmware Config”.
+
+APK must not blindly show “updated” immediately after sending command.
+
+APK should show these states:
+
+```text
+Fetching current firmware settings...
+Sending new settings...
+Device applying settings...
+Device rebooting...
+Fetching updated settings after reboot...
+Configuration verified successfully.
+```
+
+If after reboot config mismatch:
+
+```text
+Configuration update not verified. Please retry or check device connection.
+```
+
+Log:
+
+```js
+{
+  event_type: "DEVICE_CONFIG_UPDATE_REQUESTED",
+  source: "APK",
+  requested_config,
+  requested_by_user_id,
+  timestamp
+}
+```
+
+```js
+{
+  event_type: "DEVICE_CONFIG_UPDATE_VERIFIED",
+  source: "APK",
+  applied_config,
+  requested_by_user_id,
+  timestamp
+}
+```
+
+```js
+{
+  event_type: "DEVICE_CONFIG_UPDATE_FAILED",
+  source: "APK",
+  requested_config,
+  actual_config_after_reboot,
+  requested_by_user_id,
+  timestamp
+}
+```
+
+---
+
+# 12. RTU Relay Trigger Rules
+
+Right RTU and Left RTU relay trigger must depend on final alert decision, not raw sensor value.
+
+Final decision object:
+
+```js
+{
+  alert_level: "NORMAL" | "ORANGE" | "DANGER",
+  alert_status: "CONFIRMED" | "SUSPECTED" | "CONFIRMED_BY_SINGLE_SENSOR" | "DISABLED",
+  reason,
+  source: "BOTH_SENSOR" | "DYP_ONLY" | "SWITCH_ONLY" | "NO_SENSOR"
+}
+```
+
+RTU logic:
+
+```js
+if sensor_mode == NO_SENSOR:
+    no automatic relay trigger
+
+else if alert_level == DANGER:
+    trigger danger alarm logic
+
+else if alert_level == ORANGE:
+    trigger orange alarm logic
+
+else:
+    clear automatic alert relay logic according to existing auto-clear policy
+```
+
+Both confirmed and suspected alerts must trigger relay/alarm because waterlogging risk is higher priority than sensor mismatch.
+
+APK must visibly show whether alert is:
+
+```text
+Confirmed
+Suspected / Sensor Conflict
+Single Sensor Mode
+Disabled
+```
+
+---
+
+# 13. APK UI Text
+
+Use these labels:
+
+```text
+RS485 US Sensor
+Switch Type Sensor
+Orange Level
+Danger Level
+Sensor Confirmation Wait Time
+Confirmed Alert
+Suspected Alert
+Sensor Conflict
+Possible Sensor Fault
+Possible Obstruction
+Alert Logic Disabled
+```
+
+Do not show pump anywhere.
+
+Remove:
+
+```text
+Pump
+Sump Pump
+Pump Relay
+Pump Status
+Pump Test
+```
+
+---
+
+# 14. Suggested Firmware Pseudocode
+
+```cpp
+enum SensorMode {
+  BOTH_ACTIVE,
+  DYP_ONLY,
+  SWITCH_ONLY,
+  NO_SENSOR
+};
+
+enum AlertLevel {
+  NORMAL,
+  ORANGE,
+  DANGER
+};
+
+enum AlertStatus {
+  CONFIRMED,
+  SUSPECTED,
+  CONFIRMED_BY_SINGLE_SENSOR,
+  DISABLED
+};
+
+struct AlertDecision {
+  AlertLevel level;
+  AlertStatus status;
+  String reason;
+  String source;
+};
+
+AlertDecision evaluateAlert() {
+  if (sensorMode == NO_SENSOR) {
+    return {NORMAL, DISABLED, "Automatic alert disabled because no sensor is configured", "NO_SENSOR"};
+  }
+
+  if (sensorMode == DYP_ONLY) {
+    if (dypLevelMm >= dangerLevelMm) {
+      return {DANGER, CONFIRMED_BY_SINGLE_SENSOR, "Danger by RS485 US Sensor only", "DYP_ONLY"};
+    }
+    if (dypLevelMm >= orangeLevelMm) {
+      return {ORANGE, CONFIRMED_BY_SINGLE_SENSOR, "Orange by RS485 US Sensor only", "DYP_ONLY"};
+    }
+    return {NORMAL, CONFIRMED_BY_SINGLE_SENSOR, "Normal by RS485 US Sensor only", "DYP_ONLY"};
+  }
+
+  if (sensorMode == SWITCH_ONLY) {
+    if (switchL2Active) {
+      return {DANGER, CONFIRMED_BY_SINGLE_SENSOR, "Danger by Switch Type Sensor L2", "SWITCH_ONLY"};
+    }
+    if (switchL1Active) {
+      return {ORANGE, CONFIRMED_BY_SINGLE_SENSOR, "Orange by Switch Type Sensor L1", "SWITCH_ONLY"};
+    }
+    return {NORMAL, CONFIRMED_BY_SINGLE_SENSOR, "Normal by Switch Type Sensor", "SWITCH_ONLY"};
+  }
+
+  if (sensorMode == BOTH_ACTIVE) {
+    return evaluateBothSensorLogic();
+  }
+}
+```
+
+Implement `evaluateBothSensorLogic()` with timer-based confirmation for Orange and Danger.
+
+Danger must always override Orange.
+
+---
+
+# 15. Important Logging Requirement
+
+Every alert decision must be sent to VPS with:
+
+```js
+{
+  device_id,
+  location_id,
+  sensor_mode,
+  alert_level,
+  alert_status,
+  reason,
+  dyp_level_mm,
+  switch_l1,
+  switch_l2,
+  orange_level_mm,
+  danger_level_mm,
+  sensor_confirmation_wait_sec,
+  rtu_left_command_status,
+  rtu_right_command_status,
+  timestamp
+}
+```
+
+VPS must store this in logs/audit.
+
+Do not store only final alert. Store sensor mismatch reason also.
+
+---
+
+# 16. Final Expected Behavior Summary
+
+## BOTH_ACTIVE
+
+* DYP is primary.
+* Switch is confirmation.
+* If both confirm within wait time ? Confirmed alert.
+* If mismatch continues beyond wait time ? Suspected alert.
+* Suspected alert still triggers RTU/alarm.
+* VPS and APK must show clear reason.
+
+## DYP_ONLY
+
+* Only RS485 US Sensor value controls Orange/Danger.
+
+## SWITCH_ONLY
+
+* Switch L1 controls Orange.
+* Switch L2 controls Danger.
+
+## NO_SENSOR
+
+* No automatic RTU relay trigger.
+* No automatic alarm trigger.
+* Manual admin test can still work.
+
+## APK Config
+
+* Always fetch current config first.
+* After update, force device reboot.
+* After reboot, fetch active config again.
+* Show verified config only after device reports new saved config.
+
+## Pump
+
+* Remove all pump data, pump relay, pump status, pump test, pump logs, and pump API/MQTT fields.
+
+?? ???? architectural point: **5-minute timer firmware ??? ?? ??? ?? VPS ??? ?? log state ???**? Firmware ?? real-time RTU trigger decision ?? ??? local timer ???? ?????, ??????? network/VPS down ???? ?? ?? alarm logic ???? ????? VPS ??? decision ?? audit/log ?? APK display ?? ??? store ????

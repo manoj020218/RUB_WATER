@@ -19,7 +19,7 @@
                       "mqttPort":  1883,
                       "mqttUser":  "fg_server",
                       "mqttPass":  "FGServer@302020",
-                      "mqttTopicBase":  "rub"
+                      "mqttTopicBase":  "floodguard"
                   },
     "security":  {
                      "apiKey":  "FG_LOCAL_DEV_KEY",

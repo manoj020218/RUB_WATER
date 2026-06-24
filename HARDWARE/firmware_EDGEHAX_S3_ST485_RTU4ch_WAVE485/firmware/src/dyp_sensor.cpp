@@ -134,6 +134,17 @@ bool DypSensor::setZeroFromCurrentReading(String& reason) {
     return true;
 }
 
+bool DypSensor::setZeroDistanceMm(int32_t mm, String& reason) {
+    if (mm < 300 || mm > 3000) {
+        reason = "zero_distance_out_of_range";
+        return false;
+    }
+    _zeroDist = mm;
+    saveZeroToNvs();
+    Serial.printf("[DYP] Zero distance updated to %d mm\n", (int)_zeroDist);
+    return true;
+}
+
 void DypSensor::loadZeroFromNvs() {
     Preferences prefs;
     if (!prefs.begin(NVS_NS_MAIN, true)) return;

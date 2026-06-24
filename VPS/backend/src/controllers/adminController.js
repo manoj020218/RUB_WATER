@@ -194,6 +194,9 @@ function listAllDevices(req, res, next) {
     }
     const devices = allDevices.map((d) => ({
       device_id: d._id,
+      hardware_id: d.hardware_id || null,
+      mqtt_route_id: d.mqtt_route_id || null,
+      last_reported_device_id: d.last_reported_device_id || null,
       location_id: d.location_id,
       device_type: d.device_type,
       status: d.status,

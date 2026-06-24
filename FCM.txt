@@ -1,0 +1,179 @@
+हाँ, **VPS/MQTT down होने पर भी same local Wi-Fi network में खुली हुई mobile app/PWA local SOS siren alert play कर सकती है**, लेकिन **closed app में local network से alert reliably नहीं मिलेगा**.
+
+## 1. App open हो और same router/Wi-Fi पर हो
+
+यह possible है.
+
+Local flow:
+
+```text
+ESP32-S3
+   ↓ local Wi-Fi / same 4G router LAN
+Mobile App / PWA open
+   ↓
+Local alert sound / SOS siren in phone
+```
+
+ESP32-S3 में local HTTP/WebSocket/SSE server रखो:
+
+```text
+http://<s3-local-ip>/api/status
+ws://<s3-local-ip>/ws
+```
+
+App logic:
+
+```text
+If cloud/MQTT connected:
+  use VPS live data
+
+If cloud/MQTT down:
+  try local S3 IP
+  poll /api/status every 2 sec during danger
+  if DANGER:
+      play SOS siren sound in app
+      show LOCAL MODE / CLOUD OFFLINE
+```
+
+Important: browser/PWA में sound autoplay restrictions होते हैं. इसलिए user को app खोलने के बाद एक बार “Enable Alarm Sound” button tap करवाना चाहिए. Android APK/Capacitor app में यह easier होगा.
+
+## 2. App closed हो तो local Wi-Fi से alert?
+
+Normally **नहीं**, reliably नहीं.
+
+Closed app को same LAN से ESP32 direct wake नहीं कर पाएगा. Android background restrictions हैं. Local WebSocket/HTTP polling closed app में नहीं चलेगा.
+
+So closed-app alert के लिए दो options हैं:
+
+### Option A — FCM notification
+
+FCM VPS/cloud से आता है. अगर VPS down है या internet down है, तो FCM नहीं आएगा.
+
+Firebase docs के अनुसार background app में notification messages system tray में जाते हैं, और user tap करने पर app open होती है. High priority messages supported हैं, but they still need Google/Firebase connectivity. ([Firebase][1])
+
+FCM custom sound possible है, but Android में notification channel/sound पहले app में define करना पड़ता है. Once notification channel created, later sound बदलना difficult होता है unless new channel बनाया जाए. Background notification में app खुद full siren की तरह unlimited audio play नहीं कर सकती reliably.
+
+### Option B — Local native Android foreground service
+
+अगर customer specifically चाहता है कि **same local Wi-Fi पर phone app closed होने पर भी local alert मिले**, तो Capacitor PWA से नहीं होगा; native Android service चाहिए.
+
+But even native service में:
+
+```text
+phone same Wi-Fi पर होना चाहिए
+battery optimization disable करनी पड़ेगी
+foreground service notification always visible रखना पड़ेगा
+```
+
+Government field app में यह maintain करना difficult है.
+
+## Final practical design
+
+### Must-have
+
+```text
+1. Local site siren/beacon/voice हमेशा ESP32 से चले
+2. Mobile app open हो तो local SOS sound play करे
+3. Cloud online हो तो FCM push जाए
+4. Cloud down हो तो app open local mode में S3 से directly status पढ़े
+```
+
+### Do not depend on phone for emergency sound
+
+Emergency warning का primary source होना चाहिए:
+
+```text
+Local siren
+Beacon
+Voice announcement speaker
+```
+
+Phone sound only secondary alert है.
+
+## Codex instruction
+
+```text
+Implement local fallback alert mode.
+
+When VPS/MQTT/WebSocket is unavailable, the mobile app/PWA should try to connect to ESP32-S3 on the same local Wi-Fi network.
+
+ESP32-S3 must expose:
+GET /api/status
+GET /api/config
+WebSocket or SSE endpoint /ws for local status events if possible
+
+App behavior:
+- If cloud is connected, use VPS data.
+- If cloud is down, show LOCAL MODE.
+- In LOCAL MODE, poll ESP32-S3 /api/status.
+- If DANGER is returned and the app is open, play local SOS siren audio.
+- User must tap Enable Alarm Sound once to satisfy browser/mobile audio permission.
+- Keep vibrating/playing while danger is active, with mute button.
+- Log local mute action when cloud returns.
+
+Closed app:
+- Use FCM only when internet/VPS is available.
+- Do not promise local LAN alert when app is fully closed.
+- Android APK may later implement foreground service for local LAN monitoring, but this is optional and must not replace local siren/beacon.
+```
+
+## Answer in one line
+
+```text
+App open + same Wi-Fi = yes, local SOS siren possible.
+App closed = FCM only if internet/VPS available; local ESP32 cannot reliably wake closed PWA/APK unless native foreground service is built.
+```
+
+[1]: https://firebase.google.com/docs/cloud-messaging/android/receive-messages?utm_source=chatgpt.com "Receive messages in Android apps | Firebase Cloud Messaging"
+
+GEMINI input for FCM alert
+
+I have generated a standard Hi-Lo emergency siren for your app. This tone alternates between 600Hz and 900Hz every second, which is the standard frequency for high-priority alerts.
+## Flood Danger Audio & Vibration
+Audio File:
+Since I cannot directly attach a .wav file for download here, you can find high-quality, royalty-free "Hi-Lo" or "Two-Tone" sirens on platforms like Pixabay Music or Freesound. Look for sounds labeled "Two-Tone Industrial Alarm" or "Emergency Vehicle Siren."
+Vibration Pattern (The "SOS" Pulse):
+For maximum urgency, use a long-short-long pattern. This cuts through motion and ensures the user feels the danger.
+------------------------------
+## Implementation for Android APK
+Place your audio file in res/raw/flood_alert.wav.
+Vibration Array:
+
+// Pattern: Wait 0ms, Vibrate 1000ms, Pause 500ms, Vibrate 1000ms...val pattern = longArrayOf(0, 1000, 500, 1000, 500, 1000)
+notificationBuilder.setVibrate(pattern)
+
+Critical Notification Channel:
+
+val audioAttributes = AudioAttributes.Builder()
+    .setContentType(AudioAttributes.CONTENT_TYPE_SONIFICATION)
+    .setUsage(AudioAttributes.USAGE_ALARM)
+    .build()
+val channel = NotificationChannel("flood_danger", "Flood Danger", NotificationManager.IMPORTANCE_HIGH)
+channel.setSound(Uri.parse("android.resource://" + packageName + "/" + R.raw.flood_alert), audioAttributes)
+
+------------------------------
+## Implementation for PWA
+PWAs cannot play sound automatically while the app is in the background due to browser security. You must use the Vibration API in your Service Worker and trigger the sound once the user clicks the notification.
+Service Worker (Notification):
+
+self.registration.showNotification('CRITICAL FLOOD ALERT', {
+  body: 'Water level exceeded! Evacuate or check status immediately.',
+  icon: '/icon.png',
+  tag: 'flood-danger-alert',
+  vibrate: [500, 110, 500, 110, 450, 110, 200, 110, 170, 40, 450, 110, 200, 110, 170, 40, 500],
+  data: { url: '/danger-dashboard' }
+});
+
+Dashboard (Audio Playback):
+Once the user opens the app from the notification:
+
+const audio = new Audio('/sounds/flood_alert.mp3');
+audio.loop = true;
+audio.play();
+
+------------------------------
+## 💡 Pro Tips for FloodGuard
+
+* Volume Override: In the APK, use stream_alarm instead of stream_notification so the alert sounds even if the phone is on "Vibrate."
+* The "Killed" State: Use FCM priority: high. On Android, this triggers a "Heads-up" notification immediately, even if the app isn't running.
+* Stop Button: Ensure the "Attended" button is huge and red. When clicked, send a "Clear" event to your server to stop the alarm for all other users.

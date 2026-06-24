@@ -148,6 +148,115 @@ function seedIfEmpty() {
       updated_at: new Date().toISOString()
     }
   ];
+
+  const now = new Date().toISOString();
+  dataStore.locations = [
+    {
+      _id: 'RUB043',
+      name: 'RUB 043 Main Crossing',
+      description: 'Seed location for regression tests',
+      department_id: 'dept_001',
+      sensor_mount_height_mm: 1200,
+      alert_level_mm: 200,
+      danger_level_mm: 500,
+      danger_clear_level_mm: 450,
+      maintenance_status: 'OK',
+      operational_status: 'ACTIVE',
+      lifecycle_note: null,
+      lifecycle_updated_at: now,
+      is_active: true,
+      created_at: now,
+      updated_at: now
+    },
+    {
+      _id: 'RUB057',
+      name: 'RUB 057 Yard',
+      description: 'Seed location',
+      department_id: 'dept_001',
+      sensor_mount_height_mm: 1200,
+      alert_level_mm: 200,
+      danger_level_mm: 500,
+      danger_clear_level_mm: 450,
+      maintenance_status: 'OK',
+      operational_status: 'ACTIVE',
+      lifecycle_note: null,
+      lifecycle_updated_at: now,
+      is_active: true,
+      created_at: now,
+      updated_at: now
+    },
+    {
+      _id: 'RUB071',
+      name: 'RUB 071 Siding',
+      description: 'Seed location',
+      department_id: 'dept_001',
+      sensor_mount_height_mm: 1200,
+      alert_level_mm: 200,
+      danger_level_mm: 500,
+      danger_clear_level_mm: 450,
+      maintenance_status: 'OK',
+      operational_status: 'ACTIVE',
+      lifecycle_note: null,
+      lifecycle_updated_at: now,
+      is_active: true,
+      created_at: now,
+      updated_at: now
+    }
+  ];
+
+  dataStore.devices = [
+    {
+      _id: 'RUB043-CTRL01',
+      location_id: 'RUB043',
+      device_type: 'ESP32_S3',
+      firmware_version: '0.2.0-dev',
+      hardware_version: 'BA-S3-DA4',
+      mqtt_topic_base: 'floodguard/RUB043-CTRL01',
+      operational_status: 'ACTIVE',
+      lifecycle_note: null,
+      lifecycle_updated_at: now,
+      last_seen: null,
+      last_heartbeat: null,
+      status: 'OFFLINE',
+      created_at: now,
+      updated_at: now,
+      config: { daily_reboot_enabled: true, daily_reboot_time: '03:30', timezone: 'Asia/Kolkata', reporting_profile: 'dynamic' }
+    },
+    {
+      _id: 'RUB057-CTRL01',
+      location_id: 'RUB057',
+      device_type: 'ESP32_S3',
+      firmware_version: '0.2.0-dev',
+      hardware_version: 'BA-S3-DA4',
+      mqtt_topic_base: 'floodguard/RUB057-CTRL01',
+      operational_status: 'ACTIVE',
+      lifecycle_note: null,
+      lifecycle_updated_at: now,
+      last_seen: null,
+      last_heartbeat: null,
+      status: 'OFFLINE',
+      created_at: now,
+      updated_at: now,
+      config: { daily_reboot_enabled: true, daily_reboot_time: '03:30', timezone: 'Asia/Kolkata', reporting_profile: 'dynamic' }
+    },
+    {
+      _id: 'RUB071-CTRL01',
+      location_id: 'RUB071',
+      device_type: 'ESP32_S3',
+      firmware_version: '0.2.0-dev',
+      hardware_version: 'BA-S3-DA4',
+      mqtt_topic_base: 'floodguard/RUB071-CTRL01',
+      operational_status: 'ACTIVE',
+      lifecycle_note: null,
+      lifecycle_updated_at: now,
+      last_seen: null,
+      last_heartbeat: null,
+      status: 'OFFLINE',
+      created_at: now,
+      updated_at: now,
+      config: { daily_reboot_enabled: true, daily_reboot_time: '03:30', timezone: 'Asia/Kolkata', reporting_profile: 'dynamic' }
+    }
+  ];
 }
 
 module.exports = {

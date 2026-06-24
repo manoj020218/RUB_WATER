@@ -7,7 +7,7 @@ class LocalWebserver {
 public:
     static LocalWebserver& getInstance();
 
-    void begin(const char* apSsid, const char* deviceId);
+    void begin(const char* apSsid, const char* deviceId, const char* hardwareId);
     void loop();
     void startAp(uint32_t durationMs = 900000UL);  // default 15 min
     void stopAp();
@@ -19,6 +19,7 @@ private:
     WebServer _server{80};
     char      _apSsid[32]{};
     char      _deviceId[32]{};
+    char      _hardwareId[32]{};
     char      _mdnsHost[64]{};
     bool      _apActive   = false;
     bool      _loggedIn   = false;
@@ -34,6 +35,9 @@ private:
     void updateMdns();
     void startServerIfNeeded();
     bool checkAuth();
+    bool checkLocalPinAuth();
+    bool wantsJsonResponse();
+    void sendCorsHeaders();
     void sendUnauth();
 
     void handleRoot();

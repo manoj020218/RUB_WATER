@@ -1,0 +1,37 @@
+
+  Findings
+
+  1. MQTT receive is tied to one exact topic: floodguard/<runtime device_id>/command. The device ID is not fixed from
+     source only; it can be overridden from NVS at boot in src/main.cpp:100 and the subscribed topic is built in src/
+     mqtt_manager.cpp:71. If the VPS publishes to the wrong device ID or wrong topic, the device will never receive it.
+     Every received command should print [CMD] topic=... in src/main.cpp:312.
+  2. The firmware does not verify SUBSCRIBE success. It calls _mqtt.subscribe(...) but ignores the return value in src/
+     mqtt_manager.cpp:90. So a broker ACL problem can produce exactly your symptom: device can publish telemetry out,
+     but cannot receive commands in.
+  3. RTU status is not published in the same format as sensor and INA data. Sensor and INA fields are top-level, but RTU
+     data is nested under remote_left and remote_right in src/telemetry_manager.cpp:104. If the VPS/backend only parses
+     flat fields, it will show sensor and INA but miss RTU.
+  4. relay_status is the local PCB relay state, not the RTU relay state. That object is built in src/
+     telemetry_manager.cpp:87. RTU relay bits are instead remote_left.siren/flash/voice and remote_right.siren/flash/
+     voice in src/telemetry_manager.cpp:107.
+  5. In ST485 mode, the firmware does not publish remote battery voltage like INA219 does. It only sends RTU battery as
+     LOW or OK from DI input 4, not a numeric voltage. That comes from src/remote_box_manager.cpp:113 and is sent as
+     lb["batt"] / rb["batt"] in src/telemetry_manager.cpp:107. So if VPS expects RTU voltage like INA voltage, that data
+     is not being sent.
+  6. There is one build-risk to confirm: the repo default flash target is still non-ST485 floodguard_edgehax_s3 in
+     platformio.ini:4, while ST485 support is only enabled in the floodguard_edgehax_s3_st485_wave485 environments in
+     platformio.ini:113. If someone flashed with default env, RTU behavior will be wrong or disabled by default in src/
+     config_manager.cpp:141.
+
+  Most likely root cause
+
+  - For commands: wrong MQTT topic/device ID or broker subscribe permission issue.
+  - For RTU data visibility on VPS: backend parser/schema mismatch. The firmware sends RTU data as nested remote_left /
+    remote_right, not as flat INA-style fields.
+
+  What to verify
+
+  - Check the actual runtime device_id printed at boot and publish {"cmd":"ping"} to floodguard/<that exact id>/command.
+  - Check raw MQTT telemetry payload. If remote_left and remote_right are present there, the device is sending RTU data
+    and the VPS/backend is dropping or ignoring it.
+  - Check whether the flashed firmware is really the ST485 build, not the default non-ST485 build.

@@ -1,0 +1,261 @@
+# FloodGuard Edgehax S3 — Bench Status & Resumption Guide
+**Last updated: 2026-06-01**
+
+---
+
+## Board Confirmed Working
+
+| Item | Value |
+|------|-------|
+| Module | ESP32-S3-WROOM-1 N16R8 |
+| Port | COM16 |
+| PlatformIO board | `4d_systems_esp32s3_gen4_r8n16` |
+| Variant | esp32_s3r8n16 — qio_opi, 16MB flash, 8MB OPI PSRAM |
+| Flash env | `pio run -e floodguard_edgehax_s3_dev -t upload` |
+| Monitor | `pio device monitor -e floodguard_edgehax_s3_dev` |
+
+---
+
+## What Is Working ✅
+
+- PSRAM 8MB OPI — InternalFlashFifo 197KB allocated in PSRAM
+- WiFi connects (dev env hardcoded: SSID=jenix123)
+- MQTT connected to `api.floodguard.iotsoft.in`
+- Telemetry publishing every 180s → `[TELE] telemetry → MQTT OK`
+- LED polarity confirmed: `HIGH = ON` (bench tested)
+- All relays + RF outputs OFF at boot
+- RTU right bus UART2 GPIO38/39/47 initialized OK
+- SD absent → graceful fallback to InternalFlashFifo (retries every 30s)
+- DYP-A01 sensor via RS485 path — valid frames, stable distance readings ✅ (2026-06-01)
+- L1 confirmation input GPIO4 — INPUT_PULLUP, LOW=active, tested ✅ (2026-06-01)
+- L2 confirmation input GPIO5 — INPUT_PULLUP, LOW=active, tested ✅ (2026-06-01)
+- FSM ALERT_MISMATCH — correctly fires when L1/L2 active but DYP level=0 ✅ (2026-06-01)
+
+---
+
+## LED Behavior (bench confirmed)
+
+| LED | GPIO | Color | State | Pattern |
+|-----|------|-------|-------|---------|
+| No DYP sensor connected | 40 | Orange | SENSOR_FAULT | Rapid strobe 100ms |
+| No SD card | 41 | White | SD_WARNING | Double blink 5s cycle |
+| MQTT + sensor OK | 42 | Green | CLOUD_CONNECTED | Solid |
+| Blue fixed | — | Blue | Module power LED | Not firmware controlled |
+
+---
+
+## Known Hardware Conflict — Resolved by Candidate Remapping
+
+**GPIO35/36/37 = OPI PSRAM data lines on N16R8 — CANNOT be used as UART.**
+Original spec assigned these to left RS485 bus. Candidate fix applied (see §2 Pending Tasks).
+
+**Candidate left bus: GPIO15 (RX), GPIO2 (TX), GPIO19 (RTS)**
+GPIO19 = USB D- intentionally repurposed. Native USB unavailable in field profile.
+Firmware PSRAM guard updated to block GPIO33–37 (covers full Octal PSRAM range).
+
+---
+
+## Pending Tasks Before Production
+
+### 1. SD Card Test (tomorrow — need card adapter)
+
+**Problem:** 64GB SDXC card fails SCR handshake at default 20MHz clock.
+Error seen: `sdmmc_check_scr: send_scr returned 0xffffffff`
+
+**Fix already applied in `src/sd_fifo.cpp`:**
+- Tries 4-bit mode at 4MHz first
+- Falls back to 1-bit mode at 4MHz if that fails
+- Serial output will say: `[SD] Mounted in 4-bit mode` or `[SD] Mounted in 1-bit mode`
+
+**Before inserting SD card — FORMAT IT FIRST:**
+1. Insert 64GB card into PC via adapter
+2. Use [SD Card Formatter](https://www.sdcard.org/downloads/formatter/) (official, free) — Quick Format
+3. Or: Windows right-click → Format → **FAT32**, allocation size **32768 (32KB)**
+4. 64GB cards ship as exFAT — ESP32 SD_MMC only supports FAT32, exFAT will always fail
+
+**Steps after formatting:**
+1. Close serial monitor (release COM16)
+2. Flash: `pio run -e floodguard_edgehax_s3_dev -t upload`
+3. Open monitor: `pio device monitor -e floodguard_edgehax_s3_dev`
+4. Insert formatted SD card
+5. Check for `[SD] Mounted in 4-bit mode` in serial output
+6. Check White LED (GPIO41) goes off after SD mounts
+
+---
+
+### 2. Left RTU Bus — Approved Candidate Mapping (pending bench test)
+
+Original spec GPIO35/36/37 blocked by OPI PSRAM on N16R8.
+Only 2 free pads from Edgehax safe list: GPIO2 and GPIO15.
+GPIO19 (USB D-) used for RTS — native USB intentionally unavailable in field profile.
+
+| Signal | GPIO | Note |
+|--------|------|------|
+| Left RX | **GPIO15** | Free, no conflicts |
+| Left TX | **GPIO2** | Free, no conflicts |
+| Left RTS/DE | **GPIO19** | USB D- repurposed — USB not needed in field |
+
+**Wire the left SmartElex SP3485 breakout as:**
+- SP3485 TX-0 → ESP32 **GPIO15** (RX into S3)
+- SP3485 RX-1 → ESP32 **GPIO2** (TX from S3)
+- SP3485 RTS → ESP32 **GPIO19** (direction control)
+- SP3485 VCC → 3.3V, GND → GND
+- A/B terminals → J2 RS485 bus to remote left box (slave ID 11)
+
+Right bus: GPIO38 (RX), GPIO39 (TX), GPIO47 (RTS) — unchanged from spec.
+
+**Mapping freezes to FLOODGUARD-S3-EDGEHAX-N16R8-02 only after bench checklist passes.**
+
+---
+
+### 3. DYP-A01 Sensor — CONFIRMED WORKING via RS485 (2026-06-01)
+
+**Final confirmed wiring (do not change):**
+
+```
+Sensor box:
+  DYP-A01  VCC  (red)    → 5V
+  DYP-A01  GND  (black)  → sensor box GND
+  DYP-A01  TX   (WHITE)  → MAX485 auto-direction module TTL input
+  DYP-A01  RX   (yellow) → FLOATING — do not connect
+
+RS485 cable (3 wires, sensor box → MCU box):
+  A  →  A
+  B  →  B
+  GND → GND   ← MANDATORY — common ground both sides
+
+MCU box — SmartElex SP3485:
+  A/B terminals ← from RS485 cable
+  RO  (Receiver Output) → ESP32-S3 GPIO21
+  RTS → GND (short these two pins together, forces receive-only)
+  RX  → floating / not connected
+  VCC → 3.3V,  GND → GND
+```
+
+**Wire colour truth (bench verified):**
+- WHITE = DYP TX (sensor output) — connect this to MAX485
+- YELLOW = DYP RX/trigger — leave floating (sensor auto-outputs continuously)
+
+**Firmware:** `src/dyp_sensor.cpp` uses UART2 (`HardwareSerial(2)`) on GPIO21 at 9600 8N1.
+300ms intra-frame wait implemented — do not remove.
+
+**Expected monitor output when working:**
+```
+[DYP_FRAME] FF 04 C0 C3  csum_ok=Y  d=1216mm
+[SENSOR] dist=1216mm  lvl=...mm  valid=Y  |  FSM=NORMAL
+```
+
+**Common failure modes:**
+| Symptom | Cause |
+|---------|-------|
+| `valid=N`, all `FF FF FF FF` frames | GND wire missing between boxes |
+| No frames at all (`avail=0`) | RS485 A/B swapped, or SmartElex RO not on GPIO21 |
+| `valid=N`, csum_ok=N with real distances | A/B polarity reversed |
+| `valid=N` even with good sensor and GND | Check SmartElex RTS is tied to GND |
+
+---
+
+### 4. Production Flash Prep
+
+Before flashing to field device, update `platformio.ini` production env:
+```ini
+-DDEVICE_ID_SEED=\"RUB-CTRL-02\"           ; real device ID
+-DDEVICE_TOKEN_SEED=\"actual_token_here\"   ; real device token from backend
+-DLOCATION_ID_SEED=\"RUB-SITE-01\"
+```
+Or pass via CLI: `pio run -e floodguard_edgehax_s3 -t upload -DDEVICE_ID_SEED=...`
+
+---
+
+## GPIO Quick Reference
+
+| GPIO | Function | Direction | Notes |
+|------|----------|-----------|-------|
+| 1 | Battery ADC | IN | Divider ratio 5.0 |
+| 4 | Level confirm 1 | IN | INPUT_PULLUP, LOW=active |
+| 5 | Level confirm 2 | IN | INPUT_PULLUP, LOW=active |
+| 6 | Relay siren | OUT | LOW=ON |
+| 7 | Relay flash | OUT | LOW=ON |
+| 8 | Relay voice (future) | OUT | LOW=ON |
+| 9–14 | SD_MMC D2/D3/CMD/CLK/D0/D1 | — | SDMMC 4-bit |
+| 16 | Relay sump pump | OUT | LOW=ON |
+| 17 | RF danger siren | OUT | LOW=active |
+| 18 | RF sump pump | OUT | LOW=active |
+| 21 | DYP RX (UART2) | IN | Via SmartElex SP3485 RO — RS485 path |
+| 35 | Left RS485 RX | — | **CONFLICT: OPI PSRAM — disabled** |
+| 36 | Left RS485 TX | — | **CONFLICT: OPI PSRAM — disabled** |
+| 37 | Left RS485 RTS | — | **CONFLICT: OPI PSRAM — disabled** |
+| 38 | Right RS485 RX | IN | UART2, working |
+| 39 | Right RS485 TX | OUT | UART2, working |
+| 40 | LED Orange | OUT | HIGH=ON |
+| 41 | LED White | OUT | HIGH=ON |
+| 42 | LED Green | OUT | HIGH=ON |
+| 47 | Right RS485 RTS | OUT | DE/RE control |
+| 48 | Config button | IN | INPUT_PULLUP, LOW=pressed |
+
+---
+
+## Key Source Files
+
+| File | Purpose |
+|------|---------|
+| `src/device_profile.h` | All GPIO pin defines, seeds, endpoints |
+| `src/main.cpp` | Boot sequence, stack size override |
+| `src/sd_fifo.cpp` | SD card mount with 4MHz fallback (updated) |
+| `src/status_led.cpp` | All LED blink patterns |
+| `src/rs485_rtu_master.cpp` | Modbus RTU with PSRAM pin guard |
+| `src/dyp_sensor.cpp` | DYP-A01 UART2 parser — RS485 path via SmartElex SP3485 on GPIO21 |
+| `src/telemetry_manager.cpp` | Telemetry JSON + MQTT publish |
+| `platformio.ini` | Build envs — dev uses COM16/UART0 |
+
+---
+
+## Resume Command Sequence
+
+```powershell
+# From firmware directory:
+cd "D:\IOT Device\RUB\FloodGuard\HARDWARE\firmware_EDGEHAX_S3_Sp3485_sd\firmware"
+
+# Flash dev build
+pio run -e floodguard_edgehax_s3_dev -t upload
+
+# Monitor (open after flash)
+pio device monitor -e floodguard_edgehax_s3_dev
+```
+
+---
+
+## Generic RTU Relay Backup (2026-06-02)
+
+This is the backup path if the custom FloodGuard C3 RTU slave is still blocked.
+
+Bench result:
+- Right RTU bus on the S3 is proven with a generic external Modbus relay module
+- Right bus pins: GPIO38 = RX, GPIO39 = TX, GPIO47 = DE/RE
+- Generic relay control and relay status readback both work over RS485
+
+PlatformIO environments added:
+- `floodguard_edgehax_s3_generic_relay_2ch_backup`
+- `floodguard_edgehax_s3_generic_relay_4ch_backup`
+
+2-channel backup mapping:
+- Relay 1 = Siren
+- Relay 2 = Flash
+
+4-channel backup mapping:
+- Relay 1 = Siren
+- Relay 2 = Flash
+- Relay 3 = Voice, follows Siren/Danger state
+- Relay 4 = Spare, reserved for future Barrier use
+
+Important limits:
+- These generic relay modules do not provide battery ADC telemetry
+- A 2-channel board cannot provide Voice or Barrier outputs
+- The web UI now treats 2CH and 4CH boards separately because they use different Modbus maps
+
+Addressing:
+- Default address is usually `255`
+- Address read/set is available from `/remote-test`
+- Change address only when one relay module is connected on that bus
+- Separate left/right buses are fine; both modules can stay `255` if they are on different buses
+- If two modules share one RS485 bus, they must have unique addresses

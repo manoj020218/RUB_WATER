@@ -1,4 +1,5 @@
 const env = require('../config/env');
+const deviceRepository = require('../repositories/deviceRepository');
 
 let mqttLib;
 
@@ -16,8 +17,49 @@ function resolveMqttLibrary() {
   return mqttLib;
 }
 
-function publishConfigUpdate(deviceId, payload) {
-  if (!env.mqttEnabled || !deviceId) {
+function normalizeIdentity(value) {
+  return String(value || '').trim().toUpperCase();
+}
+
+function resolvePublishTarget(deviceIdentity) {
+  const identity = normalizeIdentity(deviceIdentity);
+  if (!identity) {
+    return { device: null, routeId: '' };
+  }
+
+  const device = deviceRepository.resolveByIdentity({
+    deviceId: identity,
+    hardwareId: identity,
+    routeId: identity
+  }) || null;
+  const routeId = normalizeIdentity(device?.mqtt_route_id || device?.hardware_id || device?._id || identity);
+  return { device, routeId };
+}
+
+function buildPayloadBody(payload, device, routeId) {
+  if (typeof payload === 'string') {
+    return payload;
+  }
+
+  const body = {
+    ...(payload || {})
+  };
+  if (device) {
+    if (!body.device_id) {
+      body.device_id = device._id;
+    }
+    if (!body.hardware_id && device.hardware_id) {
+      body.hardware_id = device.hardware_id;
+    }
+  }
+  if (!body.mqtt_route_id && routeId) {
+    body.mqtt_route_id = routeId;
+  }
+  return JSON.stringify(body);
+}
+
+function publishDeviceMessage(deviceIdentity, channel, payload) {
+  if (!env.mqttEnabled || !deviceIdentity || !channel) {
     return false;
   }
 
@@ -26,8 +68,13 @@ function publishConfigUpdate(deviceId, payload) {
     return false;
   }
 
-  const topic = `${env.mqttTopicBase}/${deviceId}/config`;
-  const body = typeof payload === 'string' ? payload : JSON.stringify(payload || {});
+  const { device, routeId } = resolvePublishTarget(deviceIdentity);
+  if (!routeId) {
+    return false;
+  }
+
+  const topic = `${env.mqttTopicBase}/${routeId}/${channel}`;
+  const body = buildPayloadBody(payload, device, routeId);
   const client = mqtt.connect(env.mqttUrl, {
     reconnectPeriod: 0,
     connectTimeout: 2000,
@@ -53,6 +100,11 @@ function publishConfigUpdate(deviceId, payload) {
   return true;
 }
 
+function publishConfigUpdate(deviceId, payload) {
+  return publishDeviceMessage(deviceId, 'config', payload);
+}
+
 module.exports = {
+  publishDeviceMessage,
   publishConfigUpdate
 };

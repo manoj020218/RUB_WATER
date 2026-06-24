@@ -22,6 +22,7 @@ public:
     const DypSnapshot& snapshot() const { return _snap; }
     int32_t zeroDistanceMm() const { return _zeroDist; }
     bool setZeroFromCurrentReading(String& reason);
+    bool setZeroDistanceMm(int32_t mm, String& reason);
 
 private:
     DypSensor() = default;

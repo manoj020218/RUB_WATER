@@ -1,4 +1,12 @@
-﻿function parseTopic(topic, topicBase = 'rub') {
+function normalizeTopicBases(topicBases) {
+  if (Array.isArray(topicBases)) {
+    return [...new Set(topicBases.map((item) => String(item || '').trim()).filter(Boolean))];
+  }
+  const single = String(topicBases || '').trim();
+  return single ? [single] : ['floodguard'];
+}
+
+function parseTopic(topic, topicBases = 'floodguard') {
   if (!topic || typeof topic !== 'string') {
     return null;
   }
@@ -8,18 +16,20 @@
     return null;
   }
 
-  const [base, deviceId, channel] = parts;
-  if (base !== topicBase || !deviceId || !channel) {
+  const [base, routeId, channel] = parts;
+  const allowedBases = normalizeTopicBases(topicBases);
+  if (!allowedBases.includes(base) || !routeId || !channel) {
     return null;
   }
 
   return {
     base,
-    deviceId,
+    routeId,
     channel
   };
 }
 
 module.exports = {
-  parseTopic
+  parseTopic,
+  normalizeTopicBases
 };

@@ -1,0 +1,479 @@
+﻿You are working inside the existing FloodGuard app repository. Inspect the current project structure, identify the frontend framework and existing coding conventions, and implement a responsive location-specific FloodGuard monitoring dashboard.
+
+Do not create an unrelated demo project. Apply the design directly inside the existing FloodGuard app. Reuse existing layout components, routes, authentication, theme tokens, API utilities, and state-management patterns wherever they already exist.
+
+## Objective
+
+Create a dashboard screen that works cleanly on:
+
+* Android and iPhone mobile screens
+* Tablets
+* Desktop browsers
+
+The dashboard is location-specific. The operator must be able to select any predefined FloodGuard installation site and view the device status, water level, RTU health, MCU telemetry, alarm-annunciation status, and threshold settings for that site.
+
+Use a professional industrial-monitoring appearance. Prefer a dark dashboard theme with clear status colors, readable typography, compact spacing, and large touch-friendly controls.
+
+## Important hardware logic
+
+FloodGuard uses a 12 V solar-battery system.
+
+The Left RTU and Right RTU use an LVD circuit. When battery voltage falls below the preset protection threshold, the LVD may switch off the RTU load to prevent deep discharge.
+
+The Left RTU and Right RTU battery status are detected through an LM393 voltage-comparator digital output. Therefore:
+
+* Do not show numerical RTU voltage values.
+* Do not show values such as `12.4 V`.
+* Only show `OK` or `LOW`.
+* Display RTU communication/power status separately as `ON` or `OFF`.
+
+This distinction is important:
+
+* `RTU Status: ON` means the RTU is responding or detected as active.
+* `RTU Status: OFF` means the RTU is not active or not responding. This may be caused by LVD cutoff, battery depletion, communication loss, wiring fault, or another issue.
+* `RTU Battery: OK` means the LM393 digital comparator indicates voltage is above the preset threshold.
+* `RTU Battery: LOW` means the comparator indicates voltage is below the preset threshold.
+
+## Water-level range
+
+This app is for the FloodGuard application. Use:
+
+* Minimum water level: `0 mm`
+* Maximum water level: `1000 mm`
+
+Do not use metres on this dashboard.
+
+Show all current levels, alert levels, and danger levels in millimetres.
+
+## Dashboard layout
+
+### 1. Header
+
+At the top of the dashboard show:
+
+* Title: `Site Name - <Selected Location Name>`
+* A dropdown selector containing predefined site locations
+* Current date
+* Live current time
+* Optional small refresh indicator or last-updated timestamp
+
+When a different location is selected, refresh all dashboard values using the selected site's data.
+
+### 2. Main monitoring section
+
+On desktop and larger tablet screens, split the main area into two columns.
+
+On narrow mobile screens, stack the two panels vertically.
+
+#### Left panel: animated water-level vessel
+
+Show a visually attractive vessel or flood-water chamber.
+
+Requirements:
+
+* Display water filled inside the vessel according to the current level.
+* Animate the water surface gently.
+* Add subtle splash or wave animation so the water appears to rise naturally.
+* Animate the water level smoothly whenever the value changes.
+* Use a scale from `0 mm` to `1000 mm`.
+* Show the current water level prominently below or inside the vessel.
+* Draw an orange horizontal line for the configured alert threshold.
+* Draw a red horizontal line for the configured danger threshold.
+* Label the lines clearly:
+
+  * `ALERT`
+  * `DANGER`
+* Ensure the vessel still looks clear on a small phone screen.
+* Respect `prefers-reduced-motion`; reduce animation if the user has disabled motion effects.
+
+Example display:
+
+* Current level: `420 mm`
+* Orange alert threshold: `600 mm`
+* Red danger threshold: `800 mm`
+
+#### Right panel: site and infrastructure status
+
+Show a compact list of status cards:
+
+* Device ID
+* Device health: `WORKING` / `FAULTY`
+* Device connectivity: `ONLINE` / `OFFLINE`
+* API status: `UP` / `DOWN`
+* Cloud server status: `UP` / `DOWN`
+* MQTT server status: `UP` / `DOWN`
+
+Use consistent status colors:
+
+* Green: normal, online, up, working, OK
+* Orange: warning or degraded state
+* Red: faulty, offline, down, low battery, danger
+* Grey: unknown, unavailable, or stale data
+
+Add icons only if an icon library is already installed. Do not add an unnecessary heavy dependency.
+
+### 3. Three-column equipment summary
+
+Below the main monitoring section, show a responsive equipment-status grid.
+
+Desktop and tablet:
+
+* Three columns: `LEFT RTU`, `MCU`, `RIGHT RTU`
+
+Mobile:
+
+* Preserve readability using stacked cards or a horizontally scrollable compact grid.
+* Avoid tiny text.
+
+#### Row 1: power and availability
+
+* Left RTU status: `ON` / `OFF`
+* MCU status: `ON` / `OFF`
+* Right RTU status: `ON` / `OFF`
+
+#### Row 2: MCU telemetry
+
+* MCU solar voltage, for example: `13.8 V`
+* MCU solar current, for example: `1.25 A`
+* MCU input-sensor status: `UP` / `DOWN`
+
+#### Row 3: RTU battery comparator status
+
+* Left RTU battery status: `OK` / `LOW`
+* Middle cell may remain empty or show a simple note: `LM393 Comparator Input`
+* Right RTU battery status: `OK` / `LOW`
+
+Do not show exact RTU voltage. These are LM393 comparator digital results only.
+
+Add a small information tooltip or help text:
+
+`RTU battery status is detected by an LM393 comparator. LOW indicates that battery voltage has fallen below the preset threshold. The LVD may switch off the RTU to protect the 12 V solar battery.`
+
+### 4. Single alert-annunciation row
+
+Do not add a duplicated fifth row.
+
+Use one annunciation section containing two responsive groups:
+
+* `LEFT RTU ALERT ANNUNCIATION`
+* `RIGHT RTU ALERT ANNUNCIATION`
+
+Each RTU group must show three output controls:
+
+1. Siren
+2. Flash
+3. Voice
+
+For each output:
+
+* Show the current state: `OFF`, `ACTIVE`, `TESTING`, or `SILENCED`
+* Change button color when active
+* Use a clear icon if available
+* Provide a test action that triggers a `5-second pulse`
+* While the five-second test is running, show a countdown or `TESTING`
+* Disable repeated clicks while the test pulse is already active
+* Show a loading state while a control command is being sent
+* Show success or failure feedback after the API response
+
+When an alarm is automatically activated by sensor data:
+
+* Highlight the alarm button in red or orange depending on severity
+* Show an `ACTIVE` badge
+* Provide an operator action to turn off or silence the output
+* Do not visually pretend that the underlying sensor condition has cleared
+* If the danger condition still exists, keep a separate visible warning such as:
+  `Danger condition is still active. Output has been silenced manually.`
+
+Use one row only for both RTU annunciation groups. Do not repeat the same controls in another row.
+
+### 5. Water-level settings section
+
+Below the annunciation controls, show a compact settings card.
+
+Fields:
+
+1. `Orange Alert Level`
+
+   * Unit: `mm`
+   * Allowed range: `0–1000`
+2. `Red Danger Level`
+
+   * Unit: `mm`
+   * Allowed range: `0–1000`
+3. `Sensor Input Mode`
+
+   * Options:
+
+     * `DOUBLE`
+     * `SINGLE`
+
+Add explanatory text:
+
+`SINGLE mode: only the main DYP water-level sensor is used. The confirmatory sensor is removed or disabled.`
+
+`DOUBLE mode: the DYP water-level sensor and confirmatory sensor are both used.`
+
+Validation rules:
+
+* Orange alert level must be lower than the red danger level.
+* Red danger level must not exceed `1000 mm`.
+* Values must not be negative.
+* Show inline validation errors.
+* Disable Save while the settings are invalid.
+* Ask for confirmation before saving changed threshold values.
+* Display loading, saved, and failed states.
+
+### 6. Suggested frontend data model
+
+Adapt this structure to the project's existing TypeScript interfaces or JavaScript model conventions:
+
+```ts
+type BinaryStatus = "ON" | "OFF" | "UNKNOWN";
+type HealthStatus = "WORKING" | "FAULTY" | "UNKNOWN";
+type ConnectivityStatus = "ONLINE" | "OFFLINE" | "UNKNOWN";
+type ServiceStatus = "UP" | "DOWN" | "UNKNOWN";
+type BatteryComparatorStatus = "OK" | "LOW" | "UNKNOWN";
+type AlarmOutputStatus = "OFF" | "ACTIVE" | "TESTING" | "SILENCED";
+type SensorMode = "SINGLE" | "DOUBLE";
+
+interface AlarmOutput {
+  status: AlarmOutputStatus;
+  triggeredBy: "SENSOR" | "MANUAL_TEST" | "MANUAL_COMMAND" | null;
+  activatedAt?: string;
+}
+
+interface RtuAlarmOutputs {
+  siren: AlarmOutput;
+  flash: AlarmOutput;
+  voice: AlarmOutput;
+}
+
+interface FloodGuardSiteDashboard {
+  siteId: string;
+  siteName: string;
+  deviceId: string;
+  updatedAt: string;
+
+  currentWaterLevelMm: number;
+  orangeAlertLevelMm: number;
+  redDangerLevelMm: number;
+  sensorInputMode: SensorMode;
+
+  deviceHealth: HealthStatus;
+  deviceConnectivity: ConnectivityStatus;
+  apiStatus: ServiceStatus;
+  cloudServerStatus: ServiceStatus;
+  mqttServerStatus: ServiceStatus;
+
+  leftRtuStatus: BinaryStatus;
+  mcuStatus: BinaryStatus;
+  rightRtuStatus: BinaryStatus;
+
+  mcuSolarVoltageV: number | null;
+  mcuSolarCurrentA: number | null;
+  mcuInputSensorsStatus: ServiceStatus;
+
+  leftRtuBatteryComparator: BatteryComparatorStatus;
+  rightRtuBatteryComparator: BatteryComparatorStatus;
+
+  leftRtuAlarmOutputs: RtuAlarmOutputs;
+  rightRtuAlarmOutputs: RtuAlarmOutputs;
+}
+```
+
+### 7. API integration
+
+First inspect the existing backend/API utilities. Use existing endpoints where available.
+
+If endpoints do not yet exist, create a clean frontend service abstraction and mock adapter so the UI is ready for backend integration.
+
+Suggested methods:
+
+```ts
+getSites()
+getSiteDashboard(siteId)
+updateWaterLevelSettings(siteId, payload)
+testAlarmOutput(siteId, rtuSide, outputType, durationSeconds)
+setAlarmOutput(siteId, rtuSide, outputType, command)
+```
+
+Where:
+
+```ts
+type RtuSide = "LEFT" | "RIGHT";
+type AlarmOutputType = "SIREN" | "FLASH" | "VOICE";
+type AlarmCommand = "ON" | "OFF" | "SILENCE";
+```
+
+For testing:
+
+```ts
+durationSeconds = 5
+```
+
+Never hardcode UI state permanently after pressing a button. Update state optimistically only if appropriate, then reconcile it with the API response or subsequent polling/WebSocket/MQTT update.
+
+If the app already uses WebSockets, Server-Sent Events, Firebase listeners, MQTT-over-WebSocket, or polling, connect to the existing real-time mechanism. Otherwise, implement a safe polling fallback with a reasonable interval and clean up timers when the screen unmounts.
+
+### 8. Stale data handling
+
+Status data can become misleading if updates stop.
+
+Use `updatedAt` to detect stale values.
+
+* Display the latest update time.
+* If data is stale, show a visible warning such as `STALE DATA`.
+* Use grey status chips for stale or unknown values.
+* Do not show old data as confidently online or working.
+
+Use an existing app convention for the stale threshold if one already exists. Otherwise, define a configurable threshold.
+
+### 9. Responsive behaviour
+
+The screen must remain usable on a normal mobile phone without horizontal overflow.
+
+Recommended behaviour:
+
+* Header wraps gracefully.
+* Main water vessel and infrastructure panel stack vertically on small screens.
+* Equipment summary becomes stacked cards or a compact scrollable grid.
+* Alarm buttons remain large enough for touch use.
+* Setting inputs use full-width controls on narrow screens.
+* Desktop uses available width efficiently without making the vessel excessively large.
+
+Test at least these widths:
+
+* `360 px`
+* `390 px`
+* `768 px`
+* `1024 px`
+* `1440 px`
+
+### 10. Accessibility and usability
+
+* Use semantic labels.
+* Add accessible button labels.
+* Ensure active state is not communicated by color alone.
+* Use status text and icons together.
+* Preserve keyboard navigation on desktop.
+* Provide focus states.
+* Avoid very small text.
+* Avoid excessive animation.
+* Make destructive or silencing actions explicit.
+
+### 11. Visual states to support
+
+Implement clear visual handling for:
+
+* Normal condition
+* Orange alert threshold crossed
+* Red danger threshold crossed
+* Left RTU battery LOW
+* Right RTU battery LOW
+* RTU OFF after possible LVD cutoff
+* Device OFFLINE
+* API DOWN
+* MQTT DOWN
+* Cloud server DOWN
+* Stale data
+* Alarm output active due to sensor trigger
+* Manual five-second test pulse in progress
+* Manually silenced output while water danger remains active
+
+### 12. Example mock data
+
+Use mock data only where required until real APIs are connected:
+
+```ts
+const sampleDashboard: FloodGuardSiteDashboard = {
+  siteId: "site-jaipur-001",
+  siteName: "Basement Parking - Block A",
+  deviceId: "FG-JPR-001",
+  updatedAt: new Date().toISOString(),
+
+  currentWaterLevelMm: 420,
+  orangeAlertLevelMm: 600,
+  redDangerLevelMm: 800,
+  sensorInputMode: "DOUBLE",
+
+  deviceHealth: "WORKING",
+  deviceConnectivity: "ONLINE",
+  apiStatus: "UP",
+  cloudServerStatus: "UP",
+  mqttServerStatus: "UP",
+
+  leftRtuStatus: "ON",
+  mcuStatus: "ON",
+  rightRtuStatus: "ON",
+
+  mcuSolarVoltageV: 13.8,
+  mcuSolarCurrentA: 1.25,
+  mcuInputSensorsStatus: "UP",
+
+  leftRtuBatteryComparator: "OK",
+  rightRtuBatteryComparator: "OK",
+
+  leftRtuAlarmOutputs: {
+    siren: { status: "OFF", triggeredBy: null },
+    flash: { status: "OFF", triggeredBy: null },
+    voice: { status: "OFF", triggeredBy: null }
+  },
+
+  rightRtuAlarmOutputs: {
+    siren: { status: "OFF", triggeredBy: null },
+    flash: { status: "OFF", triggeredBy: null },
+    voice: { status: "OFF", triggeredBy: null }
+  }
+};
+```
+
+### 13. Implementation workflow
+
+Before editing:
+
+1. Inspect the repository structure.
+2. Identify the existing dashboard route or create an appropriate route within the existing app.
+3. Identify reusable components and styling conventions.
+4. Check whether the project uses TypeScript or JavaScript.
+5. Check whether there is an existing API client, WebSocket layer, MQTT listener, or polling implementation.
+6. Check the available icon library.
+7. Avoid unnecessary dependencies.
+
+Then implement the screen.
+
+### 14. Deliverables
+
+After implementation, provide:
+
+1. A concise summary of what was changed.
+2. A list of files created or modified.
+3. Any assumptions made.
+4. API endpoints or mock services still requiring backend integration.
+5. Clear instructions to run and test the dashboard.
+6. Screenshots or a local preview description for mobile and desktop layouts.
+7. Any lint, type-check, or build results.
+8. Any unresolved issues.
+
+### 15. Acceptance checklist
+
+The implementation is complete only if:
+
+* Water-level vessel uses a `0–1000 mm` scale.
+* No metre-based scale remains.
+* Current water level is shown in `mm`.
+* Orange and red threshold lines appear on the vessel.
+* Location selector updates the site-specific dashboard.
+* Left RTU and Right RTU exact voltage values are not displayed.
+* RTU battery comparator status shows only `OK`, `LOW`, or `UNKNOWN`.
+* RTU `ON/OFF` status is separate from comparator battery status.
+* LVD behaviour is explained in the tooltip or help text.
+* Only one alert-annunciation row exists.
+* Left and Right RTU alarm controls are both present inside that single section.
+* Siren, Flash, and Voice controls support a five-second test pulse.
+* Alarm-active buttons visibly change state.
+* Sensor-triggered alarms can be silenced or switched off while the unresolved danger remains visibly indicated.
+* Water-level settings validate `0–1000 mm`.
+* Orange threshold must remain below red threshold.
+* Mobile and desktop layouts are both usable.
+* No unnecessary dependency has been introduced.
+* The app builds successfully.

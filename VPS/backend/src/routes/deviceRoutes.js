@@ -10,6 +10,8 @@ router.use(requireApiKeyOrKnownDevice, attachProxyActor);
 
 router.post('/telemetry', deviceController.ingestTelemetry);
 router.post('/event', deviceController.ingestEvent);
+router.post('/:deviceId/telemetry', deviceController.ingestTelemetry);
+router.post('/:deviceId/event', deviceController.ingestEvent);
 router.get('/:deviceId/commands/pending', deviceController.getPendingCommands);
 router.post('/commands/:commandId/ack', deviceController.ackCommand);
 router.post('/command_ack', deviceController.ackCommandLegacy);

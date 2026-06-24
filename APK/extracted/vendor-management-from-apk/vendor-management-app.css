@@ -1,0 +1,115 @@
+.vendor-filter-row {
+  display: grid;
+  grid-template-columns: 1fr auto;
+  gap: 6px;
+  margin-bottom: 10px;
+}
+
+.vendor-create-grid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 6px;
+}
+
+.vendor-card {
+  background: #f8fafc;
+  border: 1px solid #e2e8f0;
+  border-radius: 10px;
+  padding: 12px 14px;
+  margin-bottom: 10px;
+}
+
+.vendor-card.vendor-inactive {
+  opacity: 0.65;
+  background: #f1f5f9;
+}
+
+.vendor-card-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 6px;
+}
+
+.vendor-company {
+  font-size: 15px;
+  font-weight: 700;
+  color: #1e293b;
+}
+
+.vendor-master-badge {
+  display: inline-block;
+  font-size: 9px;
+  font-weight: 800;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  background: #1d4ed8;
+  color: #fff;
+  border-radius: 4px;
+  padding: 2px 5px;
+  margin-left: 6px;
+  vertical-align: middle;
+}
+
+.vendor-meta-row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+  font-size: 12px;
+  color: #475569;
+  margin-bottom: 4px;
+}
+
+.vendor-admin-id {
+  font-family: 'Courier New', monospace;
+  font-size: 12px;
+  font-weight: 600;
+  color: #1d4ed8;
+  background: #eff6ff;
+  border-radius: 4px;
+  padding: 1px 5px;
+}
+
+.vendor-pw-flag {
+  display: inline-block;
+  font-size: 10px;
+  font-weight: 700;
+  color: #b45309;
+  background: #fef3c7;
+  border-radius: 4px;
+  padding: 1px 5px;
+  margin-left: 5px;
+}
+
+.vendor-project-tag {
+  display: inline-block;
+  font-size: 11px;
+  font-weight: 600;
+  background: #dbeafe;
+  color: #1e40af;
+  border-radius: 5px;
+  padding: 2px 7px;
+}
+
+.vendor-action-row {
+  display: flex;
+  gap: 8px;
+  margin-top: 8px;
+  flex-wrap: wrap;
+}
+
+.vendor-project-checks {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin-top: 4px;
+}
+
+.vendor-proj-check {
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  font-size: 13px;
+  color: #334155;
+  cursor: pointer;
+}

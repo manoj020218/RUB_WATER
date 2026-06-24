@@ -44,7 +44,14 @@ export async function addDevice(deviceId: string, locationId?: string) {
 }
 
 export async function fetchAdminDevices() {
-  return apiRequest<{ device_id: string; location_id?: string; status?: string }[]>('/admin/devices', { auth: true });
+  return apiRequest<{
+    device_id: string;
+    hardware_id?: string | null;
+    mqtt_route_id?: string | null;
+    last_reported_device_id?: string | null;
+    location_id?: string;
+    status?: string;
+  }[]>('/admin/devices', { auth: true });
 }
 
 export async function bindDevice(locationId: string, deviceId: string) {

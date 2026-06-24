@@ -8,7 +8,7 @@ class VpsOtaHook {
 public:
     static VpsOtaHook& getInstance();
 
-    void begin(const char* deviceId, const char* deviceToken);
+    void begin(const char* deviceId, const char* hardwareId, const char* deviceToken);
     void loop();
 
     bool isRunning() const { return _taskRunning; }
@@ -20,6 +20,7 @@ private:
     struct OtaTaskContext;
 
     char _deviceId[32]{};
+    char _hardwareId[32]{};
     char _deviceToken[128]{};
     bool _started = false;
     bool _taskRunning = false;

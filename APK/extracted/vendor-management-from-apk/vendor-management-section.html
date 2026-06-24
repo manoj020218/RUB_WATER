@@ -1,0 +1,38 @@
+<section class="view" id="view-vendors">
+  <div class="card">
+    <div class="row between">
+      <div>
+        <h2 class="view-title">Vendor Management</h2>
+        <p class="view-subtitle">Manage client vendors and project access</p>
+      </div>
+      <button class="ghost-btn" style="padding:6px 10px" onclick="loadVendorsApp()">Refresh</button>
+    </div>
+
+    <div class="vendor-filter-row">
+      <input class="inp" id="vendor-search" placeholder="Search by company, mobile, login ID..." oninput="filterVendorListApp()">
+      <select class="inp" id="vendor-filter-project" onchange="filterVendorListApp()">
+        <option value="">All Projects</option>
+      </select>
+    </div>
+
+    <div class="timeline" id="vendor-list">
+      <div class="empty">No vendors loaded yet.</div>
+    </div>
+
+    <p class="section-sep">Add New Vendor</p>
+    <div class="vendor-create-grid">
+      <input class="inp" id="vc-company" placeholder="Company Name *">
+      <input class="inp" id="vc-contact" placeholder="Contact Person Name">
+      <input class="inp" id="vc-mobile" placeholder="Mobile Number *">
+      <input class="inp" id="vc-email" placeholder="Email Address">
+    </div>
+    <div id="vc-projects-wrap" style="margin-top:8px">
+      <label class="lbl">Assign Project(s)</label>
+      <div id="vc-project-checkboxes" class="vendor-project-checks"></div>
+    </div>
+    <button class="control-btn info" style="margin-top:8px" onclick="createVendorApp()">Create Vendor</button>
+    <div class="meta" id="vc-create-status"></div>
+  </div>
+</section>
+
+<button class="nav-btn" id="vendors-tab" data-view="view-vendors" onclick="openView('view-vendors')" style="display:none">Vendors</button>

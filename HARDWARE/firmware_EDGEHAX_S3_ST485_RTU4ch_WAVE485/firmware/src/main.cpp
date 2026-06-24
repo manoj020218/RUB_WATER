@@ -50,15 +50,22 @@ size_t getArduinoLoopTaskStackSize() {
 
 // ── Globals ───────────────────────────────────────────────────────────────────
 static char gDeviceId[32];
+static char gHardwareId[32];
 static char gDeviceToken[128];
 static bool gMqttFirstConnected = false;
 static uint32_t gApOpenedMs = 0;
 static bool gApReopenedManually = false;
 
-// Deferred MQTT event from command callback (reentrancy-safe)
-static char  gPendingEvent[192] = {};
-static bool  gPendingEventReady = false;
-static bool  gPendingReboot     = false;
+struct PendingMqttMessage {
+    char topic[96]{};
+    char payload[1536]{};
+};
+
+static PendingMqttMessage gPendingMqttQueue[6];
+static uint8_t gPendingMqttHead = 0;
+static uint8_t gPendingMqttTail = 0;
+static uint8_t gPendingMqttCount = 0;
+static bool gPendingReboot = false;
 
 // MQTT debug state — readable from /api/status
 uint32_t gDbgLastCmdMs    = 0;
@@ -73,6 +80,9 @@ static void checkFactoryReset();
 static void updateOutputsFromState();
 static void onMqttCommand(const char* topic, const char* payload);
 static void checkDailyReboot();
+static bool enqueuePendingPublish(const char* topic, const char* payload);
+static bool flushOnePendingPublish();
+static void buildHardwareId(char* out, size_t outSize);
 
 // ── setup ─────────────────────────────────────────────────────────────────────
 void setup() {
@@ -109,6 +119,7 @@ void setup() {
 
     // Identity — NVS override takes priority over compiled-in seed
     strncpy(gDeviceId,    DEVICE_ID_SEED,    sizeof(gDeviceId)    - 1);
+    buildHardwareId(gHardwareId, sizeof(gHardwareId));
     strncpy(gDeviceToken, DEVICE_TOKEN_SEED, sizeof(gDeviceToken) - 1);
     {
         Preferences idPrefs;
@@ -120,7 +131,7 @@ void setup() {
             idPrefs.end();
         }
     }
-    Serial.printf("[MAIN] device_id=%s\n", gDeviceId);
+    Serial.printf("[MAIN] device_id=%s hardware_id=%s\n", gDeviceId, gHardwareId);
 
 #ifdef SENSOR_TEST_MODE
     Serial.println("[MAIN] *** SENSOR TEST MODE — WiFi/MQTT/BLE/OTA disabled ***");
@@ -133,7 +144,7 @@ void setup() {
         esp_read_mac(mac, ESP_MAC_WIFI_STA);
         snprintf(apSsid, sizeof(apSsid), "JXFG%02X%02X%02X", mac[3], mac[4], mac[5]);
     }
-    LocalWebserver::getInstance().begin(apSsid, gDeviceId);
+    LocalWebserver::getInstance().begin(apSsid, gDeviceId, gHardwareId);
 
     // WiFi
     auto& wifi = WifiManager::getInstance();
@@ -153,12 +164,12 @@ void setup() {
     }
 
     // Cloud services
-    MqttManager::getInstance().begin(gDeviceId, gDeviceToken);
+    MqttManager::getInstance().begin(gDeviceId, gHardwareId, gDeviceToken);
     MqttManager::getInstance().setCommandCallback(onMqttCommand);
-    HttpFallback::getInstance().begin(gDeviceId, gDeviceToken);
-    TelemetryManager::getInstance().begin(gDeviceId);
+    HttpFallback::getInstance().begin(gDeviceId, gHardwareId, gDeviceToken);
+    TelemetryManager::getInstance().begin(gDeviceId, gHardwareId);
     OtaManager::getInstance().begin();
-    VpsOtaHook::getInstance().begin(gDeviceId, gDeviceToken);
+    VpsOtaHook::getInstance().begin(gDeviceId, gHardwareId, gDeviceToken);
 #endif  // SENSOR_TEST_MODE
 
     diagnosticsRunBootTests();
@@ -230,27 +241,12 @@ void loop() {
     MqttManager::getInstance().loop();
 
     // Deferred MQTT actions — outside PubSubClient callback to avoid buffer reentrancy.
-    // Retries on every loop until publish() succeeds or the flag is cleared by reboot.
-    if (gPendingEventReady) {
-        auto& mqtt   = MqttManager::getInstance();
-        bool  conn   = mqtt.isConnected();
-        bool  ok     = false;
-        if (conn) {
-            ok = mqtt.publish(mqtt.eventTopic().c_str(), gPendingEvent);
-            if (ok) gPendingEventReady = false;
-        }
-        gDbgEvtConn   = conn;
-        gDbgEvtPubOk  = ok;
-        gDbgLastEvtMs = millis();
-        Serial.printf("[EVT] conn=%d pub=%d payload=%s\n", conn, ok, gPendingEvent);
-    }
+    // Retries until the oldest queued message is published.
+    flushOnePendingPublish();
     if (gPendingReboot) {
         gPendingReboot = false;
-        if (gPendingEventReady) {
-            // Best-effort flush before reboot — clear flag regardless of result
-            MqttManager::getInstance().publish(
-                MqttManager::getInstance().eventTopic().c_str(), gPendingEvent);
-            gPendingEventReady = false;
+        while (gPendingMqttCount > 0) {
+            if (!flushOnePendingPublish()) break;
         }
         Serial.println("[MAIN] Executing deferred reboot");
         delay(500);
@@ -302,7 +298,8 @@ void loop() {
 
 // ── Output coordinator ────────────────────────────────────────────────────────
 static void updateOutputsFromState() {
-    const FloodState fs = FloodStateMachine::getInstance().snapshot().state;
+    const auto& snap = FloodStateMachine::getInstance().snapshot();
+    const FloodState fs = snap.state;
     auto& out = OutputController::getInstance();
     auto& rem = RemoteBoxManager::getInstance();
 
@@ -310,12 +307,12 @@ static void updateOutputsFromState() {
     const bool alertActive  = isAlertOrDanger(fs);
 
     out.setSiren(dangerActive);
-    out.setFlash(dangerActive);
+    out.setFlash(alertActive);
     // Voice/future relay: not activated automatically
 
     // Command remote boxes
     if (alertActive) {
-        rem.setSirenFlash(dangerActive, dangerActive);
+        rem.setSirenFlash(dangerActive, true);
     } else {
         rem.setSirenFlash(false, false);
     }
@@ -325,48 +322,119 @@ static void updateOutputsFromState() {
 // NOTE: Do NOT call MqttManager::publish() here — PubSubClient reentrancy bug:
 // publish() overwrites the internal buffer[] that loop() is still using for PUBACK.
 // Instead set gPendingEvent/gPendingReboot flags; the main loop flushes them.
+static bool enqueuePendingPublish(const char* topic, const char* payload) {
+    if (!topic || !topic[0] || !payload || !payload[0]) return false;
+    const size_t queueLen = sizeof(gPendingMqttQueue) / sizeof(gPendingMqttQueue[0]);
+    if (gPendingMqttCount >= queueLen) {
+        Serial.printf("[MQTT] pending queue full, dropping topic=%s\n", topic);
+        return false;
+    }
+
+    PendingMqttMessage& slot = gPendingMqttQueue[gPendingMqttTail];
+    strncpy(slot.topic, topic, sizeof(slot.topic) - 1);
+    slot.topic[sizeof(slot.topic) - 1] = '\0';
+    strncpy(slot.payload, payload, sizeof(slot.payload) - 1);
+    slot.payload[sizeof(slot.payload) - 1] = '\0';
+
+    gPendingMqttTail = (uint8_t)((gPendingMqttTail + 1U) % queueLen);
+    gPendingMqttCount++;
+    return true;
+}
+
+static bool flushOnePendingPublish() {
+    if (gPendingMqttCount == 0) return true;
+
+    auto& mqtt = MqttManager::getInstance();
+    const PendingMqttMessage& slot = gPendingMqttQueue[gPendingMqttHead];
+    const bool conn = mqtt.isConnected();
+    bool ok = false;
+    if (conn) {
+        ok = mqtt.publish(slot.topic, slot.payload);
+    }
+
+    gDbgEvtConn = conn;
+    gDbgEvtPubOk = ok;
+    gDbgLastEvtMs = millis();
+    Serial.printf("[MQTT] flush conn=%d pub=%d topic=%s payload=%s\n",
+                  conn ? 1 : 0, ok ? 1 : 0, slot.topic, slot.payload);
+
+    if (!ok) return false;
+
+    const size_t queueLen = sizeof(gPendingMqttQueue) / sizeof(gPendingMqttQueue[0]);
+    gPendingMqttHead = (uint8_t)((gPendingMqttHead + 1U) % queueLen);
+    gPendingMqttCount--;
+    return true;
+}
+
 static void onMqttCommand(const char* topic, const char* payload) {
     gDbgLastCmdMs = millis();
     strncpy(gDbgLastCmdStr, payload, sizeof(gDbgLastCmdStr) - 1);
     gDbgLastCmdStr[sizeof(gDbgLastCmdStr) - 1] = '\0';
     Serial.printf("[CMD] topic=%s payload=%s\n", topic, payload);
 
-    StaticJsonDocument<512> doc;
+    StaticJsonDocument<1536> doc;
+    String cmd;
+    String reason;
+    bool success = false;
     if (deserializeJson(doc, payload) != DeserializationError::Ok) {
+        reason = "json_fail";
         Serial.printf("[CMD] JSON parse FAILED: %s\n", payload);
-        snprintf(gPendingEvent, sizeof(gPendingEvent),
-                 "{\"type\":\"cmd_err\",\"reason\":\"json_fail\",\"uptime\":%lu}", millis()/1000UL);
-        gPendingEventReady = true;
-        return;
     }
 
-    const char* cmdRaw = doc["cmd"] | "";
-    const String cmd   = String(cmdRaw);
-    Serial.printf("[CMD] cmd=%s\n", cmdRaw);
+    if (reason.length() == 0) {
+        const String topicStr = String(topic ? topic : "");
+        cmd = doc["cmd"] | doc["command"] | "";
+        cmd.trim();
+        if (cmd.length() == 0 && topicStr.endsWith("/config")) cmd = "config_update";
+        cmd.toLowerCase();
+        if (cmd == "update_config") cmd = "config_update";
+        Serial.printf("[CMD] cmd=%s\n", cmd.c_str());
+    }
 
     // Queue ack event — will be published from main loop after PUBACK is sent
-    snprintf(gPendingEvent, sizeof(gPendingEvent),
-             "{\"type\":\"cmd_ack\",\"cmd\":\"%s\",\"uptime\":%lu}", cmdRaw, millis()/1000UL);
-    gPendingEventReady = true;
 
     if (cmd == "ping") {
         Serial.println("[CMD] Ping OK");
+        success = true;
     }
     if (cmd == "config_update") {
-        String reason;
-        char buf[512];
-        serializeJson(doc["config"], buf, sizeof(buf));
-        ConfigManager::getInstance().applyJson(buf, reason);
+        const String oldMode = String(ConfigManager::getInstance().sensorLogicMode());
+        const bool rebootAfterConfig = doc["reboot_after_config_update"] | doc["reboot"] | false;
+        char cfgBuf[768];
+        size_t n = 0;
+        if (!doc["config"].isNull()) {
+            n = serializeJson(doc["config"], cfgBuf, sizeof(cfgBuf));
+        } else {
+            n = serializeJson(doc, cfgBuf, sizeof(cfgBuf));
+        }
+        if (n == 0) {
+            reason = "config_payload_empty";
+        } else if (ConfigManager::getInstance().applyJson(cfgBuf, reason)) {
+            success = true;
+            if (oldMode != ConfigManager::getInstance().sensorLogicMode()) {
+                TelemetryManager::getInstance().publishEvent("SENSOR_MODE_CHANGED",
+                    doc["source"] | "VPS_MQTT");
+            }
+            if (rebootAfterConfig) {
+                gPendingReboot = true;
+            }
+        }
     }
     if (cmd == "reboot") {
         Serial.println("[CMD] Remote reboot — will restart after PUBACK");
         gPendingReboot = true;
+        success = true;
     }
     if (cmd == "ota") {
         const char* url = doc["url"] | "";
-        if (strlen(url) > 0) {
+        if (!url || !url[0]) {
+            reason = "missing_url";
+        } else if (!OtaManager::getInstance().isSafeToOta()) {
+            reason = "ota_blocked_active_alert";
+        } else {
             Serial.printf("[CMD] OTA from VPS: %s\n", url);
             OtaManager::getInstance().beginRemoteOta(url);
+            success = true;
         }
     }
     // {"cmd":"relay","bus":"right","coil":0,"state":true}
@@ -376,29 +444,31 @@ static void onMqttCommand(const char* topic, const char* payload) {
         const uint8_t coil = (uint8_t)constrain((int)(doc["coil"] | 0), 0, 3);
         const bool    on   = (bool)(doc["state"] | false);
         const RtuBus  rb   = (bus == "left") ? RtuBus::LEFT : RtuBus::RIGHT;
-        Serial.printf("[CMD] RTU relay bus=%s coil=%d state=%d\n", bus.c_str(), coil, on);
-        RemoteBoxManager::getInstance().manualSetSingleRelay(rb, coil, on);
+        Serial.printf("[CMD] RTU relay bus=%s coil=%u state=%d\n", bus.c_str(), coil, on ? 1 : 0);
+        success = RemoteBoxManager::getInstance().manualSetSingleRelay(rb, coil, on);
+        if (!success) reason = "relay_write_failed";
     }
     if (cmd == "relay_all_off") {
         const String bus = String(doc["bus"] | "right");
         const RtuBus rb  = (bus == "left") ? RtuBus::LEFT : RtuBus::RIGHT;
         Serial.printf("[CMD] RTU all-off bus=%s\n", bus.c_str());
-        RemoteBoxManager::getInstance().manualSetSirenFlash(rb, false, false);
+        success = RemoteBoxManager::getInstance().manualSetSirenFlash(rb, false, false);
+        if (!success) reason = "relay_write_failed";
     }
     // {"cmd":"calibrate_zero"} — set water-zero from current DYP distance
     if (cmd == "calibrate_zero") {
-        String reason;
         if (DypSensor::getInstance().setZeroFromCurrentReading(reason)) {
             const uint16_t z = (uint16_t)DypSensor::getInstance().zeroDistanceMm();
-            ConfigManager::getInstance().setZeroDistance(z, reason);
-            Serial.printf("[CMD] Zero set to %dmm\n", z);
+            success = ConfigManager::getInstance().setZeroDistance(z, reason);
+            if (success) Serial.printf("[CMD] Zero set to %umm\n", z);
         } else {
             Serial.printf("[CMD] calibrate_zero failed: %s\n", reason.c_str());
         }
+        if (!success && reason.length() == 0) reason = "zero_calibration_failed";
     }
     // {"cmd":"calibrate_vmon","actual_v":12.5} — INA219 voltage calibration
     if (cmd == "calibrate_vmon") {
-        const float actualV = doc["actual_v"] | 0.0f;
+        const float actualV = doc["actual_v"] | doc["actual_voltage"] | 0.0f;
         if (actualV > 1.0f) {
             const auto& vmon = VoltageMonitor::getInstance().snapshot();
             const auto& cfg  = ConfigManager::getInstance().get();
@@ -406,17 +476,91 @@ static void onMqttCommand(const char* topic, const char* payload) {
             if (rawV > 0.5f) {
                 char buf[64];
                 snprintf(buf, sizeof(buf), "{\"vmon_cal_factor\":%.4f}", actualV / rawV);
-                String reason;
-                ConfigManager::getInstance().applyJson(buf, reason);
-                Serial.printf("[CMD] vmon cal factor updated: %.4f\n", actualV / rawV);
+                success = ConfigManager::getInstance().applyJson(buf, reason);
+                if (success) Serial.printf("[CMD] vmon cal factor updated: %.4f\n", actualV / rawV);
             } else {
-                Serial.println("[CMD] calibrate_vmon: INA219 reading too low");
+                reason = "ina219_reading_too_low";
             }
+        } else {
+            reason = "actual_voltage_required";
+        }
+    }
+
+    if (!success && reason.length() == 0) {
+        reason = cmd.length() > 0 ? "unknown_command" : "missing_command";
+    }
+
+    const char* commandId = doc["command_id"] | "";
+    const uint32_t uptimeS = millis() / 1000UL;
+
+    {
+        StaticJsonDocument<384> evtDoc;
+        evtDoc["type"] = success ? "cmd_ack" : "cmd_err";
+        evtDoc["cmd"] = cmd.length() > 0 ? cmd : "unknown";
+        evtDoc["status"] = success ? "SUCCESS" : "REJECTED";
+        evtDoc["uptime"] = uptimeS;
+        if (commandId && commandId[0]) evtDoc["command_id"] = commandId;
+        if (!success && reason.length() > 0) evtDoc["reason"] = reason;
+        char evtPayload[384];
+        serializeJson(evtDoc, evtPayload, sizeof(evtPayload));
+        enqueuePendingPublish(MqttManager::getInstance().eventTopic().c_str(), evtPayload);
+    }
+
+    {
+        StaticJsonDocument<384> ackDoc;
+        ackDoc["device_id"] = gDeviceId;
+        ackDoc["hardware_id"] = gHardwareId;
+        ackDoc["mqtt_route_id"] = MqttManager::getInstance().routeId();
+        ackDoc["cmd"] = cmd.length() > 0 ? cmd : "unknown";
+        ackDoc["status"] = success ? "SUCCESS" : "REJECTED";
+        ackDoc["success"] = success;
+        ackDoc["uptime_s"] = uptimeS;
+        ackDoc["timestamp_ms"] = millis();
+        if (commandId && commandId[0]) ackDoc["command_id"] = commandId;
+        if (!success && reason.length() > 0) ackDoc["reason"] = reason;
+        char ackPayload[384];
+        serializeJson(ackDoc, ackPayload, sizeof(ackPayload));
+        enqueuePendingPublish(MqttManager::getInstance().commandAckTopic().c_str(), ackPayload);
+
+        if (cmd == "config_update") {
+            StaticJsonDocument<1024> cfgAckDoc;
+            char cfgJson[768];
+            cfgAckDoc["device_id"] = gDeviceId;
+            cfgAckDoc["hardware_id"] = gHardwareId;
+            cfgAckDoc["mqtt_route_id"] = MqttManager::getInstance().routeId();
+            cfgAckDoc["status"] = success ? "SUCCESS" : "REJECTED";
+            cfgAckDoc["success"] = success;
+            cfgAckDoc["applied"] = success;
+            cfgAckDoc["config_received"] = success;
+            cfgAckDoc["config_applied"] = success;
+            cfgAckDoc["reboot_scheduled"] = success && gPendingReboot;
+            cfgAckDoc["uptime_s"] = uptimeS;
+            cfgAckDoc["timestamp_ms"] = millis();
+            cfgAckDoc["current_config_version"] = ConfigManager::getInstance().get().configVersion;
+            if (commandId && commandId[0]) cfgAckDoc["command_id"] = commandId;
+            if (!success && reason.length() > 0) cfgAckDoc["reason"] = reason;
+            if (success && ConfigManager::getInstance().buildJson(cfgJson, sizeof(cfgJson))) {
+                StaticJsonDocument<768> cfgDoc;
+                if (deserializeJson(cfgDoc, cfgJson) == DeserializationError::Ok) {
+                    cfgAckDoc["current_config"] = cfgDoc.as<JsonVariantConst>();
+                }
+            }
+            char cfgAckPayload[1024];
+            serializeJson(cfgAckDoc, cfgAckPayload, sizeof(cfgAckPayload));
+            enqueuePendingPublish(MqttManager::getInstance().configAckTopic().c_str(), cfgAckPayload);
         }
     }
 }
 
 // ── CONFIG button ─────────────────────────────────────────────────────────────
+static void buildHardwareId(char* out, size_t outSize) {
+    if (!out || outSize == 0) return;
+    uint8_t mac[6] = {};
+    esp_read_mac(mac, ESP_MAC_WIFI_STA);
+    snprintf(out, outSize, "FGHW-%02X%02X%02X%02X%02X%02X",
+             mac[0], mac[1], mac[2], mac[3], mac[4], mac[5]);
+}
+
 static bool sConfigBtnPrev = false;
 static uint32_t sConfigBtnDownMs = 0;
 static bool sConfigBtn5sHandled = false;

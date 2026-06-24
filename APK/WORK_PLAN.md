@@ -2,16 +2,18 @@
 
 Document purpose: this file is no longer only a basic APK to-do list. It is now the current app delivery status plus the integration contract between APK, firmware, MQTT, and VPS so future changes do not break the working system.
 
-Last updated: 2026-06-19
-Current signed release target: `1.0.1` (existing signed APK)
+Last updated: 2026-06-20
+Current signed release target: `1.0.1` (existing signed APK — rebuild needed)
 Current Android build code: `2`
 Primary package id: `in.jenix.floodguard`
 
-## 0. Latest Completed Work Snapshot (2026-06-19)
+## 0. Latest Completed Work Snapshot (2026-06-20)
 
-This section reflects the real current codebase state after the latest APK and backend work. Some older sections below remain useful as reference, but this snapshot is the authoritative status for recent changes.
+This section reflects the real current codebase state after the latest APK, firmware, and backend work. Some older sections below remain useful as reference, but this snapshot is the authoritative status for recent changes.
 
 ### 0.1 Completed in This Round
+
+#### APK + Backend (2026-06-19)
 
 | Work Item | Status | Notes |
 |---|---|---|
@@ -26,6 +28,31 @@ This section reflects the real current codebase state after the latest APK and b
 | Same-network Wi-Fi S3 discovery | Done | New APK button scans current subnet via `GET /api/status`, filters `product` starting with `FLOODGUARD`, and supports one-tap local URL selection |
 | Android Wi-Fi subnet bridge | Done | Native bridge now returns SSID, IP, gateway, and netmask for LAN scan planning |
 
+#### Firmware (2026-06-19 → 2026-06-20)
+
+| Work Item | Status | Notes |
+|---|---|---|
+| Left RTU COMM_LOST fix | Done | Root cause: GPIO15=U0RTS held LOW by ROM bootloader → UART break. Fix: Left RS485 moved to GPIO17(TX)/GPIO18(RX) — both on left header, eliminates cross-board cable coupling |
+| RF trigger feature removed | Done | Client confirmed RF not used; GPIO17/18 reassigned from RF to Left RS485. RF fully removed from 7 files: `device_profile.h`, `output_controller.h/.cpp`, `diagnostics.cpp`, `main.cpp`, `local_webserver.cpp`, `pump_controller.cpp` |
+| WiFi IP heartbeat in serial monitor | Done | Prints IP+SSID+RSSI on first connect, every 120s, and on reconnect/disconnect |
+| RTU telemetry `batt` field | Done | `remote_left.batt` and `remote_right.batt` = "OK" / "LOW" from IN4 LM393 comparator (threshold 11 V). Replaces old `batt_v` (was always 0.0) |
+| RTU telemetry `voice` field | Done | `remote_left.voice` and `remote_right.voice` added — was missing despite voice relay being active |
+| `/api/status` `product` + `mac` fields | Done | `product` = PRODUCT_PROFILE constant, `mac` = WiFi MAC. Enables APK same-network scan to positively identify FloodGuard S3 devices |
+| FIRMWARE_NOTES.md updated | Done | RF removal permanently noted, GPIO17/18 left RS485 assignment noted, last-flash date updated |
+| Firmware reflashed | Done | Successfully flashed to COM22 (MAC 9c:13:9e:ba:f9:68) — both Left and Right RTU responding |
+
+#### APK UI — RTU Dashboard Restructure (2026-06-20)
+
+| Work Item | Status | Notes |
+|---|---|---|
+| Old MCU relay row removed | Done | Removed 4-item row: Siren / Beacon / Voice / Barrier (MCU side — these relays don't exist on MCU) |
+| Left RTU card added | Done | Shows ONLINE/OFFLINE badge (green/red), Battery OK/LOW, and Siren/Flash/Voice/Boom(FUTURE) relay indicators |
+| Right RTU card added | Done | Mirror of Left RTU card; both side-by-side in `.rtu-row` layout |
+| RTU CSS added | Done | `.rtu-row`, `.rtu-card`, `.rtu-card-header`, `.rtu-badge-online`, `.rtu-batt-row`, `.rtu-batt-value`, `.relay-item-future` appended to `app.css` |
+| `updateRtu()` JS function added | Done | Replaces old `relayStates` loop; reads `latest.remote_left` / `latest.remote_right` from MQTT telemetry and updates all badge, batt, and relay elements |
+| Old relay ID references verified clean | Done | No `relay-item-siren/beacon/voice/barrier` or `relay-siren/beacon/voice/barrier` remain in any live code path |
+| RTU UI changes committed | Done | Commit `2523f44` — `feat(apk): replace MCU relay row with Left/Right RTU status cards` |
+
 ### 0.2 Verification Done
 
 | Verification | Status | Notes |
@@ -35,12 +62,17 @@ This section reflects the real current codebase state after the latest APK and b
 | Demo scoped visibility behavior | Done | Verified in backend smoke flow during transfer-role work |
 | Demo transfer behavior | Done | Verified demo loses access after `MOVE` transfer |
 | Vendor to department targeted assignment | Done | Verified assigned department user sees location/device, other department users do not |
+| Old relay ID grep check | Done | `grep relay-item-siren/beacon/voice/barrier` returns zero matches in `index.html` and `app.js` |
+| Left RTU COMM_LOST fix verified | Done | Serial log shows `[RTU] Left relay confirmation OK (DI=0x0F)` after GPIO17/18 fix |
+| Right RTU verified still working | Done | Both buses confirmed: `01 01 01 00 51 88` response from GPIO17/18 (left) and GPIO38/39 (right) |
 
 ### 0.3 Important Current Notes
 
-- The latest code changes are in the workspace, but a fresh signed APK has **not** yet been rebuilt after the Wi-Fi discovery addition.
+- A fresh signed APK rebuild is needed to ship the RTU UI changes and same-network scan feature.
 - Vendor management is now treated as a VPS/developer-side tool, not a shipped APK feature.
-- The new same-network scan relies on the device local endpoint returning `/api/status` with `device_id`, `product`, `mac`, `firmware`, Wi-Fi state, IP, and MQTT state.
+- The same-network scan relies on the device returning `/api/status` with `device_id`, `product`, `mac`, `firmware`, Wi-Fi state, IP, and MQTT state — all now present in firmware.
+- RF is **permanently removed** from firmware — do not add back. GPIO17=Left RS485 TX, GPIO18=Left RS485 RX.
+- IN4 LM393 battery comparator circuit is confirmed installed and working on both Left and Right RTUs. Threshold 11 V — above=OK, below=LOW.
 
 ### 0.4 Quick Release Build Command
 
@@ -71,7 +103,7 @@ Notes:
 | Capacitor Android app | Done | Real Android app is active, not only mockup/PWA |
 | Responsive mobile UI | Done | Multi-screen app implemented in `www/index.html`, `www/app.css`, `www/app.js` |
 | VPS authentication | Done | JWT login, refresh, logout, revoke-session handling |
-| Live monitoring UI | Done | Location list, live dashboard, vessel fill, relay state, heartbeat, offline/stale indicators |
+| Live monitoring UI | Done | Location list, live dashboard, vessel fill, Left/Right RTU cards (online badge, batt OK/LOW, Siren/Flash/Voice/Boom relay), heartbeat, offline/stale indicators |
 | Command actions | Done | Mute, dry-run, force-clear with role checks and feedback |
 | Device install flow | Done | Vendor install screen, BLE provisioning, cloud bind flow, local status checks |
 | Device config flow | Done | Read, edit, push config, history, local LAN config save |
@@ -231,7 +263,8 @@ Factory reset (CONFIG button held 5s at power-on): clears WiFi NVS → reboots t
 | Flood sensor | DYP-A01 ultrasonic (TTL direct, GPIO21 RX, GPIO20 TX) |
 | RS485 interface | Waveshare TTL-to-RS485 (B) — auto-direction, no DE/RE |
 | Remote relay | ST485-C10-05-4CH Modbus RTU (R1=siren, R2=flash, R3=voice, R4=boom) |
-| RS485 bus (right) | GPIO39 TX → Waveshare RXD, GPIO38 RX → Waveshare TXD |
+| RS485 bus (left) | GPIO17 TX → Waveshare RXD, GPIO18 RX → Waveshare TXD (both left header — DO NOT CHANGE) |
+| RS485 bus (right) | GPIO39 TX → Waveshare RXD, GPIO38 RX → Waveshare TXD (both right header) |
 | RS485 slave ID | 1 (both buses) |
 | Baud rate | 9600, 8N1 |
 | Relay confirmation | NC feedback via DI1–DI3 (IN1–IN3), LM393 via DI4 (IN4) |
@@ -416,8 +449,9 @@ Factory reset (CONFIG button held 5s at power-on): clears WiFi NVS → reboots t
 | Automatic APK install helper flow | Low | Current app opens download URL; manual install still expected |
 | Internet-offline banner in WebUI | Low | Documented in PROVISIONING.md §4; not yet implemented in firmware |
 | BLE NOTIFY characteristic | Low | App polls; push events not implemented yet — see PROVISIONING.md §6.1 |
-| IN4 LM393 hardware (battery low) | Hardware | LM393 circuit not yet installed; IN4 floating = always reports batt_low |
-| R4 boom barrier activation | Future | R4 always OFF in firmware; one-line enable + OTA when hardware arrives |
+| IN4 LM393 hardware (battery low) | Done | LM393 circuit confirmed installed on both Left and Right RTUs. Threshold 11 V. Firmware reads DI4 (bit 3) via Modbus FC2 and sends `batt`="OK"/"LOW" in telemetry. APK now displays it on RTU cards |
+| R4 boom barrier activation | Future | R4 always OFF in firmware; one-line enable + OTA when hardware arrives. Shown as greyed-out FUTURE in APK RTU cards |
+| Signed APK rebuild for RTU UI + Wi-Fi scan | Pending | Code changes in workspace; need `npx cap sync android; .\gradlew.bat assembleRelease` to produce v1.0.2 APK |
 
 ## 11. Reference Files
 

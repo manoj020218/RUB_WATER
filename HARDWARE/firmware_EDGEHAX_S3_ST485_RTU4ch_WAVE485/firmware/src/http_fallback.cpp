@@ -15,9 +15,10 @@ HttpFallback& HttpFallback::getInstance() {
     return inst;
 }
 
-void HttpFallback::begin(const char* deviceId, const char* token) {
+void HttpFallback::begin(const char* deviceId, const char* hardwareId, const char* token) {
     strncpy(_deviceId, deviceId, sizeof(_deviceId) - 1);
-    strncpy(_token,    token,    sizeof(_token) - 1);
+    strncpy(_hardwareId, hardwareId, sizeof(_hardwareId) - 1);
+    strncpy(_token,      token,      sizeof(_token) - 1);
 }
 
 bool HttpFallback::queue(const char* type, const char* payload) {
@@ -40,9 +41,9 @@ void HttpFallback::loop() {
 }
 
 bool HttpFallback::postNow(const char* type, const char* payload) {
-    char url[128];
-    snprintf(url, sizeof(url), "%s/api/device/%s/%s",
-             DEFAULT_HTTP_BASE_URL, _deviceId,
+    char url[192];
+    snprintf(url, sizeof(url), "%s/api/device/%s",
+             DEFAULT_HTTP_BASE_URL,
              strcmp(type, "event") == 0 ? "event" : "telemetry");
 
     WiFiClient client;
@@ -52,6 +53,9 @@ bool HttpFallback::postNow(const char* type, const char* payload) {
     if (!http.begin(client, url)) return false;
     http.addHeader("Content-Type", "application/json");
     http.addHeader("x-device-token", _token);
+    if (_hardwareId[0]) {
+        http.addHeader("x-hardware-id", _hardwareId);
+    }
     const int code = http.POST(payload);
     http.end();
     return code >= 200 && code < 300;

@@ -6,7 +6,7 @@ class HttpFallback {
 public:
     static HttpFallback& getInstance();
 
-    void begin(const char* deviceId, const char* token);
+    void begin(const char* deviceId, const char* hardwareId, const char* token);
 
     // Non-blocking: queues payload, attempts on loop()
     bool queue(const char* type, const char* payload);
@@ -17,13 +17,14 @@ public:
 private:
     HttpFallback() = default;
     char     _deviceId[32]{};
+    char     _hardwareId[32]{};
     char     _token[128]{};
     bool     _lastOk = false;
     uint32_t _lastAttemptMs = 0;
 
     // Single pending payload (only when MQTT is down)
     char     _pendingType[16]{};
-    char     _pendingPayload[512]{};
+    char     _pendingPayload[2304]{};
     bool     _hasPending = false;
 
     bool postNow(const char* type, const char* payload);

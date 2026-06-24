@@ -75,10 +75,11 @@ VpsOtaHook& VpsOtaHook::getInstance() {
     return inst;
 }
 
-void VpsOtaHook::begin(const char* deviceId, const char* deviceToken) {
+void VpsOtaHook::begin(const char* deviceId, const char* hardwareId, const char* deviceToken) {
     if (_started) return;
     _started = true;
     strncpy(_deviceId, deviceId, sizeof(_deviceId) - 1);
+    strncpy(_hardwareId, hardwareId, sizeof(_hardwareId) - 1);
     strncpy(_deviceToken, deviceToken, sizeof(_deviceToken) - 1);
 
     auto& mgr = VpsOtaManager::getInstance();
@@ -116,14 +117,17 @@ bool VpsOtaHook::fetchPendingJob(VpsOtaPackage& pkg, String& jobId) {
     http.setTimeout(kHttpReadTimeoutMs);
     http.setReuse(false);
 
-    String url = apiBaseUrl() + "/api/device-ota/" + _deviceId + "/pending"
+    const char* stableRef = _hardwareId[0] ? _hardwareId : _deviceId;
+    String url = apiBaseUrl() + "/api/device-ota/" + stableRef + "/pending"
                + "?current_version=" + String(FIRMWARE_VERSION)
-               + "&hardware_version=" + String(HARDWARE_VERSION);
+               + "&hardware_version=" + String(HARDWARE_VERSION)
+               + "&device_id=" + String(_deviceId);
     if (!http.begin(client, url)) {
         _lastError = "pending_http_begin_failed";
         return false;
     }
     http.addHeader("x-device-token", _deviceToken);
+    http.addHeader("x-hardware-id", _hardwareId);
 
     const int code = http.GET();
     if (code != HTTP_CODE_OK) {
@@ -173,13 +177,17 @@ bool VpsOtaHook::postJobReport(const char* jobId, const char* status, const char
     http.setTimeout(kHttpReadTimeoutMs);
     http.setReuse(false);
 
-    const String url = apiBaseUrl() + "/api/device-ota/" + _deviceId + "/report";
+    const char* stableRef = _hardwareId[0] ? _hardwareId : _deviceId;
+    const String url = apiBaseUrl() + "/api/device-ota/" + stableRef + "/report";
     if (!http.begin(client, url)) return false;
     http.addHeader("Content-Type", "application/json");
     http.addHeader("x-device-token", _deviceToken);
+    http.addHeader("x-hardware-id", _hardwareId);
 
     StaticJsonDocument<384> doc;
     doc["job_id"] = jobId;
+    doc["device_id"] = _deviceId;
+    doc["hardware_id"] = _hardwareId;
     doc["status"] = status;
     doc["bytes_written"] = static_cast<uint32_t>(bytesWritten);
     doc["total_bytes"] = static_cast<uint32_t>(totalBytes);

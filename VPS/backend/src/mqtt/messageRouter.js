@@ -26,11 +26,11 @@ function parsePayload(payload) {
   return {};
 }
 
-function resolveLocationId(payload, deviceIdFromTopic) {
+function resolveLocationId(payload, logicalDeviceId) {
   if (payload.location_id) {
     return payload.location_id;
   }
-  const device = deviceRepository.findById(deviceIdFromTopic);
+  const device = deviceRepository.findById(logicalDeviceId);
   return device ? device.location_id : null;
 }
 
@@ -46,7 +46,7 @@ function normalizeCommandAckPayload(payload) {
 }
 
 function handleIncomingMqttMessage(topic, payload, options = {}) {
-  const parsedTopic = parseTopic(topic, options.topicBase || 'rub');
+  const parsedTopic = parseTopic(topic, options.topicBases || options.topicBase || ['floodguard', 'rub']);
   if (!parsedTopic) {
     return {
       handled: false,
@@ -67,19 +67,37 @@ function handleIncomingMqttMessage(topic, payload, options = {}) {
     };
   }
 
-  const deviceId = message.device_id || parsedTopic.deviceId;
+  let device = deviceRepository.resolveByIdentity({
+    deviceId: message.device_id || null,
+    hardwareId: message.hardware_id || null,
+    routeId: parsedTopic.routeId
+  });
 
-  // Auto-create device if missing — handles reconnects after VPS restarts clear the in-memory DB
-  if (deviceId && !deviceRepository.findById(deviceId)) {
+  const candidateDeviceId = message.device_id || parsedTopic.routeId;
+  if (!device && candidateDeviceId) {
     try {
-      deviceRepository.createDevice({ device_id: deviceId, location_id: null });
-    } catch (e) { /* already exists — race condition */ }
+      device = deviceRepository.createDevice({
+        device_id: candidateDeviceId,
+        hardware_id: message.hardware_id || null,
+        location_id: null
+      });
+    } catch (e) {
+      device = deviceRepository.resolveByIdentity({
+        deviceId: candidateDeviceId,
+        hardwareId: message.hardware_id || null,
+        routeId: parsedTopic.routeId
+      });
+    }
   }
 
-  const locationId = resolveLocationId(message, parsedTopic.deviceId);
+  const deviceId = device?._id || String(candidateDeviceId || '').trim().toUpperCase();
+  const locationId = resolveLocationId(message, deviceId);
   const enriched = {
     ...message,
     device_id: deviceId,
+    hardware_id: message.hardware_id || device?.hardware_id || null,
+    mqtt_route_id: parsedTopic.routeId,
+    mqtt_topic_base: message.mqtt_topic_base || `${parsedTopic.base}/${parsedTopic.routeId}`,
     location_id: locationId
   };
 
@@ -93,6 +111,17 @@ function handleIncomingMqttMessage(topic, payload, options = {}) {
   }
 
   if (parsedTopic.channel === 'event') {
+    if (message.type === 'cmd_ack' || message.type === 'cmd_err') {
+      return {
+        handled: true,
+        channel: 'event_legacy_command_ack_ignored',
+        result: {
+          device_id: deviceId,
+          hardware_id: enriched.hardware_id || null,
+          reason: 'legacy_command_ack_on_event_topic'
+        }
+      };
+    }
     const result = deviceService.ingestEvent(enriched);
     return {
       handled: true,
@@ -102,7 +131,7 @@ function handleIncomingMqttMessage(topic, payload, options = {}) {
   }
 
   if (parsedTopic.channel === 'heartbeat') {
-    const result = deviceService.ingestHeartbeat(enriched, parsedTopic.deviceId);
+    const result = deviceService.ingestHeartbeat(enriched, parsedTopic.routeId);
     return {
       handled: true,
       channel: 'heartbeat',

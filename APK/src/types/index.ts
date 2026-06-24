@@ -21,6 +21,8 @@ export interface Location {
   description?: string;
   mount_height_mm?: number;
   device_id?: string;
+  hardware_id?: string | null;
+  mqtt_route_id?: string | null;
   device_status?: string;
   lifecycle_status?: string;
   lifecycle_note?: string;
@@ -34,42 +36,96 @@ export interface DeviceConfig {
   danger_level_mm?: number;
   clear_level_mm?: number;
   trigger_delay_s?: number;
+  trigger_delay_seconds?: number;
   clear_delay_s?: number;
+  clear_delay_seconds?: number;
   sensor_mount_height_mm?: number;
+  sensor_confirmation_wait_sec?: number;
   rs485_enabled?: boolean;
+  rs485_sensor_enabled?: boolean;
   switch_enabled?: boolean;
+  switch_sensor_enabled?: boolean;
   switch_level_1_mm?: number;
   switch_level_2_mm?: number;
+  mismatch_duration_seconds?: number;
+  sensor_logic_mode?: string;
+  sensor_mode?: string;
+  daily_reboot_enabled?: boolean;
+  daily_reboot_time?: string;
   version?: number;
+  current_config_version?: number;
   last_ack_at?: string;
+  last_ack_status?: string;
+  last_ack_message?: string;
+  last_verification_status?: string;
+  last_verification_message?: string;
+  verified_at?: string;
+  state?: string;
+  reboot_scheduled?: boolean;
+  pending_command_id?: string | null;
+  pending_requested_at?: string | null;
+  last_reported_config_version?: number | null;
   reported_at?: string;
+  device_reported_at?: string;
+  device_reported?: Record<string, unknown> | null;
 }
 
 // ── Telemetry ─────────────────────────────────────────────────────────────────
 export interface RtuStatus {
   online: boolean;
+  state?: string;
   batt: 'OK' | 'LOW' | '--';
+  battery_v?: number;
   siren: boolean;
   flash: boolean;
   voice: boolean;
+  boom?: boolean;
+  barrier?: boolean;
+  fault_siren?: boolean;
+  fault_flash?: boolean;
+  fault_voice?: boolean;
 }
 
 export interface Telemetry {
   device_id?: string;
+  hardware_id?: string | null;
+  mqtt_route_id?: string | null;
+  mqtt_topic_base?: string | null;
+  status?: string;
   water_level_mm?: number;
   distance_mm?: number;
+  alert_level?: string;
+  alert_status?: string;
+  alert_source?: string;
+  alert_reason?: string;
+  pending_alert_level?: string;
+  outputs_enabled?: boolean;
   sensor_valid?: boolean;
   sensor_detected?: boolean;
+  primary_sensor_status?: string;
+  sensor_logic_mode?: string;
+  sensor_mode?: string;
+  sensor_confirmation_wait_sec?: number;
+  current_config_version?: number;
   flood_state?: string;
   l1_active?: boolean;
   l2_active?: boolean;
   relay_siren?: boolean;
   relay_flash?: boolean;
-  relay_pump?: boolean;
   battery_v?: number | string;
+  battery_voltage?: number | string;
   battery_ma?: number | string;
+  battery_current_ma?: number | string;
   batt_low?: boolean;
   rssi?: number;
+  wifi_rssi?: number;
+  wifi_connected?: boolean;
+  mqtt_connected?: boolean;
+  local_ip?: string;
+  api_server?: string;
+  mqtt_server?: string;
+  zero_dist_mm?: number;
+  vmon_cal_factor?: number;
   uptime_ms?: number;
   firmware?: string;
   remote_left?: RtuStatus;
@@ -91,9 +147,37 @@ export interface Incident {
 // ── Dashboard ─────────────────────────────────────────────────────────────────
 export interface DashboardData {
   location?: Location;
-  device?: { id: string; status: string; lifecycle_status?: string; lifecycle_note?: string; lifecycle_updated_at?: string };
+  device?: {
+    id: string;
+    hardware_id?: string | null;
+    mqtt_route_id?: string | null;
+    last_reported_device_id?: string | null;
+    status: string;
+    lifecycle_status?: string;
+    lifecycle_note?: string;
+    lifecycle_updated_at?: string;
+    local_ip?: string;
+    mqtt_connected?: boolean | null;
+    wifi_connected?: boolean | null;
+    wifi_rssi?: number | null;
+    api_server?: string | null;
+    mqtt_server?: string | null;
+    last_seen?: string | null;
+  };
   latest?: Telemetry;
-  heartbeat?: { received_at?: string };
+  heartbeat?: {
+    received_at?: string;
+    status?: string;
+    online?: boolean;
+    details?: {
+      current_config_version?: number | null;
+      local_ip?: string | null;
+      mqtt_connected?: boolean | null;
+      wifi_connected?: boolean | null;
+      wifi_rssi?: number | null;
+      firmware_version?: string | null;
+    };
+  };
   config?: DeviceConfig;
   incident?: Incident | null;
   auditLogs?: AuditLog[];
@@ -172,6 +256,8 @@ export interface BleDevice {
 export interface WifiDiscoveryResult {
   ip: string;
   device_id?: string;
+  hardware_id?: string;
+  mqtt_route_id?: string;
   product?: string;
   mac?: string;
   firmware?: string;

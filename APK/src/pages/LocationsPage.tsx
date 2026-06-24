@@ -17,7 +17,7 @@ export default function LocationsPage() {
   const navigate = useNavigate();
   const [loading, setLoading] = useState(false);
 
-  // ── Add location ────────────────────────────────────────────────────────────
+  // Ã¢â€â‚¬Ã¢â€â‚¬ Add location Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬
   const [addId, setAddId] = useState('');
   const [addName, setAddName] = useState('');
   const [addDesc, setAddDesc] = useState('');
@@ -25,13 +25,18 @@ export default function LocationsPage() {
   const [addDept, setAddDept] = useState('');
   const [addStatus, setAddStatus] = useState('');
 
-  // ── Register device ─────────────────────────────────────────────────────────
+  // Ã¢â€â‚¬Ã¢â€â‚¬ Register device Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬
   const [devAddId, setDevAddId] = useState('');
   const [devAddLoc, setDevAddLoc] = useState('');
   const [devAddStatus, setDevAddStatus] = useState('');
-  const [adminDevices, setAdminDevices] = useState<{ device_id: string; location_id?: string }[]>([]);
+  const [adminDevices, setAdminDevices] = useState<{
+    device_id: string;
+    hardware_id?: string | null;
+    mqtt_route_id?: string | null;
+    location_id?: string;
+  }[]>([]);
 
-  // ── Edit location ───────────────────────────────────────────────────────────
+  // Ã¢â€â‚¬Ã¢â€â‚¬ Edit location Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬
   const [editingId, setEditingId] = useState<string | null>(null);
   const [editLocId, setEditLocId] = useState('');
   const [editName, setEditName] = useState('');
@@ -126,7 +131,7 @@ export default function LocationsPage() {
 
   async function handleAddLocation() {
     if (!addId.trim() || !addName.trim()) { setAddStatus('Location ID and Name are required.'); return; }
-    setAddStatus('Adding…');
+    setAddStatus('AddingÃ¢â‚¬Â¦');
     try {
       await addLocation({ location_id: addId.trim(), location_name: addName.trim(), description: addDesc.trim() || undefined, mount_height_mm: addMount ? Number(addMount) : undefined, department_id: addDept.trim() || undefined });
       setAddStatus('Location added.');
@@ -143,10 +148,10 @@ export default function LocationsPage() {
     const id = devAddId.trim().toUpperCase();
     const loc = devAddLoc.trim();
     if (!id) { setDevAddStatus('Device ID required.'); return; }
-    setDevAddStatus('Registering…');
+    setDevAddStatus('RegisteringÃ¢â‚¬Â¦');
     try {
       if (loc) {
-        // bindDevice auto-creates if new, or rebinds if already registered — no "already exists" error
+        // bindDevice auto-creates if new, or rebinds if already registered Ã¢â‚¬â€ no "already exists" error
         await bindDevice(loc, id);
         setDevAddStatus(`Device ${id} linked to ${loc}.`);
       } else {
@@ -184,7 +189,7 @@ export default function LocationsPage() {
           </div>
         </div>
 
-        {loading && <div className="empty">Loading locations…</div>}
+        {loading && <div className="empty">Loading locationsÃ¢â‚¬Â¦</div>}
 
         <div className="list" id="location-list">
           {!loading && locations.length === 0 && (
@@ -215,6 +220,11 @@ export default function LocationsPage() {
                           <span style={{ width: 6, height: 6, borderRadius: '50%', background: '#16a34a', display: 'inline-block' }} />
                           {loc.device_id}
                         </span>
+                      )}
+                      {loc.hardware_id && (
+                        <div style={{ marginTop: 4, fontSize: 11, color: '#64748b' }}>
+                          HW: {loc.hardware_id}{loc.mqtt_route_id ? ` | Route: ${loc.mqtt_route_id}` : ''}
+                        </div>
                       )}
                       {isFaulty && (
                         <div style={{ display: 'flex', alignItems: 'center', gap: 4, marginTop: 3, fontSize: 11, color: '#d97706' }}>
@@ -265,7 +275,7 @@ export default function LocationsPage() {
                     />
                     {editLocId.trim().toUpperCase() !== locId && (
                       <div style={{ fontSize: 11, color: '#d97706', marginBottom: 4, padding: '4px 8px', background: '#fffbeb', borderRadius: 6, border: '1px solid #fcd34d' }}>
-                        ID change: old location will be deleted and recreated as {editLocId.trim().toUpperCase() || '…'}
+                        ID change: old location will be deleted and recreated as {editLocId.trim().toUpperCase() || 'Ã¢â‚¬Â¦'}
                       </div>
                     )}
                     <input
@@ -298,7 +308,7 @@ export default function LocationsPage() {
                         disabled={editSaving}
                       >
                         <FiCheck size={12} style={{ marginRight: 4 }} />
-                        {editSaving ? 'Saving…' : 'Save'}
+                        {editSaving ? 'SavingÃ¢â‚¬Â¦' : 'Save'}
                       </button>
                       <button
                         className="ghost-btn"
@@ -341,7 +351,7 @@ export default function LocationsPage() {
               return unassigned.length > 0 ? (
                 <div style={{ marginBottom: 10 }}>
                   <div style={{ fontSize: 11, fontWeight: 700, color: '#15803d', textTransform: 'uppercase', marginBottom: 4 }}>
-                    Cloud Devices — Not Yet Assigned
+                    Cloud Devices Ã¢â‚¬â€ Not Yet Assigned
                   </div>
                   {unassigned.map((d) => (
                     <button
@@ -361,7 +371,7 @@ export default function LocationsPage() {
             <div className="admin-2col">
               <input className="inp" value={devAddId} onChange={(e) => setDevAddId(e.target.value)} placeholder="Device ID (e.g. RUB044-CTRL01)" />
               <select className="inp" value={devAddLoc} onChange={(e) => setDevAddLoc(e.target.value)}>
-                <option value="">No location — bind later</option>
+                <option value="">No location Ã¢â‚¬â€ bind later</option>
                 {locations.map((l) => <option key={l.id} value={l.location_id || l.id}>{l.location_name}</option>)}
               </select>
             </div>
@@ -378,7 +388,12 @@ export default function LocationsPage() {
                 : adminDevices.map((d) => (
                   <div key={d.device_id} style={{ padding: '8px 0', borderBottom: '1px solid #f1f5f9', fontSize: 13 }}>
                     <span style={{ fontWeight: 600 }}>{d.device_id}</span>
-                    {d.location_id && <span style={{ color: '#64748b', marginLeft: 8 }}>→ {d.location_id}</span>}
+                    {d.location_id && <span style={{ color: '#64748b', marginLeft: 8 }}>| {d.location_id}</span>}
+                    {(d.hardware_id || d.mqtt_route_id) && (
+                      <div style={{ fontSize: 11, color: '#64748b', marginTop: 2 }}>
+                        HW: {d.hardware_id ?? '--'}{d.mqtt_route_id ? ` | Route: ${d.mqtt_route_id}` : ''}
+                      </div>
+                    )}
                   </div>
                 ))
               }

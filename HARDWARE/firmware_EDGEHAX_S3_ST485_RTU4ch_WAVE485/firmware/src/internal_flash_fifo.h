@@ -5,7 +5,7 @@
 struct FifoRecord {
     uint32_t timestampMs;
     char     type[16];     // "telemetry" or "event"
-    char     payload[384];
+    char     payload[2304];
 };
 
 // 500-record ring buffer in PSRAM/heap for offline queuing when SD is absent.

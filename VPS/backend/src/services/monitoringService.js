@@ -12,7 +12,10 @@ function effectiveDeviceStatus(device) {
   if (!device) return 'UNMAPPED';
   if (device.status === 'OFFLINE') return 'OFFLINE';
   const lastHb = device.last_heartbeat ? new Date(device.last_heartbeat).getTime() : 0;
-  if (Date.now() - lastHb > STALE_THRESHOLD_MS) return 'OFFLINE';
+  const lastSeen = device.last_seen ? new Date(device.last_seen).getTime() : 0;
+  const freshest = Math.max(lastHb || 0, lastSeen || 0);
+  if (!freshest) return 'OFFLINE';
+  if (Date.now() - freshest > STALE_THRESHOLD_MS) return 'OFFLINE';
   return device.status || 'OFFLINE';
 }
 
@@ -59,8 +62,13 @@ function listUserLocations(authContext) {
       water_level_mm: latestTelemetry ? latestTelemetry.water_level_mm : null,
       last_update: latestTelemetry ? latestTelemetry.timestamp : (device ? device.last_seen : null),
       device_id: device ? device._id : null,
+      hardware_id: device ? (device.hardware_id || null) : null,
+      mqtt_route_id: device ? (device.mqtt_route_id || null) : null,
       device_status: devStatus,
       device_operational_status: device ? (device.operational_status || 'ACTIVE') : 'UNMAPPED',
+      lifecycle_status: device ? (device.operational_status || 'ACTIVE') : 'UNMAPPED',
+      lifecycle_note: device ? (device.lifecycle_note || null) : null,
+      lifecycle_updated_at: device ? (device.lifecycle_updated_at || null) : null,
       maintenance_status: openComplaintCount > 0 ? 'COMPLAINT_OPEN' : (location.maintenance_status || 'OK'),
       open_complaint_count: openComplaintCount,
       active_incident_id: activeIncident ? activeIncident._id : null

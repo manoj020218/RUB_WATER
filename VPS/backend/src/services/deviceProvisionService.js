@@ -29,11 +29,12 @@ function sanitizeBaseUrl(url) {
   return out;
 }
 
-function buildCloudInfo(deviceId) {
+function buildCloudInfo(deviceId, hardwareId = null) {
   const base = sanitizeBaseUrl(env.publicApiBaseUrl || env.vpsFqdn);
   // Use the public VPS FQDN for device MQTT host, not the internal mqttHost
   // (which may be 'localhost' for VPS-internal broker communication).
   const publicMqttHost = env.vpsFqdn || env.mqttHost;
+  const routeId = String(hardwareId || deviceId || '').trim().toUpperCase();
   return {
     vps_base_url: base,
     vps_check_url: base,
@@ -42,7 +43,8 @@ function buildCloudInfo(deviceId) {
     mqtt: {
       host: publicMqttHost,
       port: env.mqttPort,
-      username: deviceId,
+      username: routeId || deviceId,
+      route_id_hint: routeId || deviceId,
       auth_mode: 'token'
     },
     auth_headers: {
@@ -142,7 +144,7 @@ function createProvisionProfile({ deviceId, authContext, ipAddress }) {
   const token = `fg_${crypto.randomBytes(24).toString('base64url')}`;
 
   const updated = deviceRepository.setDeviceToken(claimed._id, token, expiresAt.toISOString(), authContext.user);
-  const cloud = buildCloudInfo(claimed._id);
+  const cloud = buildCloudInfo(claimed._id, claimed.hardware_id || null);
 
   auditService.writeAuditLog({
     locationId: claimed.location_id,
@@ -160,6 +162,7 @@ function createProvisionProfile({ deviceId, authContext, ipAddress }) {
 
   return {
     device_id: claimed._id,
+    hardware_id: claimed.hardware_id || null,
     location_id: claimed.location_id,
     claimed_by_user_id: claimed.security?.claimed_by_user_id || null,
     claimed_by_name: claimed.security?.claimed_by_name || null,
@@ -176,9 +179,10 @@ function createProvisionProfile({ deviceId, authContext, ipAddress }) {
   };
 }
 
-function registerDeviceWithProvisionKey({ deviceId, provisionKey, ipAddress }) {
+function registerDeviceWithProvisionKey({ deviceId, hardwareId, provisionKey, ipAddress }) {
   assertProvisionKey(provisionKey);
   const normalizedDeviceId = String(deviceId || '').trim().toUpperCase();
+  const normalizedHardwareId = String(hardwareId || '').trim().toUpperCase();
   if (!normalizedDeviceId) {
     throw notFound('Device not found');
   }
@@ -186,7 +190,16 @@ function registerDeviceWithProvisionKey({ deviceId, provisionKey, ipAddress }) {
   let device = deviceRepository.findById(normalizedDeviceId);
   if (!device) {
     // Provision key is valid — auto-register this new device
-    device = deviceRepository.createDevice({ device_id: normalizedDeviceId, location_id: null });
+    device = deviceRepository.createDevice({
+      device_id: normalizedDeviceId,
+      hardware_id: normalizedHardwareId || null,
+      location_id: null
+    });
+  } else if (normalizedHardwareId && deviceRepository.isHardwareRebindAllowed(device, normalizedHardwareId)) {
+    device = deviceRepository.bindHardware(device._id, normalizedHardwareId, {
+      reason: 'provision_key_registration',
+      reportedDeviceId: normalizedDeviceId
+    });
   }
 
   const ttlHours = Number.isFinite(Number(env.deviceTokenTtlHours))
@@ -196,7 +209,7 @@ function registerDeviceWithProvisionKey({ deviceId, provisionKey, ipAddress }) {
   const expiresAt = new Date(issuedAt.getTime() + (ttlHours * 60 * 60 * 1000));
   const deviceKey = `fgk_${crypto.randomBytes(24).toString('base64url')}`;
   const updated = deviceRepository.setDeviceToken(device._id, deviceKey, expiresAt.toISOString(), null);
-  const cloud = buildCloudInfo(device._id);
+  const cloud = buildCloudInfo(device._id, device.hardware_id || null);
 
   auditService.writeAuditLog({
     locationId: device.location_id,
@@ -214,6 +227,7 @@ function registerDeviceWithProvisionKey({ deviceId, provisionKey, ipAddress }) {
 
   return {
     device_id: device._id,
+    hardware_id: device.hardware_id || null,
     location_id: device.location_id,
     token_expires_at: expiresAt.toISOString(),
     device_key: deviceKey,

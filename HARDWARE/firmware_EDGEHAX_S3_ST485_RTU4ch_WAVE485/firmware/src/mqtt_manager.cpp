@@ -12,19 +12,24 @@ MqttManager& MqttManager::getInstance() {
     return inst;
 }
 
-void MqttManager::begin(const char* deviceId, const char* token) {
+void MqttManager::begin(const char* deviceId, const char* hardwareId, const char* token) {
     gInst = this;
     strncpy(_deviceId, deviceId, sizeof(_deviceId) - 1);
-    // MQTT username = deviceId, password = pre-seeded token
-    strncpy(_user, deviceId, sizeof(_user) - 1);
+    strncpy(_hardwareId, hardwareId, sizeof(_hardwareId) - 1);
+    strncpy(_routeId, _deviceId, sizeof(_routeId) - 1);
+    // MQTT username/client identity prefers immutable hardware_id when broker
+    // accepts it, but falls back to the legacy device_id for in-field
+    // compatibility with older credential provisioning.
+    strncpy(_user, _hardwareId[0] ? _hardwareId : _deviceId, sizeof(_user) - 1);
     strncpy(_pass, token,    sizeof(_pass) - 1);
 
     _mqtt.setServer(DEFAULT_MQTT_HOST, DEFAULT_MQTT_PORT);
     _mqtt.setKeepAlive(60);
-    _mqtt.setBufferSize(1024);
+    _mqtt.setBufferSize(3072);
     _mqtt.setCallback(onMessageBridge);
 
-    Serial.printf("[MQTT] host=%s:%d user=%s\n", DEFAULT_MQTT_HOST, DEFAULT_MQTT_PORT, _user);
+    Serial.printf("[MQTT] host=%s:%d device_id=%s hardware_id=%s\n",
+                  DEFAULT_MQTT_HOST, DEFAULT_MQTT_PORT, _deviceId, _hardwareId);
 }
 
 void MqttManager::loop() {
@@ -62,34 +67,90 @@ bool MqttManager::publish(const char* topic, const char* payload, bool retained)
 
 void MqttManager::setCommandCallback(MqttCmdCallback cb) { _cmdCb = cb; }
 
+String MqttManager::topicBase() const {
+    return topicBaseFor(_routeId[0] ? _routeId : _deviceId);
+}
+
+String MqttManager::topicBaseFor(const char* routeId) const {
+    return String("floodguard/") + (routeId && routeId[0] ? routeId : _deviceId);
+}
+
+String MqttManager::legacyTopicBase() const {
+    return topicBaseFor(_deviceId);
+}
+
+String MqttManager::hardwareTopicBase() const {
+    return topicBaseFor(_hardwareId[0] ? _hardwareId : _deviceId);
+}
+
 String MqttManager::telemetryTopic() const {
-    return String("floodguard/") + _deviceId + "/telemetry";
+    return topicBase() + "/telemetry";
 }
 String MqttManager::eventTopic() const {
-    return String("floodguard/") + _deviceId + "/event";
+    return topicBase() + "/event";
+}
+String MqttManager::heartbeatTopic() const {
+    return topicBase() + "/heartbeat";
+}
+String MqttManager::commandAckTopic() const {
+    return topicBase() + "/command_ack";
+}
+String MqttManager::configAckTopic() const {
+    return topicBase() + "/config_ack";
 }
 String MqttManager::commandTopic() const {
-    return String("floodguard/") + _deviceId + "/command";
+    return topicBase() + "/command";
 }
 String MqttManager::configTopic() const {
-    return String("floodguard/") + _deviceId + "/config";
+    return topicBase() + "/config";
 }
 
 bool MqttManager::reconnect() {
+    if (_hardwareId[0] && strcmp(_hardwareId, _deviceId) != 0) {
+        if (connectUsingIdentity(_hardwareId, true)) {
+            return true;
+        }
+        Serial.println("[MQTT] hardware identity failed, retrying legacy device_id identity");
+    }
+    return connectUsingIdentity(_deviceId, false);
+}
+
+bool MqttManager::connectUsingIdentity(const char* authId, bool hardwareRoutePreferred) {
+    if (!authId || !authId[0]) {
+        return false;
+    }
+
+    strncpy(_user, authId, sizeof(_user) - 1);
     Serial.printf("[MQTT] Connecting as %s...\n", _user);
-    const bool ok = _mqtt.connect(_deviceId, _user, _pass);
+    const bool ok = _mqtt.connect(authId, _user, _pass);
     if (ok) {
-        Serial.println("[MQTT] Connected");
+        strncpy(_routeId,
+                hardwareRoutePreferred && _hardwareId[0] ? _hardwareId : _deviceId,
+                sizeof(_routeId) - 1);
+        Serial.printf("[MQTT] Connected route=%s\n", _routeId);
         subscribe();
     } else {
-        Serial.printf("[MQTT] Failed rc=%d\n", _mqtt.state());
+        Serial.printf("[MQTT] Failed rc=%d for identity=%s\n", _mqtt.state(), authId);
     }
     return ok;
 }
 
 void MqttManager::subscribe() {
-    _mqtt.subscribe(commandTopic().c_str(), 1);  // QoS1: broker retries until PUBACK
-    _mqtt.subscribe(configTopic().c_str(), 1);
+    const String activeCmd = commandTopic();
+    const String activeCfg = configTopic();
+    bool cmdOk = _mqtt.subscribe(activeCmd.c_str(), 1);
+    bool cfgOk = _mqtt.subscribe(activeCfg.c_str(), 1);
+    Serial.printf("[MQTT] subscribe route=%s command=%d config=%d\n",
+                  _routeId, cmdOk ? 1 : 0, cfgOk ? 1 : 0);
+
+    if (_hardwareId[0] && strcmp(_hardwareId, _deviceId) != 0) {
+        const String legacyCmd = legacyTopicBase() + "/command";
+        const String legacyCfg = legacyTopicBase() + "/config";
+        const bool legacyCmdOk = _mqtt.subscribe(legacyCmd.c_str(), 1);
+        const bool legacyCfgOk = _mqtt.subscribe(legacyCfg.c_str(), 1);
+        Serial.printf("[MQTT] subscribe legacy command=%d config=%d\n",
+                      legacyCmdOk ? 1 : 0, legacyCfgOk ? 1 : 0);
+    }
 }
 
 void MqttManager::onMessageBridge(char* topic, uint8_t* payload, unsigned int len) {
@@ -98,7 +159,7 @@ void MqttManager::onMessageBridge(char* topic, uint8_t* payload, unsigned int le
 
 void MqttManager::onMessage(char* topic, uint8_t* payload, unsigned int len) {
     if (!_cmdCb) return;
-    char buf[512];
+    char buf[1536];
     const size_t n = len < sizeof(buf) - 1 ? len : sizeof(buf) - 1;
     memcpy(buf, payload, n);
     buf[n] = '\0';
