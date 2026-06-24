@@ -15,19 +15,32 @@ const messaging = firebase.messaging();
 
 messaging.onBackgroundMessage((payload) => {
   const notif = payload.notification || {};
+  const data = payload.data || {};
   const title = notif.title || 'FloodGuard Alert';
   const body = notif.body || '';
-  const url = payload.data?.url || '/';
+  const url = data.url || '/';
+  const isDanger = (data.event || '').toUpperCase().includes('DANGER');
 
-  return self.registration.showNotification(title, {
+  const options = isDanger ? {
     body,
     icon: '/app-icon-192.png',
     badge: '/app-icon-192.png',
-    vibrate: [500, 110, 500, 110, 450, 110, 200, 110, 170, 40, 450],
+    vibrate: [800, 200, 800, 200, 800, 200, 1000, 400, 1000, 400, 1000],
     requireInteraction: true,
+    tag: 'floodguard-danger',
+    renotify: true,
+    data: { url, event: data.event }
+  } : {
+    body,
+    icon: '/app-icon-192.png',
+    badge: '/app-icon-192.png',
+    vibrate: [500, 110, 500, 110, 450],
+    requireInteraction: false,
     tag: 'floodguard-alert',
     data: { url }
-  });
+  };
+
+  return self.registration.showNotification(title, options);
 });
 
 self.addEventListener('notificationclick', (event) => {

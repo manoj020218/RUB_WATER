@@ -5,6 +5,7 @@ import Toast from '@/components/Toast';
 import BottomNav from '@/components/BottomNav';
 import Topbar from '@/components/Topbar';
 import ForcePwModal from '@/components/ForcePwModal';
+import { playDangerGong, isDangerEvent } from '@/utils/dangerSound';
 
 const LoginPage = lazy(() => import('@/pages/LoginPage'));
 const LocationsPage = lazy(() => import('@/pages/LocationsPage'));
@@ -26,8 +27,23 @@ function RequireAuth({ children }: { children: React.ReactNode }) {
 }
 
 export default function App() {
-  const { state } = useApp();
+  const { state, showToast } = useApp();
   const isLoggedIn = !!state.token;
+
+  useEffect(() => {
+    let cleanup: (() => void) | undefined;
+    import('@capacitor/push-notifications').then(({ PushNotifications }) => {
+      const handle = PushNotifications.addListener('pushNotificationReceived', (notification) => {
+        const data = notification.data as Record<string, string> | undefined;
+        if (isDangerEvent(data)) {
+          playDangerGong();
+          showToast(`DANGER ALERT: ${data?.location_id || 'site'} — water level critical!`, true);
+        }
+      });
+      cleanup = () => { handle.then((h) => h.remove()); };
+    }).catch(() => {});
+    return () => { cleanup?.(); };
+  }, [showToast]);
 
   return (
     <div className="app-shell">

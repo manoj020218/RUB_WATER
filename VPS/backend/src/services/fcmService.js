@@ -56,16 +56,24 @@ async function sendFcmNotification(tokens, title, body, data = {}) {
     stringData[k] = String(v == null ? '' : v);
   }
 
+  const isDanger = String(data.event || '').toUpperCase().includes('DANGER');
+  stringData.alert_type = isDanger ? 'DANGER' : 'ALERT';
+
   const message = {
     notification: { title, body },
     data: stringData,
     android: {
       priority: 'high',
       notification: {
-        channelId: 'flood_danger',
-        sound: 'flood_alert',
+        channelId: isDanger ? 'floodguard_danger' : 'floodguard_alert',
+        sound: isDanger ? 'danger_gong' : 'default',
         priority: 'max',
         visibility: 'PUBLIC',
+        defaultSound: !isDanger,
+        defaultVibrateTimings: false,
+        vibrateTimingsMillis: isDanger
+          ? [0, 800, 200, 800, 200, 800, 400, 1000, 400, 1000]
+          : [0, 400, 200, 400],
         notificationCount: 1
       }
     },
@@ -76,9 +84,12 @@ async function sendFcmNotification(tokens, title, body, data = {}) {
         body,
         icon: '/app-icon-192.png',
         badge: '/app-icon-192.png',
-        vibrate: [500, 110, 500, 110, 450, 110, 200, 110, 170, 40, 450],
-        requireInteraction: true,
-        tag: 'floodguard-alert'
+        vibrate: isDanger
+          ? [800, 200, 800, 200, 800, 200, 1000, 400, 1000, 400, 1000]
+          : [500, 110, 500, 110, 450],
+        requireInteraction: isDanger,
+        tag: isDanger ? 'floodguard-danger' : 'floodguard-alert',
+        renotify: isDanger
       },
       fcmOptions: { link: data.url || '/' }
     },
