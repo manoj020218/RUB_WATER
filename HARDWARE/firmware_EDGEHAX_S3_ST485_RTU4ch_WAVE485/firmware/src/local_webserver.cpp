@@ -1049,17 +1049,6 @@ void LocalWebserver::handleRelayTest() {
             "<button type='submit' class='btn btn-danger'>All Relays OFF</button></form>";
     html += "</div>";
 
-    // ── Local S3 board outputs ────────────────────────────────────────────────
-    html += "<div class='card'><h2>Local S3 Board Outputs</h2>"
-            "<p style='color:#888'>Relays physically on the main Edgehax S3 PCB (not RTU remote box).</p>"
-            "<p style='color:#f57c00'>Page hangs briefly during test — normal.</p>"
-            "<form method='POST' action='/relay-test'>"
-            "<button type='submit' name='relay' value='siren' class='btn btn-warn'>Test Siren (3s)</button><br><br>"
-            "<button type='submit' name='relay' value='flash' class='btn btn-warn'>Test Flash (5s)</button><br><br>"
-            "<button type='submit' name='relay' value='voice' class='btn'>Test Voice (3s)</button><br><br>"
-            "<button type='submit' name='relay' value='rf_siren' class='btn btn-warn'>Test RF Siren (3s)</button>"
-            "</form></div>";
-
 #else
     // ── Non-ST485 mode: simple local relay test ───────────────────────────────
     const bool lastOk = _server.arg("result") == "ok";

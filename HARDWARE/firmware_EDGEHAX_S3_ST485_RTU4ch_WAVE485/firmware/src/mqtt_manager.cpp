@@ -25,7 +25,7 @@ void MqttManager::begin(const char* deviceId, const char* hardwareId, const char
 
     _mqtt.setServer(DEFAULT_MQTT_HOST, DEFAULT_MQTT_PORT);
     _mqtt.setKeepAlive(60);
-    _mqtt.setBufferSize(3072);
+    _mqtt.setBufferSize(4096);
     _mqtt.setCallback(onMessageBridge);
 
     Serial.printf("[MQTT] host=%s:%d device_id=%s hardware_id=%s\n",

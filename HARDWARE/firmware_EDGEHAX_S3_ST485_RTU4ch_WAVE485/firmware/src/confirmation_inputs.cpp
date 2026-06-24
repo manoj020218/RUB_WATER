@@ -12,7 +12,7 @@ ConfirmationInputs& ConfirmationInputs::getInstance() {
 }
 
 void ConfirmationInputs::begin() {
-    pinMode(PIN_CONFIRM_LEVEL1, INPUT);         // external 1K pull-up on hardware
+    pinMode(PIN_CONFIRM_LEVEL1, INPUT_PULLUP);  // internal pullup; external 1K on hardware also fine
     pinMode(PIN_CONFIRM_LEVEL2, INPUT_PULLUP);
     _l1StableMs = millis();
     _l2StableMs = millis();

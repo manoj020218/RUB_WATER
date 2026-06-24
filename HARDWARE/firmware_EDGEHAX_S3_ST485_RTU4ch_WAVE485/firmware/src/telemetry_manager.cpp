@@ -2,6 +2,8 @@
 
 #include <ArduinoJson.h>
 
+#include "alert_action_runner.h"
+#include "alert_action_sheet.h"
 #include "device_profile.h"
 #include "dyp_sensor.h"
 #include "flood_state_machine.h"
@@ -93,7 +95,7 @@ void TelemetryManager::loop() {
     if ((now - _lastTelemetryMs) < _telemetryIntervalMs) return;
     _lastTelemetryMs = now;
 
-    char payload[2048];
+    static char payload[3584];
     buildTelemetryJson(payload, sizeof(payload));
     send("telemetry", payload);
 
@@ -119,6 +121,10 @@ void TelemetryManager::publishEvent(const char* eventType, const char* detail) {
     send("event", payload);
 }
 
+bool TelemetryManager::publishEventPayload(const char* payload) {
+    return send("event", payload);
+}
+
 void TelemetryManager::publishBootConfigReport() {
     char payload[1024];
     buildBootConfigJson(payload, sizeof(payload));
@@ -137,10 +143,13 @@ uint32_t TelemetryManager::dynamicInterval() const {
 }
 
 void TelemetryManager::buildTelemetryJson(char* out, size_t outSize) const {
-    StaticJsonDocument<3072> doc;
+    static StaticJsonDocument<3072> doc;
+    doc.clear();
     const auto& cfg  = ConfigManager::getInstance().get();
     const auto& dyp  = DypSensor::getInstance().snapshot();
     const auto& fsm  = FloodStateMachine::getInstance().snapshot();
+    const auto& actionSheet = AlertActionSheetManager::getInstance().get();
+    const auto& actionRun = AlertActionRunner::getInstance().snapshot();
     const auto& wifi = WifiManager::getInstance();
     auto& mqtt = MqttManager::getInstance();
 
@@ -207,6 +216,15 @@ void TelemetryManager::buildTelemetryJson(char* out, size_t outSize) const {
     doc["switch_first"] = fsm.switchFirst;
     doc["current_config_version"] = cfg.configVersion;
     doc["config_version"] = cfg.configVersion;
+    doc["action_sheet_version"] = actionSheet.actionSheetVersion;
+    doc["current_action_sheet_version"] = actionSheet.actionSheetVersion;
+    doc["action_sheet_sync_source"] = actionSheet.lastSyncSource;
+    if (actionSheet.lastSyncAt[0]) {
+        doc["action_sheet_last_sync_at"] = actionSheet.lastSyncAt;
+    }
+    doc["action_sheet_red_override"] = actionSheet.redAllOffOverride;
+    doc["alert_action_active"] = actionRun.active;
+    doc["alert_action_level"] = actionRun.active ? AlertActionSheetManager::levelStr(actionRun.level) : "NONE";
 
     // Relay status as object (matches backend relay_status field)
     const auto& out_c = OutputController::getInstance().snapshot();
@@ -262,14 +280,6 @@ void TelemetryManager::buildTelemetryJson(char* out, size_t outSize) const {
     rb["fault_voice"] = right.voiceFaulty;
     rb["poll_ms"] = right.pollTimeMs;
 
-    char cfgJson[768];
-    if (ConfigManager::getInstance().buildJson(cfgJson, sizeof(cfgJson))) {
-        StaticJsonDocument<768> cfgDoc;
-        if (deserializeJson(cfgDoc, cfgJson) == DeserializationError::Ok) {
-            doc["config"] = cfgDoc.as<JsonVariantConst>();
-        }
-    }
-
     serializeJson(doc, out, outSize);
 }
 
@@ -288,6 +298,7 @@ void TelemetryManager::buildHeartbeatJson(char* out, size_t outSize) const {
     doc["mqtt_route_id"] = MqttManager::getInstance().routeId();
     doc["mqtt_topic_base"] = MqttManager::getInstance().topicBase();
     doc["current_config_version"] = ConfigManager::getInstance().get().configVersion;
+    doc["current_action_sheet_version"] = AlertActionSheetManager::getInstance().version();
     serializeJson(doc, out, outSize);
 }
 
@@ -300,6 +311,7 @@ void TelemetryManager::buildBootConfigJson(char* out, size_t outSize) const {
     doc["boot_status"] = "BOOTED";
     doc["firmware_version"] = FIRMWARE_VERSION;
     doc["current_config_version"] = cfg.configVersion;
+    doc["current_action_sheet_version"] = AlertActionSheetManager::getInstance().version();
     doc["timestamp_ms"] = millis();
 
     char cfgJson[768];
@@ -324,6 +336,7 @@ void TelemetryManager::buildEventJson(char* out, size_t outSize,
     doc["alert_level"] = alertLevelStr(fsm.alertLevel);
     doc["alert_status"] = alertStatusStr(fsm.alertStatus);
     doc["alert_source"] = alertSourceStr(fsm.alertSource);
+    doc["action_sheet_version"] = AlertActionSheetManager::getInstance().version();
     JsonObject det    = doc.createNestedObject("details");
     det["flood_state"] = floodStateStr(fsm.state);
     det["alert_level"] = alertLevelStr(fsm.alertLevel);
@@ -341,6 +354,7 @@ void TelemetryManager::buildEventJson(char* out, size_t outSize,
     det["pending_since_ms"] = fsm.pendingSinceMs;
     det["outputs_enabled"] = fsm.outputsEnabled;
     det["current_config_version"] = ConfigManager::getInstance().get().configVersion;
+    det["action_sheet_version"] = AlertActionSheetManager::getInstance().version();
     if (detail && detail[0]) det["reason"] = detail;
     if (detail && detail[0]) doc["reason"] = detail;
     serializeJson(doc, out, outSize);
