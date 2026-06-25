@@ -1,6 +1,6 @@
 {
   "name": "floodguard-android-app",
-  "version": "1.0.2",
+  "version": "1.0.5",
   "private": true,
   "description": "FloodGuard by Jenix Android app (Capacitor + React)",
   "scripts": {
@@ -15,14 +15,18 @@
     "@capacitor-community/bluetooth-le": "^6.1.0",
     "@capacitor/android": "^6.1.2",
     "@capacitor/core": "^6.1.2",
+    "@capacitor/filesystem": "^6.0.0",
     "@capacitor/push-notifications": "^6.0.1",
+    "@capacitor/share": "^6.0.0",
     "react": "^18.3.1",
     "react-dom": "^18.3.1",
     "react-icons": "^5.5.0",
     "react-router-dom": "^6.28.2"
   },
   "pnpm": {
-    "onlyBuiltDependencies": ["esbuild"]
+    "onlyBuiltDependencies": [
+      "esbuild"
+    ]
   },
   "devDependencies": {
     "@capacitor/cli": "^6.1.2",

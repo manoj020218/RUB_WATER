@@ -8,7 +8,7 @@ function seedIfEmpty() {
   }
 
   const passwordHash = bcrypt.hashSync('Pass@123', 10);
-  const demoPasswordHash = bcrypt.hashSync('123456', 10);
+  const demoPasswordHash = bcrypt.hashSync('302020', 10);
 
   dataStore.users = [
     {

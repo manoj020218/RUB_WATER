@@ -40,17 +40,19 @@ function buildDetails(log: AuditLog): string {
   return parts.join(' · ');
 }
 
-function downloadFile(content: string, filename: string, mime: string) {
-  const blob = new Blob([content], { type: mime });
-  const url = URL.createObjectURL(blob);
-  const a = document.createElement('a');
-  a.href = url;
-  a.download = filename;
-  a.click();
-  URL.revokeObjectURL(url);
+async function shareFile(content: string, filename: string, showToast: (m: string, e?: boolean) => void) {
+  try {
+    const { Filesystem, Directory, Encoding } = await import('@capacitor/filesystem');
+    const { Share } = await import('@capacitor/share');
+    await Filesystem.writeFile({ path: filename, data: content, directory: Directory.Cache, encoding: Encoding.UTF8 });
+    const { uri } = await Filesystem.getUri({ path: filename, directory: Directory.Cache });
+    await Share.share({ title: filename, url: uri, dialogTitle: 'Save or share audit log' });
+  } catch (_) {
+    showToast('Could not share file on this device.', true);
+  }
 }
 
-function exportCsv(logs: AuditLog[], locationId: string) {
+function buildCsv(logs: AuditLog[], locationId: string): string {
   const rows = [['Timestamp', 'Event Type', 'Location', 'User', 'Device', 'Details']];
   logs.forEach((log) => {
     rows.push([
@@ -62,18 +64,17 @@ function exportCsv(logs: AuditLog[], locationId: string) {
       buildDetails(log)
     ]);
   });
-  const csv = rows.map((r) => r.map((c) => `"${String(c).replace(/"/g, '""')}"`).join(',')).join('\n');
-  downloadFile(csv, `audit_${locationId}_${Date.now()}.csv`, 'text/csv');
+  return rows.map((r) => r.map((c) => `"${String(c).replace(/"/g, '""')}"`).join(',')).join('\n');
 }
 
-function exportTxt(logs: AuditLog[], locationId: string) {
+function buildTxt(logs: AuditLog[], locationId: string): string {
   const lines = [`Audit Log — ${locationId} — exported ${fmtFull(new Date().toISOString())}`, ''];
   logs.forEach((log) => {
     const ts = fmtFull(getTs(log));
     const detail = buildDetails(log);
     lines.push(`[${ts}] ${log.event_type || '?'} · ${log.location_id || locationId} · ${log.user_id || '-'}${detail ? ' · ' + detail : ''}`);
   });
-  downloadFile(lines.join('\n'), `audit_${locationId}_${Date.now()}.txt`, 'text/plain');
+  return lines.join('\n');
 }
 
 export default function AuditPage() {
@@ -99,10 +100,12 @@ export default function AuditPage() {
           <div style={{ display: 'flex', gap: 6 }}>
             {logs.length > 0 && locationId && (
               <>
-                <button className="ghost-btn" style={{ padding: '5px 8px', fontSize: 12 }} title="Download CSV" onClick={() => exportCsv(logs, locationId)}>
+                <button className="ghost-btn" style={{ padding: '5px 8px', fontSize: 12 }} title="Share CSV"
+                  onClick={() => shareFile(buildCsv(logs, locationId), `audit_${locationId}_${new Date().toISOString().slice(0,10)}.csv`, showToast)}>
                   <FiDownload size={13} style={{ marginRight: 4, verticalAlign: 'middle' }} />CSV
                 </button>
-                <button className="ghost-btn" style={{ padding: '5px 8px', fontSize: 12 }} title="Download TXT" onClick={() => exportTxt(logs, locationId)}>
+                <button className="ghost-btn" style={{ padding: '5px 8px', fontSize: 12 }} title="Share TXT"
+                  onClick={() => shareFile(buildTxt(logs, locationId), `audit_${locationId}_${new Date().toISOString().slice(0,10)}.txt`, showToast)}>
                   <FiDownload size={13} style={{ marginRight: 4, verticalAlign: 'middle' }} />TXT
                 </button>
               </>

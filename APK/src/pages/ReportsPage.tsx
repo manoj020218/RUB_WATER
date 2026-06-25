@@ -39,17 +39,23 @@ export default function ReportsPage() {
     } catch (e: unknown) { setStatus(e instanceof Error ? e.message : 'Failed'); showToast('Report failed', true); } finally { setLoading(false); }
   }
 
-  function exportCsv() {
+  async function exportCsv() {
     if (rows.length === 0) { showToast('No data to export.', true); return; }
     const header = 'Time (IST),Location,Event,Details,User';
     const csv = [header, ...rows.map((r) => [
       fmtDT(r.created_at), r.location_id ?? '', r.event_type ?? '',
       JSON.stringify(r.details ?? '').replace(/,/g, ';'), r.user_id ?? ''
-    ].map((v) => `"${v}"`).join(','))].join('\n');
-    const blob = new Blob([csv], { type: 'text/csv' });
-    const url = URL.createObjectURL(blob);
-    const a = document.createElement('a'); a.href = url; a.download = `fg-audit-${Date.now()}.csv`; a.click();
-    URL.revokeObjectURL(url);
+    ].map((v) => `"${String(v).replace(/"/g, '""')}"`).join(','))].join('\n');
+    const filename = `fg-report-${new Date().toISOString().slice(0, 10)}.csv`;
+    try {
+      const { Filesystem, Directory, Encoding } = await import('@capacitor/filesystem');
+      const { Share } = await import('@capacitor/share');
+      await Filesystem.writeFile({ path: filename, data: csv, directory: Directory.Cache, encoding: Encoding.UTF8 });
+      const { uri } = await Filesystem.getUri({ path: filename, directory: Directory.Cache });
+      await Share.share({ title: filename, url: uri, dialogTitle: 'Save or share audit report' });
+    } catch (_) {
+      showToast('Could not share file on this device.', true);
+    }
   }
 
   return (

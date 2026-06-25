@@ -103,7 +103,7 @@ function RtuCard({ side, rtu, hasData }: { side: string; rtu?: RtuStatus; hasDat
 }
 
 export default function DashboardPage() {
-  const { state, dispatch, canOperate, showToast } = useApp();
+  const { state, dispatch, showToast } = useApp();
   const navigate = useNavigate();
   const locationId = state.selectedLocationId;
   const [data, setData] = useState<DashboardData | null>(() => (locationId ? (_dashCache[locationId] ?? null) : null));
@@ -184,7 +184,8 @@ export default function DashboardPage() {
   const incident = data?.incident;
   const mountHeight = Number(config?.sensor_mount_height_mm || loc?.mount_height_mm || 1200);
   const waterLevel = Number(latest?.water_level_mm ?? 0);
-  const devOnline = (data?.device?.status || '').toUpperCase() === 'ONLINE';
+  const devStatus = (data?.device?.status || data?.location?.device_status || '').toUpperCase();
+  const devOnline = devStatus !== '' && devStatus !== 'OFFLINE' && devStatus !== 'UNMAPPED';
   const hasData = !!latest;
   const floodState = latest?.flood_state ?? ((hasData || devOnline) ? 'CLEAR' : 'OFFLINE');
   const meta = floodMeta(floodState);
@@ -379,39 +380,7 @@ export default function DashboardPage() {
           </div>
         </div>
 
-        {canOperate() && (
-          <div id="dash-quick-controls">
-            <p className="section-sep">Quick Controls</p>
-            <QuickControls locationId={locationId} deviceId={state.selectedDeviceId ?? ''} showToast={showToast} />
-          </div>
-        )}
       </div>
     </section>
-  );
-}
-
-function QuickControls({ locationId, deviceId, showToast }: { locationId: string; deviceId: string; showToast: (m: string, e?: boolean) => void }) {
-  const [reason, setReason] = useState('');
-  async function mute() {
-    const { muteAlarm } = await import('@/api/commands');
-    try { await muteAlarm(locationId, deviceId); showToast('Alarm muted.'); } catch (e: unknown) { showToast(e instanceof Error ? e.message : 'Failed', true); }
-  }
-  async function dry() {
-    const { dryRun } = await import('@/api/commands');
-    try { await dryRun(locationId, deviceId); showToast('Dry run triggered.'); } catch (e: unknown) { showToast(e instanceof Error ? e.message : 'Failed', true); }
-  }
-  async function clear() {
-    if (!reason.trim() || reason.trim().length < 5) { showToast('Enter a reason (min 5 chars).', true); return; }
-    const { forceClear } = await import('@/api/commands');
-    try { await forceClear(locationId, deviceId, reason.trim()); showToast('Incident cleared.'); setReason(''); } catch (e: unknown) { showToast(e instanceof Error ? e.message : 'Failed', true); }
-  }
-  return (
-    <>
-      <button className="control-btn warn" onClick={mute}>Mute Alarm</button>
-      <button className="control-btn info" onClick={dry}>Dry Run Test</button>
-      <input className="inp" value={reason} onChange={(e) => setReason(e.target.value)} placeholder="Force clear reason (min 5 chars)" style={{ marginTop: 8 }} />
-      <button className="control-btn danger" onClick={clear}>Force Clear Incident</button>
-      <p className="hint">All actions are audited with user/session/device metadata.</p>
-    </>
   );
 }

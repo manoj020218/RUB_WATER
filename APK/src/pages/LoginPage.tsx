@@ -11,8 +11,8 @@ export default function LoginPage() {
   const navigate = useNavigate();
 
   const [apiBase, setApiBase] = useState(DEFAULT_API_BASE);
-  const [loginId, setLoginId] = useState('demo');
-  const [password, setPassword] = useState('123456');
+  const [loginId, setLoginId] = useState('');
+  const [password, setPassword] = useState('');
   const [error, setError] = useState('');
   const [busy, setBusy] = useState(false);
 
