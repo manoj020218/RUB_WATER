@@ -17,12 +17,15 @@ public:
     bool writeChunk(const uint8_t* data, size_t len);
     bool endLocalUpload(String& reason);
 
-    // Remote OTA: download firmware from URL and flash
-    void beginRemoteOta(const char* url);
+    // Remote OTA: download firmware from URL and flash.
+    // Returns false on failure (reason in lastRemoteError()).
+    // On success, publishes command_ack (best-effort) then calls ESP.restart() — never returns.
+    bool beginRemoteOta(const char* url, const char* commandId = "");
 
     // Result of last local upload — read by webserver after upload callback completes
-    bool          lastLocalOk()    const { return _lastLocalOk; }
-    const String& lastLocalError() const { return _lastLocalError; }
+    bool          lastLocalOk()     const { return _lastLocalOk; }
+    const String& lastLocalError()  const { return _lastLocalError; }
+    const String& lastRemoteError() const { return _lastRemoteError; }
 
 private:
     OtaManager() = default;
@@ -31,4 +34,5 @@ private:
     bool     _localUploadActive = false;
     bool     _lastLocalOk = false;
     String   _lastLocalError;
+    String   _lastRemoteError;
 };

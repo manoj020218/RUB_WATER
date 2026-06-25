@@ -1,10 +1,12 @@
 #include "ota_manager.h"
 
+#include <ArduinoJson.h>
 #include <HTTPClient.h>
 #include <Update.h>
 #include <WiFiClientSecure.h>
 
 #include "flood_state_machine.h"
+#include "mqtt_manager.h"
 
 OtaManager& OtaManager::getInstance() {
     static OtaManager inst;
@@ -77,13 +79,15 @@ bool OtaManager::endLocalUpload(String& reason) {
     return true;
 }
 
-void OtaManager::beginRemoteOta(const char* url) {
+bool OtaManager::beginRemoteOta(const char* url, const char* commandId) {
     if (!isSafeToOta()) {
+        _lastRemoteError = "ota_blocked_state";
         Serial.println("[OTA] Remote blocked: alert/danger or pump active");
-        return;
+        return false;
     }
     Serial.printf("[OTA] Remote: %s\n", url);
     _running = true;
+    _lastRemoteError = String();
 
     WiFiClientSecure tlsClient;
     tlsClient.setInsecure();  // skip cert verify — good enough for internal VPS
@@ -97,20 +101,22 @@ void OtaManager::beginRemoteOta(const char* url) {
     http.setTimeout(60000);
     const int code = http.GET();
     if (code != HTTP_CODE_OK) {
+        _lastRemoteError = String("http_error_") + code;
         Serial.printf("[OTA] HTTP error %d\n", code);
         http.end();
         _running = false;
-        return;
+        return false;
     }
 
     const int total = http.getSize();
     WiFiClient* stream = http.getStreamPtr();
 
     if (!Update.begin(total > 0 ? (size_t)total : UPDATE_SIZE_UNKNOWN)) {
+        _lastRemoteError = String("begin_failed: ") + Update.errorString();
         Serial.printf("[OTA] Update.begin failed: %s\n", Update.errorString());
         http.end();
         _running = false;
-        return;
+        return false;
     }
 
     uint8_t buf[1024];
@@ -122,11 +128,12 @@ void OtaManager::beginRemoteOta(const char* url) {
         const int r = stream->readBytes(buf, min(avail, (int)sizeof(buf)));
         if (r <= 0) break;
         if (Update.write(buf, (size_t)r) != (size_t)r) {
+            _lastRemoteError = String("write_error: ") + Update.errorString();
             Serial.printf("[OTA] Write error: %s\n", Update.errorString());
             http.end();
             Update.abort();
             _running = false;
-            return;
+            return false;
         }
         written += r;
         if (millis() - lastPrint >= 2000UL) {
@@ -138,11 +145,32 @@ void OtaManager::beginRemoteOta(const char* url) {
     http.end();
 
     if (!Update.end(true)) {
+        _lastRemoteError = String("finalize_failed: ") + Update.errorString();
         Serial.printf("[OTA] Finalize failed: %s\n", Update.errorString());
         _running = false;
-        return;
+        return false;
     }
+
+    // Best-effort ACK before reboot — MQTT connection may have timed out during long download
+    {
+        auto& mqtt = MqttManager::getInstance();
+        StaticJsonDocument<256> ackDoc;
+        ackDoc["device_id"]  = mqtt.deviceId();
+        ackDoc["hardware_id"] = mqtt.hardwareId();
+        ackDoc["cmd"]        = "ota";
+        ackDoc["status"]     = "SUCCESS";
+        ackDoc["success"]    = true;
+        ackDoc["bytes"]      = written;
+        if (commandId && commandId[0]) ackDoc["command_id"] = commandId;
+        char ackBuf[256];
+        serializeJson(ackDoc, ackBuf, sizeof(ackBuf));
+        if (mqtt.publish(mqtt.commandAckTopic().c_str(), ackBuf)) {
+            delay(500);  // brief window for TCP to flush the ACK packet
+        }
+    }
+
     Serial.printf("[OTA] Remote complete (%d bytes) — rebooting in 2s\n", written);
     delay(2000);
     ESP.restart();
+    return true;  // unreachable — kept for return type completeness
 }

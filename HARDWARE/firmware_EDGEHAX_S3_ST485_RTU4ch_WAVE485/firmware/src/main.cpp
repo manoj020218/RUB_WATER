@@ -488,14 +488,21 @@ static void onMqttCommand(const char* topic, const char* payload) {
     }
     if (cmd == "ota") {
         const char* url = doc["url"] | "";
+        const char* otaCmdId = doc["command_id"] | "";
         if (!url || !url[0]) {
             reason = "missing_url";
         } else if (!OtaManager::getInstance().isSafeToOta()) {
             reason = "ota_blocked_active_alert";
         } else {
             Serial.printf("[CMD] OTA from VPS: %s\n", url);
-            OtaManager::getInstance().beginRemoteOta(url);
-            success = true;
+            // Blocks until done. On success: publishes ACK then calls ESP.restart() (never returns).
+            // On failure: returns false, REJECTED ACK is sent below via normal command_ack path.
+            if (!OtaManager::getInstance().beginRemoteOta(url, otaCmdId)) {
+                reason = OtaManager::getInstance().lastRemoteError();
+                if (reason.length() == 0) reason = "remote_ota_failed";
+            } else {
+                success = true;  // unreachable — device reboots on success
+            }
         }
     }
     // {"cmd":"relay","bus":"right","coil":0,"state":true}
