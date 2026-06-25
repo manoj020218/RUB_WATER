@@ -1,16 +1,8 @@
-const CACHE_NAME = 'floodguard-v3';
-const STATIC_ASSETS = [
-  './',
-  './index.html',
-  './app.js',
-  './app.css',
-  './app-icon-192.png',
-  './floodguard-logo.svg'
-];
+const CACHE_NAME = 'floodguard-v4';
 
 self.addEventListener('install', (e) => {
   e.waitUntil(
-    caches.open(CACHE_NAME).then((cache) => cache.addAll(STATIC_ASSETS))
+    caches.open(CACHE_NAME).then((cache) => cache.add('/'))
   );
   self.skipWaiting();
 });

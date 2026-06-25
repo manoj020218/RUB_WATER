@@ -40,7 +40,19 @@ function buildDetails(log: AuditLog): string {
   return parts.join(' · ');
 }
 
+function isNativeApp() { return !!(window as unknown as Record<string, unknown>).Capacitor; }
+
 async function shareFile(content: string, filename: string, showToast: (m: string, e?: boolean) => void) {
+  if (!isNativeApp()) {
+    try {
+      const blob = new Blob([content], { type: 'text/plain;charset=utf-8' });
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url; a.download = filename; a.click();
+      URL.revokeObjectURL(url);
+    } catch (_) { showToast('Download failed.', true); }
+    return;
+  }
   try {
     const { Filesystem, Directory, Encoding } = await import('@capacitor/filesystem');
     const { Share } = await import('@capacitor/share');

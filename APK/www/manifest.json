@@ -2,15 +2,21 @@
   "name": "FloodGuard by Jenix",
   "short_name": "FloodGuard",
   "description": "Real-time RUB flood monitoring system",
-  "start_url": ".",
+  "start_url": "/",
   "display": "standalone",
   "orientation": "portrait",
   "background_color": "#1e3a8a",
   "theme_color": "#1d4ed8",
   "icons": [
     {
-      "src": "./app-icon-192.png",
+      "src": "/app-icon-192.png",
       "sizes": "192x192",
+      "type": "image/png",
+      "purpose": "any maskable"
+    },
+    {
+      "src": "/app-icon-192.png",
+      "sizes": "512x512",
       "type": "image/png",
       "purpose": "any maskable"
     }

@@ -74,7 +74,8 @@ const defaultCorsOrigins = [
   'http://127.0.0.1:3000',
   'capacitor://localhost',
   'ionic://localhost',
-  'https://floodguard.jenix.in'
+  'https://floodguard.jenix.in',
+  'https://app.floodguard.jenix.in'
 ];
 const corsAllowedOrigins = configuredCorsOrigins.length
   ? [...new Set([...configuredCorsOrigins, ...defaultCorsOrigins])]

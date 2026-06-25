@@ -1,4 +1,6 @@
 import { useEffect, useState } from 'react';
+
+function isNativeApp() { return !!(window as unknown as Record<string, unknown>).Capacitor; }
 import { FiDownload, FiSearch } from 'react-icons/fi';
 import { useApp } from '@/context/AppContext';
 import { fetchAuditReport } from '@/api/complaints';
@@ -47,6 +49,16 @@ export default function ReportsPage() {
       JSON.stringify(r.details ?? '').replace(/,/g, ';'), r.user_id ?? ''
     ].map((v) => `"${String(v).replace(/"/g, '""')}"`).join(','))].join('\n');
     const filename = `fg-report-${new Date().toISOString().slice(0, 10)}.csv`;
+    if (!isNativeApp()) {
+      try {
+        const blob = new Blob([csv], { type: 'text/csv;charset=utf-8' });
+        const url = URL.createObjectURL(blob);
+        const a = document.createElement('a');
+        a.href = url; a.download = filename; a.click();
+        URL.revokeObjectURL(url);
+      } catch (_) { showToast('Download failed.', true); }
+      return;
+    }
     try {
       const { Filesystem, Directory, Encoding } = await import('@capacitor/filesystem');
       const { Share } = await import('@capacitor/share');
