@@ -33,13 +33,17 @@
 #define PIN_PRIMARY_DYP_TX       (-1)   // TX not wired — auto-direction MAX485 handles DE/RE
 
 // ── Two-level confirmation inputs ─────────────────────────────────────────────
-#define PIN_CONFIRM_LEVEL1       6      // INPUT, ext 1K pull-up; GPIO4 shorted on PCB
+#define PIN_CONFIRM_LEVEL1       6      // INPUT, ext pull-up on hardware; LOW = active
 #define PIN_CONFIRM_LEVEL2       5      // INPUT_PULLUP, LOW = active
 
-// ── Local relay outputs (active-LOW relay board) ──────────────────────────────
-#define PIN_RELAY_SIREN          6      // LOW = ON
-#define PIN_RELAY_FLASH          7
-#define PIN_RELAY_VOICE_FUTURE   8
+// ── Local relay outputs — NOT FITTED on EDGEHAX S3 PCB ───────────────────────
+// GPIO6 = PIN_CONFIRM_LEVEL1 (sensor input, ext pull-up on PCB)
+// GPIO5 = PIN_CONFIRM_LEVEL2 (sensor input, INPUT_PULLUP)
+// All siren / flash / voice outputs are driven by the RTU relay board over RS-485.
+#define HAS_LOCAL_OUTPUT_RELAYS  0
+#define PIN_RELAY_SIREN          (-1)   // not wired — RTU side
+#define PIN_RELAY_FLASH          (-1)   // not wired — RTU side
+#define PIN_RELAY_VOICE_FUTURE   (-1)   // not wired — RTU side
 
 #define RELAY_ON_LEVEL           LOW
 #define RELAY_OFF_LEVEL          HIGH
@@ -127,6 +131,7 @@
 #define NVS_NS_WIFI              "fgcfg"    // wifi_ssid, wifi_pass
 #define NVS_NS_MAIN              "fgmain"   // thresholds, calibration, reboot time
 #define NVS_NS_IDENTITY          "fgid"     // device_id override (set via web UI)
+#define NVS_NS_ACTION_SHEET      "fgacts"   // alert action sheet + sync metadata
 
 // ── Firmware identity fallbacks (overridden per variant below) ───────────────
 #ifndef FIRMWARE_NAME

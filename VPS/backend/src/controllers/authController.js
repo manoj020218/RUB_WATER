@@ -25,7 +25,8 @@ async function login(req, res, next) {
 function refresh(req, res, next) {
   try {
     const authHeader = String(req.headers.authorization || '');
-    const token = authHeader.startsWith('Bearer ') ? authHeader.slice(7) : '';
+    const headerToken = authHeader.startsWith('Bearer ') ? authHeader.slice(7) : '';
+    const token = headerToken || String(req.body?.refreshToken || '').trim();
     if (!token) {
       res.status(401).json({ ok: false, error: 'No token provided' });
       return;
