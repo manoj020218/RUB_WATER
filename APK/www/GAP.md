@@ -1,6 +1,6 @@
 # FloodGuard APK GAP
 
-Date: 2026-06-23
+Date: 2026-06-24
 Owner: Codex
 
 ## Scope
@@ -15,8 +15,10 @@ This file tracks APK/UI-side closure of the double-sensor monitoring and verifie
 - RTU status and relay visibility: DONE
 - Verified cloud config-update workflow: DONE
 - Local LAN config save alignment: DONE
+- Alert action-sheet editor, sync state, and history visibility: DONE
 - APK web bundle rebuild into `www`: DONE
-- Native Android rebuild/signing: NOT RUN
+- Native Android rebuild/signing: DONE
+- VPS-downloadable APK publish: DONE
 
 ## Implemented APK Changes
 
@@ -45,6 +47,12 @@ This file tracks APK/UI-side closure of the double-sensor monitoring and verifie
   - only shows success after post-reboot verification
   - shows explicit progress states such as sending, rebooting, and fetching updated settings
   - keeps local LAN save available with the current local admin password
+- Action-sheet page updates inside Config view:
+  - shows desired version, MCU version, last sync time, sync source, and sync message
+  - edits Orange and Red relay rules for R1 Siren / R2 Flash / R3 Voice Trigger
+  - supports save and push workflows through VPS API
+  - shows sync history and enabled relay-rule counts
+  - exposes vendor-super-admin Red all-off override only to the vendor super-admin role
 - Rebuilt the production web bundle into `APK/www`.
 - Install and location management views now surface hardware identity / route data to make field replacement and device-ID changes diagnosable without local shell access.
 
@@ -52,8 +60,14 @@ This file tracks APK/UI-side closure of the double-sensor monitoring and verifie
 
 - `npm run build`: PASS
 - Updated generated bundle written to `www/`
+- `npm run cap:sync`: PASS
+- `gradlew.bat assembleRelease`: PASS
+- Native APK generated:
+  - `APK/FloodGuard-v1.0.5-release.apk`
+  - versionCode `6`
+  - versionName `1.0.5`
 
 ## Residual Notes
 
-- Native Capacitor/Gradle APK generation was not run in this pass.
-- The built `www/` bundle is ready for the next Android packaging step when needed.
+- VPS release metadata now points to:
+  - `https://api.floodguard.iotsoft.in/downloads/floodguard/android/FloodGuard-v1.0.5-release.apk`
