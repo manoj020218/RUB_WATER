@@ -8,7 +8,8 @@ import './styles/app.css';
 if ('serviceWorker' in navigator) {
   window.addEventListener('load', () => {
     navigator.serviceWorker.register('/sw.js').catch(() => {});
-    navigator.serviceWorker.register('/firebase-messaging-sw.js').catch(() => {});
+    // firebase-messaging-sw.js needs its own scope to avoid overriding the app SW at /
+    navigator.serviceWorker.register('/firebase-messaging-sw.js', { scope: '/firebase-cloud-messaging-push-scope' }).catch(() => {});
   });
 }
 

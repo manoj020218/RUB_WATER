@@ -20,9 +20,15 @@ public:
     // Remote OTA: download firmware from URL and flash
     void beginRemoteOta(const char* url);
 
+    // Result of last local upload — read by webserver after upload callback completes
+    bool          lastLocalOk()    const { return _lastLocalOk; }
+    const String& lastLocalError() const { return _lastLocalError; }
+
 private:
     OtaManager() = default;
     bool     _running = false;
     uint32_t _lastCheckMs = 0;
     bool     _localUploadActive = false;
+    bool     _lastLocalOk = false;
+    String   _lastLocalError;
 };

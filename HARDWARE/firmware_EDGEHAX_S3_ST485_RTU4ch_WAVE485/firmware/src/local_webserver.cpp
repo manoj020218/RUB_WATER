@@ -341,7 +341,9 @@ void LocalWebserver::setupRoutes() {
                     return;
                 }
             } else if (upload.status == UPLOAD_FILE_WRITE) {
-                OtaManager::getInstance().writeChunk(upload.buf, upload.currentSize);
+                if (!OtaManager::getInstance().writeChunk(upload.buf, upload.currentSize)) {
+                    Serial.println("[WEB] OTA chunk write failed — upload aborted");
+                }
             } else if (upload.status == UPLOAD_FILE_END) {
                 String reason;
                 OtaManager::getInstance().endLocalUpload(reason);
@@ -1585,9 +1587,19 @@ void LocalWebserver::handleFirmwareUpload() {
 }
 
 void LocalWebserver::handleFirmwareUploadPost() {
-    _server.send(200, "text/html",
-        htmlHeader("OTA") + "</nav><div class='card'>"
-        "<p>Upload processed. Device is rebooting...</p></div>" + htmlFooter());
+    if (OtaManager::getInstance().lastLocalOk()) {
+        _server.send(200, "text/html",
+            htmlHeader("OTA") + "</nav><div class='card'>"
+            "<p>Firmware flashed successfully. Device is rebooting...</p></div>" + htmlFooter());
+        delay(500);
+        ESP.restart();
+    } else {
+        const String err = OtaManager::getInstance().lastLocalError();
+        _server.send(500, "text/html",
+            htmlHeader("OTA Failed") + "</nav><div class='card'>"
+            "<p style='color:red'><strong>OTA FAILED:</strong> " + err + "</p>"
+            "<p><a href='/firmware-upload'>Try again</a></p></div>" + htmlFooter());
+    }
 }
 
 void LocalWebserver::handleReboot() {

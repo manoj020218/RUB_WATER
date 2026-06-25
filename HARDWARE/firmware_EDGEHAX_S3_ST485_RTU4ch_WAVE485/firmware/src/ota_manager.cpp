@@ -43,6 +43,8 @@ bool OtaManager::beginLocalUpload(size_t contentLength) {
     }
     _running            = true;
     _localUploadActive  = true;
+    _lastLocalOk        = false;
+    _lastLocalError     = String();
     Serial.printf("[OTA] Local upload started, size=%u\n", (unsigned)contentLength);
     return true;
 }
@@ -50,20 +52,28 @@ bool OtaManager::beginLocalUpload(size_t contentLength) {
 bool OtaManager::writeChunk(const uint8_t* data, size_t len) {
     if (!_localUploadActive) return false;
     const size_t written = Update.write(const_cast<uint8_t*>(data), len);
-    return written == len;
+    if (written != len) {
+        Update.abort();
+        _lastLocalError = String("chunk write error: ") + Update.errorString();
+        _localUploadActive = false;
+        return false;
+    }
+    return true;
 }
 
 bool OtaManager::endLocalUpload(String& reason) {
     _localUploadActive = false;
     _running           = false;
     if (!Update.end(true)) {
-        reason = String(Update.errorString());
+        reason          = String(Update.errorString());
+        _lastLocalOk    = false;
+        _lastLocalError = reason;
         Serial.printf("[OTA] Upload failed: %s\n", reason.c_str());
         return false;
     }
-    Serial.println("[OTA] Upload complete — rebooting in 2s");
-    delay(2000);
-    ESP.restart();
+    _lastLocalOk    = true;
+    _lastLocalError = String();
+    Serial.println("[OTA] Upload complete — webserver will reboot after response");
     return true;
 }
 
