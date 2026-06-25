@@ -47,6 +47,8 @@ private:
     void handleStatus();
     void handleConfig();
     void handleConfigPost();
+    void handleActionSheet();
+    void handleActionSheetPost();
     void handleDiagnostics();
     void handleDiagnosticsPost();
     void handleRelayTest();

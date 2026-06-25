@@ -11,10 +11,18 @@ void diagnosticsRunBootTests() {
 
     // Relay pins: verify they can be driven without ESP panic
     const int relays[] = { PIN_RELAY_SIREN, PIN_RELAY_FLASH, PIN_RELAY_VOICE_FUTURE };
+    bool anyRelayPresent = false;
     for (int p : relays) {
+        if (p < 0) {
+            continue;
+        }
+        anyRelayPresent = true;
         if (digitalRead(p) != RELAY_OFF_LEVEL) {
             Serial.printf("[DIAG] FAIL: relay GPIO%d not at OFF level on boot\n", p);
         }
+    }
+    if (!anyRelayPresent) {
+        Serial.println("[DIAG] Local relay outputs: not fitted on this hardware profile");
     }
 
     Serial.printf("[DIAG] Free heap:  %u bytes\n", ESP.getFreeHeap());

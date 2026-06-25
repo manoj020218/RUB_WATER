@@ -10,6 +10,7 @@ public:
     void loop();
 
     void publishEvent(const char* eventType, const char* detail = nullptr);
+    bool publishEventPayload(const char* payload);
     void publishBootConfigReport();
 
 private:

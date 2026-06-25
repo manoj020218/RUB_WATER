@@ -195,7 +195,7 @@ bool ConfigManager::setZeroDistance(uint16_t mm, String& reason) {
 }
 
 bool ConfigManager::buildJson(char* out, size_t outSize) const {
-    StaticJsonDocument<640> doc;
+    StaticJsonDocument<960> doc;
     doc["alert_level_mm"] = _cfg.alertLevelMm;
     doc["danger_level_mm"] = _cfg.dangerLevelMm;
     doc["danger_clear_level_mm"] = _cfg.dangerClearLevelMm;

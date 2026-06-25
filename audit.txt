@@ -1,0 +1,91 @@
+﻿Findings
+
+  1. Critical: the EDGE S3 firmware can self-trigger false Orange alerts because GPIO6 is assigned to both the L1
+     confirmation input and the local siren output. That means firmware can drive its own alert input. Refs: /D:/IOT
+     Device/RUB/FloodGuard/HARDWARE/firmware_EDGEHAX_S3_ST485_RTU4ch_WAVE485/firmware/src/device_profile.h:36, /D:/IOT
+     Device/RUB/FloodGuard/HARDWARE/firmware_EDGEHAX_S3_ST485_RTU4ch_WAVE485/firmware/src/device_profile.h:43, /D:/IOT
+     Device/RUB/FloodGuard/HARDWARE/firmware_EDGEHAX_S3_ST485_RTU4ch_WAVE485/firmware/src/output_controller.cpp:58, /D:/
+     IOT Device/RUB/FloodGuard/HARDWARE/firmware_EDGEHAX_S3_ST485_RTU4ch_WAVE485/firmware/src/
+     confirmation_inputs.cpp:25, /D:/IOT Device/RUB/FloodGuard/HARDWARE/firmware_EDGEHAX_S3_ST485_RTU4ch_WAVE485/
+     firmware/src/alert_action_runner.cpp:145, /D:/IOT Device/RUB/FloodGuard/HARDWARE/
+     firmware_EDGEHAX_S3_ST485_RTU4ch_WAVE485/firmware/src/main.cpp:103, /D:/IOT Device/RUB/FloodGuard/HARDWARE/
+     firmware_EDGEHAX_S3_ST485_RTU4ch_WAVE485/firmware/src/main.cpp:112.
+  2. Critical: outage buffering on the EDGE firmware is not durable. The so-called flash FIFO is RAM/PSRAM only, it
+     resets on reboot, and the SD queue is never actually drained back to cloud. Over 5 years, any reboot or long outage
+     loses telemetry/event history. Refs: /D:/IOT Device/RUB/FloodGuard/HARDWARE/
+     firmware_EDGEHAX_S3_ST485_RTU4ch_WAVE485/firmware/src/internal_flash_fifo.h:11, /D:/IOT Device/RUB/FloodGuard/
+     HARDWARE/firmware_EDGEHAX_S3_ST485_RTU4ch_WAVE485/firmware/src/internal_flash_fifo.cpp:16, /D:/IOT Device/RUB/
+     FloodGuard/HARDWARE/firmware_EDGEHAX_S3_ST485_RTU4ch_WAVE485/firmware/src/internal_flash_fifo.cpp:23, /D:/IOT
+     Device/RUB/FloodGuard/HARDWARE/firmware_EDGEHAX_S3_ST485_RTU4ch_WAVE485/firmware/src/telemetry_manager.cpp:363, /
+     D:/IOT Device/RUB/FloodGuard/HARDWARE/firmware_EDGEHAX_S3_ST485_RTU4ch_WAVE485/firmware/src/sd_fifo.cpp:63.
+  3. Critical: the device-to-cloud trust chain is not production-safe for long field life. The firmware still has a
+     shared compiled token seed, MQTT is plaintext on 1883, HTTP fallback is plaintext, and remote OTA accepts insecure
+     transport. Refs: /D:/IOT Device/RUB/FloodGuard/HARDWARE/firmware_EDGEHAX_S3_ST485_RTU4ch_WAVE485/firmware/src/
+     device_profile.h:18, /D:/IOT Device/RUB/FloodGuard/HARDWARE/firmware_EDGEHAX_S3_ST485_RTU4ch_WAVE485/firmware/src/
+     device_profile.h:26, /D:/IOT Device/RUB/FloodGuard/HARDWARE/firmware_EDGEHAX_S3_ST485_RTU4ch_WAVE485/firmware/src/
+     main.cpp:131, /D:/IOT Device/RUB/FloodGuard/HARDWARE/firmware_EDGEHAX_S3_ST485_RTU4ch_WAVE485/firmware/src/
+     mqtt_manager.cpp:26, /D:/IOT Device/RUB/FloodGuard/HARDWARE/firmware_EDGEHAX_S3_ST485_RTU4ch_WAVE485/firmware/src/
+     http_fallback.cpp:43, /D:/IOT Device/RUB/FloodGuard/HARDWARE/firmware_EDGEHAX_S3_ST485_RTU4ch_WAVE485/firmware/src/
+     ota_manager.cpp:79, /D:/IOT Device/RUB/FloodGuard/HARDWARE/firmware_EDGEHAX_S3_ST485_RTU4ch_WAVE485/firmware/src/
+     ota_manager.cpp:81.
+  4. Critical: the VPS backend still allows identity spoofing and ghost-device creation. ALLOW_DEVICE_ID_AUTH is enabled
+     by default, token-less known devices can be accepted, and unknown MQTT identities are auto-created into the
+     database. Refs: /D:/IOT Device/RUB/FloodGuard/VPS/backend/src/config/env.js:108, /D:/IOT Device/RUB/FloodGuard/VPS/
+     backend/src/middleware/tenant.js:55, /D:/IOT Device/RUB/FloodGuard/VPS/backend/src/mqtt/messageRouter.js:76.
+  5. Critical: the VPS runtime state is not durable and will age badly over years. Telemetry, audit logs, commands,
+     sessions, and lifecycle history are kept out of persistence; telemetry only grows in memory; and no always-on
+     retention scheduler is started from server boot. A restart loses operational history and logged-in sessions, and
+     long uptimes risk memory growth. Refs: /D:/IOT Device/RUB/FloodGuard/VPS/backend/src/db/persistence.js:7, /D:/IOT
+     Device/RUB/FloodGuard/VPS/backend/src/db/persistence.js:79, /D:/IOT Device/RUB/FloodGuard/VPS/backend/src/
+     repositories/telemetryRepository.js:4, /D:/IOT Device/RUB/FloodGuard/VPS/backend/src/server.js:10, /D:/IOT Device/
+     RUB/FloodGuard/VPS/backend/src/services/retentionService.js:76, /D:/IOT Device/RUB/FloodGuard/VPS/backend/src/
+     repositories/sessionRepository.js:3, /D:/IOT Device/RUB/FloodGuard/VPS/backend/src/repositories/
+     commandRepository.js:3, /D:/IOT Device/RUB/FloodGuard/VPS/backend/src/repositories/auditRepository.js:3.
+  6. High: command delivery from VPS is not reliable enough for alarm control. The publisher opens a fresh MQTT client
+     per send and returns before a durable broker acknowledgement path exists; pending command state is memory-only. A
+     broker hiccup or backend restart can silently lose commands. Refs: /D:/IOT Device/RUB/FloodGuard/VPS/backend/src/
+     mqtt/outboundPublisher.js:61, /D:/IOT Device/RUB/FloodGuard/VPS/backend/src/services/commandService.js:67, /D:/IOT
+     Device/RUB/FloodGuard/VPS/backend/src/repositories/commandRepository.js:3.
+  7. High: the local maintenance surface is insecure on both firmwares. EDGE uses an open AP, one static password, a
+     global login flag shared by all clients, and permissive CORS. C3 also brings up an open AP with a default password.
+     Refs: /D:/IOT Device/RUB/FloodGuard/HARDWARE/firmware_EDGEHAX_S3_ST485_RTU4ch_WAVE485/firmware/src/
+     local_webserver.cpp:252, /D:/IOT Device/RUB/FloodGuard/HARDWARE/firmware_EDGEHAX_S3_ST485_RTU4ch_WAVE485/firmware/
+     src/local_webserver.h:32, /D:/IOT Device/RUB/FloodGuard/HARDWARE/firmware_EDGEHAX_S3_ST485_RTU4ch_WAVE485/firmware/
+     src/local_webserver.cpp:372, /D:/IOT Device/RUB/FloodGuard/HARDWARE/firmware_EDGEHAX_S3_ST485_RTU4ch_WAVE485/
+     firmware/src/local_webserver.cpp:470, /D:/IOT Device/RUB/FloodGuard/HARDWARE/firmware_C3_sensor_L2/src/
+     main.cpp:81, /D:/IOT Device/RUB/FloodGuard/HARDWARE/firmware_C3_sensor_L2/src/config.h:57.
+  8. High: both local OTA upload flows can tell the operator “success” when the update actually failed. The upload
+     callbacks ignore write/finalize failures, so field update reliability is weaker than the UI suggests. Refs: /D:/IOT
+     Device/RUB/FloodGuard/HARDWARE/firmware_EDGEHAX_S3_ST485_RTU4ch_WAVE485/firmware/src/local_webserver.cpp:318, /D:/
+     IOT Device/RUB/FloodGuard/HARDWARE/firmware_EDGEHAX_S3_ST485_RTU4ch_WAVE485/firmware/src/
+     local_webserver.cpp:1587, /D:/IOT Device/RUB/FloodGuard/HARDWARE/firmware_C3_sensor_L2/src/http_server.cpp:676.
+  9. High: the C3 firmware can leave outputs latched ON during sensor failure. relay.cpp freezes relay state when the
+     sensor is not OK instead of forcing a safe fallback. Over years, a dead sensor can leave a site stuck in the last
+     commanded state. Refs: /D:/IOT Device/RUB/FloodGuard/HARDWARE/firmware_C3_sensor_L2/src/relay.cpp:72.
+  10. High: the APK/PWA auth lifecycle is internally inconsistent. The app expects a refresh token and posts it in the
+     body, while the backend refresh handler reads the bearer token from the Authorization header; the app also
+     registers two service workers on the same root scope. In production this can break silent re-login and cause
+     unstable PWA/update behavior. Refs: /D:/IOT Device/RUB/FloodGuard/APK/src/api/auth.ts:12, /D:/IOT Device/RUB/
+     FloodGuard/APK/src/context/AppContext.tsx:176, /D:/IOT Device/RUB/FloodGuard/VPS/backend/src/controllers/
+     authController.js:25, /D:/IOT Device/RUB/FloodGuard/VPS/backend/src/services/authService.js:109, /D:/IOT Device/
+     RUB/FloodGuard/APK/src/main.tsx:10.
+  11. High: EDGE HTTP fallback can silently discard unsent data because it keeps only one pending payload slot. During
+     unstable connectivity, newer events overwrite older ones before transmission. Refs: /D:/IOT Device/RUB/FloodGuard/
+     HARDWARE/firmware_EDGEHAX_S3_ST485_RTU4ch_WAVE485/firmware/src/http_fallback.cpp:24.
+
+  Validated
+
+  - pio run -e floodguard_edgehax_s3_st485_wave485 passed.
+  - pio run -e esp32-c3-devkitm-1 passed.
+  - npm test in VPS/backend passed.
+  - npm run build in APK passed.
+  - VPS/pwa is not a separate app; it only contains deployment docs/config, so the PWA audit was done on APK/www plus
+    the serving/dashboard path in VPS.
+
+  Residual Gaps
+
+  - I did not flash hardware, run a soak test, cut power mid-OTA, simulate broker outage for days, remove SD during
+    queueing, or test RTU hardware behavior on a live rig.
+  - I did not find an always-on watchdog path in the EDGE firmware during code search; that remains a long-uptime
+    reliability concern, but I am not listing it as a confirmed defect without a live hang reproduction.
+  - No code changes were made.

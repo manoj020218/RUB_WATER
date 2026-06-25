@@ -1,6 +1,6 @@
 # FloodGuard VPS Backend GAP
 
-Date: 2026-06-23
+Date: 2026-06-24
 Owner: Codex
 
 ## Scope
@@ -18,6 +18,9 @@ This file tracks backend-side closure of the double-sensor alert contract and th
 - Reboot-aware config ACK and verification state machine: DONE
 - Post-boot config comparison and audit logging: DONE
 - Dashboard/config response normalization for APK: DONE
+- Action sheet persistence, versioning, push, and sync state handling: DONE
+- Alert-action event logging and history persistence: DONE
+- Public app-release metadata and downloadable APK publish: DONE
 - Local automated tests: DONE
 - VPS deployment and remote automated tests: DONE
 - Live backend service restart: DONE
@@ -77,6 +80,25 @@ This file tracks backend-side closure of the double-sensor alert contract and th
   - `DEVICE_BOOTED_CONFIG_REPORT`
 - Restored compatibility for legacy event names such as `DANGER_CONFIRMED` while still supporting the richer new alert model.
 - Added suspected-alert notification variants for orange and danger cases.
+- Added device action-sheet persistence and sync flow:
+  - current per-device action sheet record
+  - history records for old/new config snapshots
+  - pending vs synced vs failed state tracking
+  - vendor-super-admin Red all-off override enforcement
+- Added action-sheet admin/device API routes for:
+  - fetch current sheet
+  - save sheet
+  - push sheet to MCU
+  - list history
+  - device sync report
+- Added persistent alert-action log creation from firmware events with:
+  - site/location
+  - device
+  - alert level and status
+  - action-sheet version
+  - relay actions applied
+  - trigger source and timestamps
+- Updated release manifest served at `/api/app-release/mobile` and published the new Android package URL.
 
 ## Verification
 
@@ -85,8 +107,11 @@ This file tracks backend-side closure of the double-sensor alert contract and th
 - VPS service restart: PASS
 - Public health check from VPS:
   - `https://api.floodguard.iotsoft.in/health`: HTTP 200 / `status: UP`
+- Public app release endpoint from VPS:
+  - `https://api.floodguard.iotsoft.in/api/app-release/mobile`: PASS
 
 ## Residual Notes
 
 - Deployment was done by syncing the changed backend source directly to the VPS project path and restarting `floodguard-api`.
-- The APK bundle is updated locally only; no native Android package was deployed from the backend.
+- A timestamped backup was created on the VPS before overwriting the backend:
+  - `/root/projects/floodguard/backups/backend_action_sheet_20260624_1315.tgz`

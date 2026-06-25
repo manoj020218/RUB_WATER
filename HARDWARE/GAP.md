@@ -1,6 +1,6 @@
 # FloodGuard Hardware GAP
 
-Date: 2026-06-23
+Date: 2026-06-24
 Owner: Codex
 
 ## Scope
@@ -18,6 +18,9 @@ This file tracks the firmware-side closure of the `double sensor.txt` requiremen
 - Immutable `hardware_id` with editable `device_id` split: DONE
 - MQTT / VPS OTA / HTTP fallback stability after device ID change: DONE
 - Deferred publish / fallback payload truncation hardening: DONE
+- Configurable Orange/Red alert action sheet with RTU R1/R2/R3 mapping: DONE
+- VPS-synced persistent action sheet with default fallback: DONE
+- Local WebUI action-sheet editor and runtime action runner: DONE
 - Production firmware build verification: DONE
 - Physical flash / field validation: NOT RUN
 - Manual VPS OTA execution: READY, AWAITING TARGET DEVICE
@@ -70,13 +73,30 @@ This file tracks the firmware-side closure of the `double sensor.txt` requiremen
   - `Switch Type Sensor`
   - `No Sensor Connected`
 - Updated local `/config` JSON response to return reboot scheduling and current config version so the APK can verify post-update state.
+- Added persistent action-sheet storage and validation with:
+  - Orange and Red relay rules
+  - RTU relay mapping R1 Siren / R2 Flash / R3 Voice Trigger
+  - safety guard preventing RED all-off without vendor override
+- Added runtime alert-action execution that:
+  - starts only after confirmed alert state
+  - keeps Orange active until clear or Red escalation
+  - overrides Orange immediately when Red is confirmed
+  - keeps manual relay tests separate from automatic alert actions
+- Added VPS polling/report for the current action sheet and local fallback to:
+  - last saved action sheet
+  - firmware defaults when nothing is stored
+- Added local WebUI `/action-sheet` editor and reporting fields in telemetry/events:
+  - `current_action_sheet_version`
+  - `action_sheet_sync_source`
+  - `action_sheet_last_sync_at`
+  - alert action applied / escalated / cleared events
 
 ## Verification
 
 - `pio run -e floodguard_edgehax_s3_st485_wave485`: PASS
 - Final firmware size:
-  - Flash: 1754965 bytes
-  - RAM: 85016 bytes
+  - Flash: 1783541 bytes
+  - RAM: 94656 bytes
 - OTA package staged on VPS:
   - `/var/www/floodguard-ota/floodguard_edgehax_s3_st485_wave485_0.1.0_20260623.bin`
   - SHA-256: `e0d1562cb76c31aecf1c47520fab699fc43afeef9e308a99747824b83d26752a`
