@@ -130,7 +130,7 @@
 // ── NVS namespaces ────────────────────────────────────────────────────────────
 #define NVS_NS_WIFI              "fgcfg"    // wifi_ssid, wifi_pass
 #define NVS_NS_MAIN              "fgmain"   // thresholds, calibration, reboot time
-#define NVS_NS_IDENTITY          "fgid"     // device_id override (set via web UI)
+#define NVS_NS_IDENTITY          "fgid"     // device_id label override + locked auth_id
 #define NVS_NS_ACTION_SHEET      "fgacts"   // alert action sheet + sync metadata
 
 // ── Firmware identity fallbacks (overridden per variant below) ───────────────

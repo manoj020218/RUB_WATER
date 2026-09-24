@@ -12,15 +12,25 @@ MqttManager& MqttManager::getInstance() {
     return inst;
 }
 
-void MqttManager::begin(const char* deviceId, const char* hardwareId, const char* token) {
+void MqttManager::begin(const char* deviceId, const char* hardwareId, const char* token, const char* authId) {
     gInst = this;
     strncpy(_deviceId, deviceId, sizeof(_deviceId) - 1);
     strncpy(_hardwareId, hardwareId, sizeof(_hardwareId) - 1);
-    strncpy(_routeId, _deviceId, sizeof(_routeId) - 1);
-    // MQTT username/client identity prefers immutable hardware_id when broker
-    // accepts it, but falls back to the legacy device_id for in-field
-    // compatibility with older credential provisioning.
-    strncpy(_user, _hardwareId[0] ? _hardwareId : _deviceId, sizeof(_user) - 1);
+    if (authId && authId[0]) {
+        strncpy(_fallbackAuthId, authId, sizeof(_fallbackAuthId) - 1);
+    } else {
+        strncpy(_fallbackAuthId, DEVICE_ID_SEED, sizeof(_fallbackAuthId) - 1);
+    }
+    const char* initialRoute = _hardwareId[0]
+        ? _hardwareId
+        : (_fallbackAuthId[0] ? _fallbackAuthId : _deviceId);
+    strncpy(_routeId, initialRoute, sizeof(_routeId) - 1);
+    // MQTT auth identity must stay stable even if the editable device label is
+    // renamed in-field. Prefer immutable hardware_id, otherwise fall back to
+    // the compiled seed identity rather than the mutable NVS device_id.
+    strncpy(_user,
+            _hardwareId[0] ? _hardwareId : (_fallbackAuthId[0] ? _fallbackAuthId : _deviceId),
+            sizeof(_user) - 1);
     strncpy(_pass, token,    sizeof(_pass) - 1);
 
     _mqtt.setServer(DEFAULT_MQTT_HOST, DEFAULT_MQTT_PORT);
@@ -28,8 +38,8 @@ void MqttManager::begin(const char* deviceId, const char* hardwareId, const char
     _mqtt.setBufferSize(4096);
     _mqtt.setCallback(onMessageBridge);
 
-    Serial.printf("[MQTT] host=%s:%d device_id=%s hardware_id=%s\n",
-                  DEFAULT_MQTT_HOST, DEFAULT_MQTT_PORT, _deviceId, _hardwareId);
+    Serial.printf("[MQTT] host=%s:%d device_id=%s hardware_id=%s fallback_auth_id=%s\n",
+                  DEFAULT_MQTT_HOST, DEFAULT_MQTT_PORT, _deviceId, _hardwareId, _fallbackAuthId);
 }
 
 void MqttManager::loop() {
@@ -68,11 +78,16 @@ bool MqttManager::publish(const char* topic, const char* payload, bool retained)
 void MqttManager::setCommandCallback(MqttCmdCallback cb) { _cmdCb = cb; }
 
 String MqttManager::topicBase() const {
-    return topicBaseFor(_routeId[0] ? _routeId : _deviceId);
+    return topicBaseFor(_routeId[0]
+        ? _routeId
+        : (_hardwareId[0] ? _hardwareId : (_fallbackAuthId[0] ? _fallbackAuthId : _deviceId)));
 }
 
 String MqttManager::topicBaseFor(const char* routeId) const {
-    return String("floodguard/") + (routeId && routeId[0] ? routeId : _deviceId);
+    return String("floodguard/")
+        + (routeId && routeId[0]
+            ? routeId
+            : (_hardwareId[0] ? _hardwareId : (_fallbackAuthId[0] ? _fallbackAuthId : _deviceId)));
 }
 
 String MqttManager::legacyTopicBase() const {
@@ -106,13 +121,18 @@ String MqttManager::configTopic() const {
 }
 
 bool MqttManager::reconnect() {
-    if (_hardwareId[0] && strcmp(_hardwareId, _deviceId) != 0) {
+    if (_hardwareId[0]) {
         if (connectUsingIdentity(_hardwareId, true)) {
             return true;
         }
-        Serial.println("[MQTT] hardware identity failed, retrying legacy device_id identity");
+        if (_fallbackAuthId[0] && strcmp(_fallbackAuthId, _hardwareId) != 0) {
+            Serial.printf("[MQTT] hardware identity failed, retrying immutable fallback identity=%s\n",
+                          _fallbackAuthId);
+            return connectUsingIdentity(_fallbackAuthId, false);
+        }
+        return false;
     }
-    return connectUsingIdentity(_deviceId, false);
+    return connectUsingIdentity(_fallbackAuthId[0] ? _fallbackAuthId : _deviceId, false);
 }
 
 bool MqttManager::connectUsingIdentity(const char* authId, bool hardwareRoutePreferred) {
@@ -125,7 +145,7 @@ bool MqttManager::connectUsingIdentity(const char* authId, bool hardwareRoutePre
     const bool ok = _mqtt.connect(authId, _user, _pass);
     if (ok) {
         strncpy(_routeId,
-                hardwareRoutePreferred && _hardwareId[0] ? _hardwareId : _deviceId,
+                hardwareRoutePreferred && _hardwareId[0] ? _hardwareId : authId,
                 sizeof(_routeId) - 1);
         Serial.printf("[MQTT] Connected route=%s\n", _routeId);
         subscribe();
@@ -143,13 +163,24 @@ void MqttManager::subscribe() {
     Serial.printf("[MQTT] subscribe route=%s command=%d config=%d\n",
                   _routeId, cmdOk ? 1 : 0, cfgOk ? 1 : 0);
 
-    if (_hardwareId[0] && strcmp(_hardwareId, _deviceId) != 0) {
+    if (_hardwareId[0] && strcmp(_routeId, _deviceId) != 0) {
         const String legacyCmd = legacyTopicBase() + "/command";
         const String legacyCfg = legacyTopicBase() + "/config";
         const bool legacyCmdOk = _mqtt.subscribe(legacyCmd.c_str(), 1);
         const bool legacyCfgOk = _mqtt.subscribe(legacyCfg.c_str(), 1);
         Serial.printf("[MQTT] subscribe legacy command=%d config=%d\n",
                       legacyCmdOk ? 1 : 0, legacyCfgOk ? 1 : 0);
+    }
+
+    if (_fallbackAuthId[0]
+            && strcmp(_fallbackAuthId, _routeId) != 0
+            && strcmp(_fallbackAuthId, _deviceId) != 0) {
+        const String fallbackCmd = topicBaseFor(_fallbackAuthId) + "/command";
+        const String fallbackCfg = topicBaseFor(_fallbackAuthId) + "/config";
+        const bool fallbackCmdOk = _mqtt.subscribe(fallbackCmd.c_str(), 1);
+        const bool fallbackCfgOk = _mqtt.subscribe(fallbackCfg.c_str(), 1);
+        Serial.printf("[MQTT] subscribe fallback-auth command=%d config=%d\n",
+                      fallbackCmdOk ? 1 : 0, fallbackCfgOk ? 1 : 0);
     }
 }
 

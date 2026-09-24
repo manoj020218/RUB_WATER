@@ -28,12 +28,16 @@
 #define RELAY2_HYSTERESIS_MM      50
 
 // ─── Firmware Identity ────────────────────────────────────────────────────────
-#define FIRMWARE_VERSION        "1.4.0"
-#define FIRMWARE_DATE           "2026-06-23"
+#define FIRMWARE_VERSION        "1.5.0"
+#define FIRMWARE_DATE           "2026-06-25"
 
 // ─── WiFi AP ─────────────────────────────────────────────────────────────────
 #define AP_CHANNEL               6
 #define AP_MAX_CONNECTIONS       4
+#define FG_WIFI_MODE_AP_ONLY     0
+#define FG_WIFI_MODE_STA         1
+#define WIFI_STA_CONNECT_TIMEOUT_MS 20000UL
+#define WIFI_AP_RECOVERY_WINDOW_MS (5UL * 60 * 1000)
 
 // ─── Thermal Management ───────────────────────────────────────────────────────
 // BLE advertises only at install time so the installer can identify the device.
@@ -54,6 +58,7 @@
 #define DEFAULT_ZERO_MM        1200
 #define DEFAULT_SENSOR_INTERVAL_MS 1000   // ms between ultrasonic reads (100–180000)
 #define DEFAULT_AUTO_RESTART_HOURS  24    // reboot every N hours; 0 = disabled
+#define DEFAULT_WIFI_MODE      FG_WIFI_MODE_AP_ONLY
 #define DEFAULT_PASSWORD        "Hanuman#2026"
 #define NVS_NAMESPACE           "fgsens"
-#define CONFIG_VERSION           2
+#define CONFIG_VERSION           3

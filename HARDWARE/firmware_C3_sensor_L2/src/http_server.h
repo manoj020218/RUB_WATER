@@ -8,6 +8,9 @@ struct AppState {
     bool     relay1;
     bool     relay2;
     bool     sensor_ok;
+    bool     ap_active;
+    bool     sta_connected;
+    uint32_t ap_recovery_in_s;
     uint32_t uptime_s;
 };
 

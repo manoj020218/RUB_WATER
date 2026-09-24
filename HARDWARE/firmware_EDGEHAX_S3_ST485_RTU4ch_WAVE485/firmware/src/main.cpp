@@ -54,6 +54,7 @@ size_t getArduinoLoopTaskStackSize() {
 // ── Globals ───────────────────────────────────────────────────────────────────
 static char gDeviceId[32];
 static char gHardwareId[32];
+static char gAuthId[32];
 static char gDeviceToken[128];
 static bool gMqttFirstConnected = false;
 static uint32_t gApOpenedMs = 0;
@@ -125,13 +126,21 @@ void setup() {
     RemoteBoxManager::getInstance().begin();
 #endif
 
-    // Identity — NVS override takes priority over compiled-in seed
+    // Identity: device_id is the editable label, auth_id is the locked fallback
+    // MQTT credential. Once auth_id is stored, local renames do not affect it.
     strncpy(gDeviceId,    DEVICE_ID_SEED,    sizeof(gDeviceId)    - 1);
     buildHardwareId(gHardwareId, sizeof(gHardwareId));
+    strncpy(gAuthId,      DEVICE_ID_SEED,    sizeof(gAuthId)      - 1);
     strncpy(gDeviceToken, DEVICE_TOKEN_SEED, sizeof(gDeviceToken) - 1);
     {
         Preferences idPrefs;
-        if (idPrefs.begin(NVS_NS_IDENTITY, true)) {
+        if (idPrefs.begin(NVS_NS_IDENTITY, false)) {
+            String storedAuthId = idPrefs.getString("auth_id", "");
+            if (storedAuthId.length() > 0 && storedAuthId.length() < sizeof(gAuthId)) {
+                storedAuthId.toCharArray(gAuthId, sizeof(gAuthId));
+            } else {
+                idPrefs.putString("auth_id", gAuthId);
+            }
             String storedId = idPrefs.getString("device_id", "");
             if (storedId.length() > 0 && storedId.length() < sizeof(gDeviceId)) {
                 storedId.toCharArray(gDeviceId, sizeof(gDeviceId));
@@ -139,7 +148,8 @@ void setup() {
             idPrefs.end();
         }
     }
-    Serial.printf("[MAIN] device_id=%s hardware_id=%s\n", gDeviceId, gHardwareId);
+    Serial.printf("[MAIN] device_id=%s hardware_id=%s auth_id=%s\n",
+                  gDeviceId, gHardwareId, gAuthId);
     AlertActionRunner::getInstance().begin(gDeviceId, gHardwareId);
 
 #ifdef SENSOR_TEST_MODE
@@ -173,7 +183,7 @@ void setup() {
     }
 
     // Cloud services
-    MqttManager::getInstance().begin(gDeviceId, gHardwareId, gDeviceToken);
+    MqttManager::getInstance().begin(gDeviceId, gHardwareId, gDeviceToken, gAuthId);
     MqttManager::getInstance().setCommandCallback(onMqttCommand);
     HttpFallback::getInstance().begin(gDeviceId, gHardwareId, gDeviceToken);
     TelemetryManager::getInstance().begin(gDeviceId, gHardwareId);

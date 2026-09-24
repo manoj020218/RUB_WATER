@@ -128,10 +128,80 @@ function findById(deviceId) {
   return materialize(alias);
 }
 
-function findByLocation(locationId) {
+function lastActivityMs(device) {
+  if (!device) {
+    return 0;
+  }
+  const lastHeartbeat = device.last_heartbeat ? new Date(device.last_heartbeat).getTime() : 0;
+  const lastSeen = device.last_seen ? new Date(device.last_seen).getTime() : 0;
+  const updatedAt = device.updated_at ? new Date(device.updated_at).getTime() : 0;
+  const identityUpdatedAt = device.identity_updated_at ? new Date(device.identity_updated_at).getTime() : 0;
+  return Math.max(lastHeartbeat || 0, lastSeen || 0, updatedAt || 0, identityUpdatedAt || 0);
+}
+
+function compareLocationCandidates(left, right) {
+  const leftActivity = lastActivityMs(left);
+  const rightActivity = lastActivityMs(right);
+  if (leftActivity !== rightActivity) {
+    return rightActivity - leftActivity;
+  }
+
+  const leftMqtt = left?.last_mqtt_connected === true ? 1 : 0;
+  const rightMqtt = right?.last_mqtt_connected === true ? 1 : 0;
+  if (leftMqtt !== rightMqtt) {
+    return rightMqtt - leftMqtt;
+  }
+
+  const leftHardware = normalizeHardwareId(left?.hardware_id || '') ? 1 : 0;
+  const rightHardware = normalizeHardwareId(right?.hardware_id || '') ? 1 : 0;
+  if (leftHardware !== rightHardware) {
+    return rightHardware - leftHardware;
+  }
+
+  const leftCreated = left?.created_at ? new Date(left.created_at).getTime() : 0;
+  const rightCreated = right?.created_at ? new Date(right.created_at).getTime() : 0;
+  if (leftCreated !== rightCreated) {
+    return rightCreated - leftCreated;
+  }
+
+  return String(right?._id || '').localeCompare(String(left?._id || ''));
+}
+
+function listByLocation(locationId) {
   const lookup = String(locationId || '').trim();
-  const device = dataStore.devices.find((item) => item.location_id === lookup) || null;
-  return materialize(device);
+  if (!lookup) {
+    return [];
+  }
+  return dataStore.devices
+    .filter((item) => item.location_id === lookup)
+    .map((item) => materialize(item))
+    .sort(compareLocationCandidates);
+}
+
+function findByLocation(locationId) {
+  return listByLocation(locationId)[0] || null;
+}
+
+function clearOtherLocationBindings(locationId, keepDeviceId = null) {
+  const lookup = String(locationId || '').trim();
+  if (!lookup) {
+    return [];
+  }
+  const keepLookup = normalizeDeviceId(keepDeviceId);
+  const changed = [];
+  const now = new Date().toISOString();
+  dataStore.devices.forEach((item) => {
+    if (item.location_id !== lookup) {
+      return;
+    }
+    if (keepLookup && normalizeDeviceId(item._id) === keepLookup) {
+      return;
+    }
+    item.location_id = null;
+    item.updated_at = now;
+    changed.push(materialize(item));
+  });
+  return changed;
 }
 
 function findByHardwareId(hardwareId) {
@@ -289,13 +359,20 @@ function createDevice(data) {
     config: { daily_reboot_enabled: true, daily_reboot_time: '03:30', timezone: 'Asia/Kolkata', reporting_profile: 'dynamic' }
   };
   dataStore.devices.push(device);
+  if (device.location_id) {
+    clearOtherLocationBindings(device.location_id, deviceId);
+  }
   return materialize(device);
 }
 
 function bindToLocation(deviceId, locationId) {
   const device = findById(deviceId);
   if (!device) return null;
-  device.location_id = String(locationId || '').trim();
+  const nextLocationId = String(locationId || '').trim() || null;
+  if (nextLocationId) {
+    clearOtherLocationBindings(nextLocationId, device._id);
+  }
+  device.location_id = nextLocationId;
   device.updated_at = new Date().toISOString();
   return materialize(device);
 }
@@ -427,6 +504,7 @@ module.exports = {
   normalizeHardwareId,
   listAll,
   findById,
+  listByLocation,
   findByLocation,
   findByHardwareId,
   findByRouteId,

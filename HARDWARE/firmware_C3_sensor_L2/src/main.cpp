@@ -12,12 +12,128 @@
 
 static DeviceConfig g_cfg;
 static AppState     g_state = {};
+static bool         g_sta_connected = false;
+static bool         g_sta_connect_started = false;
+static uint32_t     g_sta_connect_started_ms = 0;
+static bool         g_ap_recovery_active = false;
+static uint32_t     g_ap_recovery_deadline_ms = 0;
 
 // Build "FgSensXXXXXX" from last 3 bytes of WiFi MAC
 static void build_device_name(char *name, size_t maxlen) {
     uint8_t mac[6];
     WiFi.macAddress(mac);
     snprintf(name, maxlen, "FgSens%02X%02X%02X", mac[3], mac[4], mac[5]);
+}
+
+static bool staModeConfigured() {
+    return g_cfg.wifi_mode == FG_WIFI_MODE_STA && g_cfg.sta_ssid[0] != '\0';
+}
+
+static bool apIsActive() {
+    wifi_mode_t mode = WiFi.getMode();
+    return mode == WIFI_AP || mode == WIFI_AP_STA;
+}
+
+static bool startAccessPoint(bool hidden) {
+    bool apOk = WiFi.softAP(g_cfg.device_name, "", AP_CHANNEL, hidden, AP_MAX_CONNECTIONS);
+    WiFi.setTxPower(WIFI_POWER_8_5dBm);
+    Serial.printf("[WiFi] softAP '%s' %s  hidden=%d  IP: %s\n",
+        g_cfg.device_name,
+        apOk ? "OK" : "FAILED",
+        hidden ? 1 : 0,
+        WiFi.softAPIP().toString().c_str());
+    return apOk;
+}
+
+static void beginStaConnectAsync(bool keepApVisible) {
+    if (keepApVisible && WiFi.getMode() != WIFI_AP_STA) {
+        WiFi.mode(WIFI_AP_STA);
+    } else if (!keepApVisible && WiFi.getMode() != WIFI_STA) {
+        WiFi.mode(WIFI_STA);
+    }
+
+    if (keepApVisible && !apIsActive()) {
+        startAccessPoint(false);
+    }
+
+    WiFi.setHostname(g_cfg.device_name);
+    WiFi.setAutoReconnect(true);
+    WiFi.begin(g_cfg.sta_ssid, g_cfg.sta_password);
+    g_sta_connect_started = true;
+    g_sta_connect_started_ms = millis();
+
+    if (keepApVisible) {
+        g_ap_recovery_active = true;
+        g_ap_recovery_deadline_ms = millis() + WIFI_AP_RECOVERY_WINDOW_MS;
+    }
+}
+
+static bool connectStaForOta() {
+    Serial.printf("[WiFi] connecting to LAN SSID '%s' for OTA mode\n", g_cfg.sta_ssid);
+    beginStaConnectAsync(true);
+
+    uint32_t startMs = millis();
+    while (WiFi.status() != WL_CONNECTED &&
+           (millis() - startMs) < WIFI_STA_CONNECT_TIMEOUT_MS) {
+        delay(250);
+    }
+
+    g_sta_connected = (WiFi.status() == WL_CONNECTED);
+    if (!g_sta_connected) {
+        g_sta_connect_started = false;
+        Serial.println("[WiFi] LAN connect timed out - keeping AP active for local recovery");
+        return false;
+    }
+
+    Serial.printf("[WiFi] LAN connected IP: %s\n", WiFi.localIP().toString().c_str());
+    return true;
+}
+
+static void refreshWifiRuntime() {
+    if (!staModeConfigured()) {
+        g_sta_connected = false;
+        g_sta_connect_started = false;
+        g_sta_connect_started_ms = 0;
+        g_ap_recovery_active = false;
+        g_ap_recovery_deadline_ms = 0;
+        return;
+    }
+
+    if (!g_sta_connected && !g_sta_connect_started) {
+        Serial.printf("[WiFi] starting LAN OTA connect to '%s'\n", g_cfg.sta_ssid);
+        beginStaConnectAsync(true);
+    }
+
+    bool staNow = (WiFi.status() == WL_CONNECTED);
+    if (staNow && !g_sta_connected) {
+        g_sta_connected = true;
+        g_sta_connect_started = false;
+        g_sta_connect_started_ms = 0;
+        g_ap_recovery_active = true;
+        g_ap_recovery_deadline_ms = millis() + WIFI_AP_RECOVERY_WINDOW_MS;
+        Serial.printf("[WiFi] LAN connected IP: %s\n", WiFi.localIP().toString().c_str());
+    } else if (!staNow && g_sta_connect_started &&
+               (millis() - g_sta_connect_started_ms) >= WIFI_STA_CONNECT_TIMEOUT_MS) {
+        g_sta_connect_started = false;
+        g_sta_connect_started_ms = 0;
+        Serial.println("[WiFi] LAN connect attempt timed out - waiting for next retry");
+    } else if (!staNow && g_sta_connected) {
+        g_sta_connected = false;
+        g_sta_connect_started = false;
+        g_sta_connect_started_ms = 0;
+        WiFi.mode(WIFI_AP_STA);
+        startAccessPoint(false);
+        WiFi.reconnect();
+        Serial.println("[WiFi] LAN disconnected - AP recovery reopened");
+    }
+
+    if (g_sta_connected && g_ap_recovery_active && millis() >= g_ap_recovery_deadline_ms) {
+        WiFi.softAPdisconnect(true);
+        WiFi.mode(WIFI_STA);
+        g_ap_recovery_active = false;
+        g_ap_recovery_deadline_ms = 0;
+        Serial.println("[WiFi] AP recovery window closed - LAN OTA mode only");
+    }
 }
 
 void setup() {
@@ -76,19 +192,19 @@ void setup() {
     build_device_name(g_cfg.device_name, sizeof(g_cfg.device_name));
 
     uint8_t hidden = (boot_held ? 0 : g_cfg.ssid_hidden);
+    bool force_ap_this_boot = boot_held;
+    bool sta_requested = staModeConfigured() && !force_ap_this_boot;
     if (boot_held) Serial.println("[WiFi] BOOT held — forcing SSID visible this session");
 
-    // Open network — auth is on the HTTP login page; hide SSID via web UI after install
-    bool apOk = WiFi.softAP(g_cfg.device_name, "", AP_CHANNEL, hidden, AP_MAX_CONNECTIONS);
-    // ── Thermal: TX power 11→8.5 dBm ─────────────────────────────────────────
-    // Device operates <5 m from the phone. 8.5 dBm (~7 mW) is ample; saves
-    // ~40% RF transmit power vs the previous 11 dBm setting.
-    WiFi.setTxPower(WIFI_POWER_8_5dBm);
-    Serial.printf("[WiFi] softAP '%s' %s  hidden=%d  IP: %s\n",
-        g_cfg.device_name,
-        apOk ? "OK" : "FAILED",
-        hidden,
-        WiFi.softAPIP().toString().c_str());
+    // Open network — auth is on the HTTP login page; hide SSID via web UI after install.
+    // If LAN OTA mode is configured, keep AP visible during boot recovery and try STA in parallel.
+    if (sta_requested) {
+        WiFi.mode(WIFI_AP_STA);
+        startAccessPoint(false);
+        connectStaForOta();
+    } else {
+        startAccessPoint(hidden);
+    }
 
     sensor_init();
     relay_init();
@@ -131,6 +247,8 @@ void loop() {
         sensor_update();
     }
 
+    refreshWifiRuntime();
+
     uint32_t raw      = sensor_get_distance_mm();
     bool     sens_ok  = (sensor_get_status() == SENSOR_OK);
 
@@ -156,6 +274,12 @@ void loop() {
     g_state.relay1          = r1;
     g_state.relay2          = r2;
     g_state.sensor_ok       = sens_ok;
+    g_state.ap_active       = apIsActive();
+    g_state.sta_connected   = g_sta_connected;
+    g_state.ap_recovery_in_s =
+        (g_sta_connected && g_ap_recovery_active && millis() < g_ap_recovery_deadline_ms)
+        ? (g_ap_recovery_deadline_ms - millis()) / 1000UL
+        : 0;
     g_state.uptime_s        = millis() / 1000UL;
 
     led_update(r1, r2);

@@ -91,10 +91,12 @@ function handleIncomingMqttMessage(topic, payload, options = {}) {
   }
 
   const deviceId = device?._id || String(candidateDeviceId || '').trim().toUpperCase();
+  const reportedDeviceId = String(message.device_id || '').trim().toUpperCase();
   const locationId = resolveLocationId(message, deviceId);
   const enriched = {
     ...message,
-    device_id: deviceId,
+    device_id: reportedDeviceId || deviceId,
+    resolved_device_id: deviceId,
     hardware_id: message.hardware_id || device?.hardware_id || null,
     mqtt_route_id: parsedTopic.routeId,
     mqtt_topic_base: message.mqtt_topic_base || `${parsedTopic.base}/${parsedTopic.routeId}`,

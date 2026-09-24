@@ -5,9 +5,10 @@ const DATA_DIR = path.resolve(__dirname, '..', '..', 'data');
 const DATA_FILE = path.join(DATA_DIR, 'floodguard_db.json');
 
 // High-volume / ephemeral collections intentionally excluded:
-//   telemetry, auditLogs, commands, userSessions, integrationDeliveryLogs, deviceLifecycleHistory
+//   telemetry, auditLogs, commands, integrationDeliveryLogs, deviceLifecycleHistory
 const PERSIST_KEYS = [
   'users',
+  'userSessions',
   'vendors',
   'projects',
   'locations',

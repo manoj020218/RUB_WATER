@@ -10,7 +10,7 @@ class MqttManager {
 public:
     static MqttManager& getInstance();
 
-    void begin(const char* deviceId, const char* hardwareId, const char* token);
+    void begin(const char* deviceId, const char* hardwareId, const char* token, const char* authId = nullptr);
     void loop();
     bool isConnected();
 
@@ -19,6 +19,7 @@ public:
 
     const char* deviceId() const { return _deviceId; }
     const char* hardwareId() const { return _hardwareId; }
+    const char* authId() const { return _fallbackAuthId; }
     const char* routeId() const { return _routeId; }
     String topicBase() const;
     String topicBaseFor(const char* routeId) const;
@@ -38,6 +39,7 @@ private:
     PubSubClient  _mqtt{_wifiClient};
     char          _deviceId[32]{};
     char          _hardwareId[32]{};
+    char          _fallbackAuthId[32]{};
     char          _routeId[32]{};
     char          _user[32]{};
     char          _pass[128]{};

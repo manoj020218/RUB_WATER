@@ -4,20 +4,7 @@ const telemetryRepository = require('../repositories/telemetryRepository');
 const complaintRepository = require('../repositories/complaintRepository');
 const incidentService = require('./incidentService');
 const { listAccessibleLocationIds } = require('./accessService');
-
-// Heartbeat fires every 60 s; 3 missed = device is considered stale/offline
-const STALE_THRESHOLD_MS = 3 * 60 * 1000;
-
-function effectiveDeviceStatus(device) {
-  if (!device) return 'UNMAPPED';
-  if (device.status === 'OFFLINE') return 'OFFLINE';
-  const lastHb = device.last_heartbeat ? new Date(device.last_heartbeat).getTime() : 0;
-  const lastSeen = device.last_seen ? new Date(device.last_seen).getTime() : 0;
-  const freshest = Math.max(lastHb || 0, lastSeen || 0);
-  if (!freshest) return 'OFFLINE';
-  if (Date.now() - freshest > STALE_THRESHOLD_MS) return 'OFFLINE';
-  return device.status || 'OFFLINE';
-}
+const { computeDeviceStatus } = require('../utils/deviceStatus');
 
 function listUserLocations(authContext) {
   const user = authContext.user;
@@ -43,7 +30,7 @@ function listUserLocations(authContext) {
 
     const activeIncident = incidentService.getActiveIncident(location._id);
     const openComplaintCount = complaintRepository.countOpenByLocation(location._id);
-    const devStatus = effectiveDeviceStatus(device);
+    const devStatus = computeDeviceStatus(device);
     // Location alarm status: from latest telemetry if available; fall back to
     // device connection status so "no telemetry after restart" doesn't show OFFLINE
     // when the device is actually heartbeating.
@@ -53,7 +40,7 @@ function listUserLocations(authContext) {
     } else if (latestTelemetry) {
       locationStatus = latestTelemetry.status;
     } else {
-      locationStatus = devStatus === 'ONLINE' ? 'NORMAL' : 'OFFLINE';
+      locationStatus = (devStatus === 'ONLINE' || devStatus === 'IDLE') ? 'NORMAL' : 'OFFLINE';
     }
     return {
       location_id: location._id,

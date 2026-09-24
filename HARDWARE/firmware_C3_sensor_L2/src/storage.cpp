@@ -11,6 +11,9 @@ void storage_reset_defaults(DeviceConfig &cfg) {
     cfg.trigger_delay_s     = DEFAULT_TRIGGER_DELAY_S;
     cfg.clear_delay_s       = DEFAULT_CLEAR_DELAY_S;
     cfg.ssid_hidden          = 0;
+    cfg.wifi_mode            = DEFAULT_WIFI_MODE;
+    cfg.sta_ssid[0]          = '\0';
+    cfg.sta_password[0]      = '\0';
     cfg.sensor_interval_ms   = DEFAULT_SENSOR_INTERVAL_MS;
     cfg.device_name[0]       = '\0';
     cfg.config_version       = CONFIG_VERSION;
@@ -32,6 +35,9 @@ void storage_load(DeviceConfig &cfg) {
     cfg.trigger_delay_s     = prefs.getUInt("trig_s",   cfg.trigger_delay_s);
     cfg.clear_delay_s       = prefs.getUInt("clr_s",    cfg.clear_delay_s);
     cfg.ssid_hidden         = prefs.getUChar("ssid_hid",  cfg.ssid_hidden);
+    cfg.wifi_mode           = prefs.getUChar("wifi_mode", cfg.wifi_mode);
+    prefs.getString("sta_ssid", cfg.sta_ssid, sizeof(cfg.sta_ssid));
+    prefs.getString("sta_pw", cfg.sta_password, sizeof(cfg.sta_password));
     cfg.sensor_interval_ms  = prefs.getUInt("sens_ms",   cfg.sensor_interval_ms);
     cfg.config_version      = prefs.getUInt("cfg_ver",   cfg.config_version);
     prefs.getString("password", cfg.password, sizeof(cfg.password));
@@ -45,6 +51,9 @@ void storage_save(const DeviceConfig &cfg) {
     prefs.putUInt("trig_s",   cfg.trigger_delay_s);
     prefs.putUInt("clr_s",    cfg.clear_delay_s);
     prefs.putUChar("ssid_hid",  cfg.ssid_hidden);
+    prefs.putUChar("wifi_mode", cfg.wifi_mode);
+    prefs.putString("sta_ssid", cfg.sta_ssid);
+    prefs.putString("sta_pw", cfg.sta_password);
     prefs.putUInt("sens_ms",    cfg.sensor_interval_ms);
     prefs.putUInt("cfg_ver",   cfg.config_version);
     prefs.putString("password", cfg.password);

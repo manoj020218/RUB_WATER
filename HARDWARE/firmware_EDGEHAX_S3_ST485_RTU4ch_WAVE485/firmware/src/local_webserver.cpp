@@ -1658,16 +1658,17 @@ void LocalWebserver::handleIdentity() {
             "<h2>Device Identity</h2>"
             "<table>"
             "<tr><th>Current Device ID</th><td><b>" + String(_deviceId) + "</b></td></tr>"
+            "<tr><th>Locked MQTT Auth ID</th><td><b>" + String(MqttManager::getInstance().authId()) + "</b></td></tr>"
             "<tr><th>Hardware ID</th><td><b>" + String(_hardwareId) + "</b></td></tr>"
+            "<tr><th>Current MQTT Route</th><td><b>" + String(MqttManager::getInstance().routeId()) + "</b></td></tr>"
             "<tr><th>MQTT Host</th><td>" DEFAULT_MQTT_HOST "</td></tr>"
             "</table>"
             "<hr style='margin:16px 0'>"
             "<h3>Change Device ID</h3>"
             "<p style='color:#555;font-size:13px'>"
-            "The Device ID is the editable asset label. The Hardware ID is fixed and "
-            "is used as the long-term cloud identity whenever the broker accepts it. "
-            "After saving, the device will reboot with the new ID. "
-            "Make sure the VPS is ready to map the new Device ID before rebooting.</p>"
+            "The Device ID is the editable asset label only. The MQTT Auth ID stays locked, "
+            "so changing the label does not change broker login. The Hardware ID remains fixed, "
+            "and the VPS will sync the new Device ID from the next heartbeat or telemetry after reboot.</p>"
             "<form method='POST' action='/identity'>"
             "<label>New Device ID</label>"
             "<input type='text' name='device_id' value='" + String(_deviceId) + "' "
@@ -1724,7 +1725,7 @@ void LocalWebserver::handleIdentityPost() {
 }
 
 void LocalWebserver::handleApiStatus() {
-    StaticJsonDocument<1536> doc;
+    StaticJsonDocument<1792> doc;
     const auto& cfg = ConfigManager::getInstance().get();
     const auto& fsm = FloodStateMachine::getInstance().snapshot();
     const auto& vmon = VoltageMonitor::getInstance().snapshot();
@@ -1738,7 +1739,11 @@ void LocalWebserver::handleApiStatus() {
     doc["wifi_connected"] = WifiManager::getInstance().isConnected();
     doc["ip"]             = WifiManager::getInstance().localIp();
     doc["local_ip"]       = WifiManager::getInstance().localIp();
+    doc["hostname"]       = _mdnsHost;
+    doc["mdns_host"]      = _mdnsHost;
+    doc["local_url"]      = String("http://") + _mdnsHost + ".local";
     doc["mqtt_connected"] = MqttManager::getInstance().isConnected();
+    doc["mqtt_auth_id"]   = MqttManager::getInstance().authId();
     doc["mqtt_route_id"]  = MqttManager::getInstance().routeId();
     doc["mqtt_topic_base"] = MqttManager::getInstance().topicBase();
     doc["wifi_rssi"]      = WifiManager::getInstance().rssi();

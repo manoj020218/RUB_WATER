@@ -7,6 +7,7 @@
 #include <WiFi.h>
 #include <esp_mac.h>
 
+#include "local_webserver.h"
 #include "mqtt_manager.h"
 #include "wifi_manager.h"
 
@@ -16,6 +17,19 @@ constexpr const char* kCharUuid    = "0000ff01-0000-1000-8000-00805f9b34fb";
 
 BleProvisioning* gInstance = nullptr;
 BLECharacteristic* gChar   = nullptr;
+
+template <typename TDoc>
+void addLocalAccessInfo(TDoc& doc) {
+    const String localIp = WifiManager::getInstance().localIp();
+    const char* mdnsHost = LocalWebserver::getInstance().mdnsHost();
+    doc["ip"]        = localIp;
+    doc["local_ip"]  = localIp;
+    doc["hostname"]  = mdnsHost;
+    doc["mdns_host"] = mdnsHost;
+    if (mdnsHost && mdnsHost[0]) {
+        doc["local_url"] = String("http://") + mdnsHost + ".local";
+    }
+}
 }
 
 class BleProvCharCallbacks final : public BLECharacteristicCallbacks {
@@ -117,7 +131,7 @@ void BleProvisioning::processCommand(const String& json) {
     String cmd = String(doc["cmd"] | doc["op"] | "");
     cmd.trim(); cmd.toLowerCase();
 
-    StaticJsonDocument<256> res;
+    StaticJsonDocument<384> res;
     res["ok"]  = true;
     res["cmd"] = cmd;
 
@@ -125,7 +139,7 @@ void BleProvisioning::processCommand(const String& json) {
         res["ble_name"]       = _bleName;
         res["wifi_connected"] = WifiManager::getInstance().isConnected();
         res["ssid"]           = WifiManager::getInstance().configuredSsid();
-        res["ip"]             = WifiManager::getInstance().localIp();
+        addLocalAccessInfo(res);
     } else if (cmd == "set_wifi" || cmd == "w") {
         String ssid = String(doc["ssid"] | doc["s"] | "");
         String pass = String(doc["password"] | doc["p"] | "");
@@ -137,7 +151,7 @@ void BleProvisioning::processCommand(const String& json) {
         WifiManager::getInstance().setCredentials(ssid.c_str(), pass.c_str(), true);
         const bool connected = WifiManager::getInstance().connectNow(20000UL);
         res["wifi_connected"] = connected;
-        res["ip"]             = WifiManager::getInstance().localIp();
+        addLocalAccessInfo(res);
         Serial.printf("[BLE] WiFi provisioned: ssid=%s connected=%d\n",
                       ssid.c_str(), connected ? 1 : 0);
     } else if (cmd == "scan_wifi") {
@@ -157,14 +171,14 @@ void BleProvisioning::processCommand(const String& json) {
         const bool mqttOk = MqttManager::getInstance().isConnected();
         res["wifi_connected"] = wifiOk;
         res["mqtt_connected"] = mqttOk;
-        res["ip"]             = WifiManager::getInstance().localIp();
+        addLocalAccessInfo(res);
         Serial.printf("[BLE] Cloud step: wifi=%d mqtt=%d\n", wifiOk ? 1 : 0, mqttOk ? 1 : 0);
     } else {
         if (gChar) gChar->setValue("{\"ok\":false,\"error\":\"unknown_cmd\"}");
         return;
     }
 
-    char out[250];
+    char out[384];
     serializeJson(res, out, sizeof(out));
     if (gChar) gChar->setValue(out);
 }

@@ -14,6 +14,7 @@ const alertActionLogService = require('./alertActionLogService');
 const { publishRealtime } = require('./realtimeBus');
 const { notFound } = require('../utils/errors');
 const { toIso } = require('../utils/time');
+const { computeDeviceStatus } = require('../utils/deviceStatus');
 const {
   syncDeviceReportedConfig,
   sensorLogicModeFromConfig,
@@ -625,8 +626,9 @@ function ingestHeartbeat(payload = {}, topicDeviceId = null) {
     last_heartbeat: timestamp,
     last_wifi_connected: Boolean(payload.wifi_connected),
     last_mqtt_connected: Boolean(payload.mqtt_connected),
-    last_wifi_rssi: Number(payload.wifi_rssi ?? 0),
+    last_wifi_rssi: payload.wifi_rssi != null ? Number(payload.wifi_rssi) : (device.last_wifi_rssi ?? null),
     last_local_ip: payload.local_ip || null,
+    last_ssid: payload.ssid || payload.wifi_ssid || device.last_ssid || null,
     firmware_version: payload.firmware_version || device.firmware_version,
     last_internet_available: Boolean(payload.internet_available),
     last_sim_registered: Boolean(payload.sim_registered),
@@ -655,6 +657,7 @@ function ingestHeartbeat(payload = {}, topicDeviceId = null) {
       wifi_connected: payload.wifi_connected ?? null,
       mqtt_connected: payload.mqtt_connected ?? null,
       wifi_rssi: payload.wifi_rssi ?? null,
+      ssid: payload.ssid || payload.wifi_ssid || null,
       local_ip: payload.local_ip || null,
       firmware_version: payload.firmware_version || null,
       internet_available: payload.internet_available ?? null,
@@ -769,11 +772,7 @@ function getLocationDashboard(locationId) {
         state: 'ACTIVE'
       });
   const incident = incidentService.getActiveIncident(locationId);
-  const deviceStatus = device
-    ? ((device.status === 'OFFLINE')
-      ? 'OFFLINE'
-      : (device.last_seen && (Date.now() - new Date(device.last_seen).getTime()) <= (3 * 60 * 1000) ? device.status || 'ONLINE' : 'OFFLINE'))
-    : 'UNMAPPED';
+  const deviceStatus = computeDeviceStatus(device);
 
   return {
     location: {
@@ -800,6 +799,7 @@ function getLocationDashboard(locationId) {
       lifecycle_note: device.lifecycle_note || null,
       lifecycle_updated_at: device.lifecycle_updated_at || null,
       local_ip: device.last_local_ip || null,
+      ssid: device.last_ssid || null,
       mqtt_connected: device.last_mqtt_connected ?? null,
       wifi_connected: device.last_wifi_connected ?? null,
       wifi_rssi: device.last_wifi_rssi ?? null,

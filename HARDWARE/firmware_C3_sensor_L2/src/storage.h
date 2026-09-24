@@ -10,6 +10,9 @@ struct DeviceConfig {
     char     device_name[16];
     uint32_t config_version;
     uint8_t  ssid_hidden;        // 1 = hidden AP, 0 = visible
+    uint8_t  wifi_mode;          // FG_WIFI_MODE_AP_ONLY or FG_WIFI_MODE_STA
+    char     sta_ssid[33];       // saved LAN SSID for OTA access
+    char     sta_password[65];   // saved LAN password for OTA access
     uint32_t sensor_interval_ms; // ms between ultrasonic reads (100–180000)
     char     password[32];       // login password, changeable via UI
     uint8_t  auto_restart_hours; // reboot every N hours (0 = disabled)

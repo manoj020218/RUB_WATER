@@ -15,6 +15,19 @@ struct RelayFSM {
 static RelayFSM r1 = {RelayFSM::OFF, 0, false};
 static RelayFSM r2 = {RelayFSM::OFF, 0, false};
 
+static void enterFaultHold(RelayFSM &r, uint8_t pin) {
+    if (r.output) {
+        r.state = RelayFSM::ON;
+        setPin(pin, true);
+        return;
+    }
+
+    r.state = RelayFSM::OFF;
+    r.timer_ms = 0;
+    r.output = false;
+    setPin(pin, false);
+}
+
 static void tick(RelayFSM &r, uint8_t pin,
                  uint32_t water_mm, uint32_t thresh_mm, uint32_t hyst_mm,
                  uint32_t trig_s, uint32_t clr_s)
@@ -71,7 +84,22 @@ void relay_update(uint32_t water_level_mm,
                   uint32_t trigger_delay_s, uint32_t clear_delay_s,
                   bool sensor_ok)
 {
-    if (!sensor_ok) return;  // freeze relay state on sensor fault
+    static bool sensorFaultLatched = false;
+
+    if (!sensor_ok) {
+        if (!sensorFaultLatched) {
+            Serial.println("[relay] sensor fault detected - holding active relays, blocking clear");
+            sensorFaultLatched = true;
+        }
+        enterFaultHold(r1, RELAY_LEVEL1_PIN);
+        enterFaultHold(r2, RELAY_LEVEL2_PIN);
+        return;
+    }
+
+    if (sensorFaultLatched) {
+        Serial.println("[relay] sensor recovered - relay state machine resumed");
+        sensorFaultLatched = false;
+    }
 
     tick(r1, RELAY_LEVEL1_PIN,
          water_level_mm, level1_mm, RELAY1_HYSTERESIS_MM,

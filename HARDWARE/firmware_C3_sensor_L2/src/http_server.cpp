@@ -3,21 +3,30 @@
 #include "storage.h"
 #include "led.h"
 #include <WebServer.h>
+#include <WiFi.h>
 #include <Update.h>
 
 static WebServer    server(HTTP_PORT);
 static DeviceConfig *g_cfg   = nullptr;
 static AppState     *g_state = nullptr;
+static bool         g_ota_success = false;
+static bool         g_ota_failed = false;
+static size_t       g_ota_written_bytes = 0;
+static String       g_ota_status = "";
 
 // ─── WiFi idle sleep tracking ─────────────────────────────────────────────────
 static uint32_t g_last_activity_ms = 0;   // millis() of last valid HTTP activity
 
 bool webserver_wifi_should_sleep() {
+    if (g_cfg && g_cfg->wifi_mode == FG_WIFI_MODE_STA) return false;
+    if (WiFi.status() == WL_CONNECTED) return false;
     if (g_last_activity_ms == 0) return false;
     return (millis() - g_last_activity_ms) >= WIFI_IDLE_TIMEOUT_MS;
 }
 
 uint32_t webserver_wifi_sleep_in_s() {
+    if (g_cfg && g_cfg->wifi_mode == FG_WIFI_MODE_STA) return 0;
+    if (WiFi.status() == WL_CONNECTED) return 0;
     if (g_last_activity_ms == 0) return WIFI_IDLE_TIMEOUT_MS / 1000;
     const uint32_t elapsed = millis() - g_last_activity_ms;
     if (elapsed >= WIFI_IDLE_TIMEOUT_MS) return 0;
@@ -61,6 +70,33 @@ static void send_json(int code, const String &body) {
 static String ok_json()              { return "{\"ok\":true}"; }
 static String err_json(const char *msg) {
     return String("{\"ok\":false,\"error\":\"") + msg + "\"}";
+}
+
+static void ota_reset_state() {
+    g_ota_success = false;
+    g_ota_failed = false;
+    g_ota_written_bytes = 0;
+    g_ota_status = "";
+}
+
+static String ota_error_message(const char *prefix) {
+    return String(prefix) + " (code " + String(Update.getError()) + ")";
+}
+
+static void ota_fail(const String &message) {
+    g_ota_success = false;
+    g_ota_failed = true;
+    g_ota_status = message;
+}
+
+static String parse_json_string(const String &body, const char *key) {
+    int idx = body.indexOf(key);
+    if (idx < 0) return "";
+    idx = body.indexOf('"', body.indexOf(':', idx) + 1) + 1;
+    if (idx <= 0) return "";
+    int end = body.indexOf('"', idx);
+    if (end < 0) return "";
+    return body.substring(idx, end);
 }
 
 // ─── HTML pages ───────────────────────────────────────────────────────────────
@@ -206,15 +242,31 @@ a.logout{float:right;font-size:12px;color:#dc3545;text-decoration:none}
 </div>
 
 <div class="card">
-<h3>Network Visibility</h3>
+<h3>Network Access</h3>
+<div class="row"><span class="lbl">Current Mode</span><span class="val"><span id="wifi-mode-badge" class="badge ok">AP Only</span></span></div>
+<div class="row"><span class="lbl">AP SSID</span><span class="val" id="ap-ssid">-</span></div>
+<div class="row"><span class="lbl">AP IP</span><span class="val" id="ap-ip">-</span></div>
+<div class="row"><span class="lbl">LAN Status</span><span class="val"><span id="lan-badge" class="badge fault">Not Connected</span></span></div>
+<div class="row"><span class="lbl">LAN SSID</span><span class="val" id="lan-ssid-live">-</span></div>
+<div class="row"><span class="lbl">LAN IP</span><span class="val" id="lan-ip">-</span></div>
+<div class="row"><span class="lbl">LAN WebUI</span><span class="val" id="lan-url">-</span></div>
+<div class="row"><span class="lbl">AP Recovery Window</span><span class="val" id="ap-recovery">-</span></div>
 <div id="ssid-status-row" class="row" style="margin-bottom:12px">
-  <span class="lbl">WiFi SSID</span>
+  <span class="lbl">AP SSID Visibility</span>
   <span class="val"><span id="ssid-badge" class="badge ok">Visible</span></span>
 </div>
 <p class="hint" id="ssid-hint">Hide the SSID after installation so it does not appear in public WiFi scans. The BLE name (<span id="ble-id2">FgSensXXXXXX</span>) is always visible — use a BLE scanner to identify the device, then connect manually by typing the SSID. To force SSID visible without the app: hold the BOOT button on the board while powering on.</p>
+<p class="hint">LAN mode is only for OTA access. After every reboot in LAN OTA mode, the AP stays visible for a short recovery window so RESET gives you a local fallback path.</p>
+<label>LAN SSID (for OTA mode)</label>
+<input type="text" id="sta-ssid" maxlength="32" autocomplete="off">
+<label>LAN Password</label>
+<div class="pw-wrap"><input id="sta-pw" type="password" maxlength="64" autocomplete="off"><span class="eye" onclick="var i=document.getElementById('sta-pw');i.type=i.type=='password'?'text':'password'">&#128065;</span></div>
 <div class="btn-row">
+<button class="btn-green" onclick="saveLanConfig()">Use LAN For OTA</button>
+<button class="btn-outline" onclick="switchToApMode()">Switch Back To AP Mode</button>
 <button id="ssid-btn" class="btn-outline" onclick="toggleSsid()">Hide SSID</button>
 </div>
+<div id="wifi-msg" class="msg"></div>
 <div id="ssid-msg" class="msg"></div>
 </div>
 
@@ -234,7 +286,7 @@ a.logout{float:right;font-size:12px;color:#dc3545;text-decoration:none}
 <p class="hint">Select .bin file and upload. Device reboots automatically after success.</p>
 <input type="file" id="ota-file" accept=".bin">
 <div class="btn-row">
-<button class="btn-outline" onclick="uploadOta()">Upload Firmware</button>
+<button id="ota-upload-btn" class="btn-outline" onclick="uploadOta()">Upload Firmware</button>
 </div>
 <div id="ota-wrap"><div id="ota-bar"></div></div>
 <div id="ota-pct"></div>
@@ -254,6 +306,25 @@ function poll(){
     document.getElementById('ble-id').textContent=d.ble_id;
     document.getElementById('ble-id2').textContent=d.ble_id;
     document.getElementById('fw-ver').textContent=d.firmware_version+' ('+d.firmware_date+')';
+    document.getElementById('ap-ssid').textContent=d.device_name;
+    document.getElementById('ap-ip').textContent=d.ap_ip||'-';
+    document.getElementById('lan-ssid-live').textContent=d.sta_ssid||'-';
+    document.getElementById('lan-ip').textContent=d.lan_ip||'-';
+    var lanUrl=document.getElementById('lan-url');
+    if(d.lan_ip){lanUrl.innerHTML='<a href="http://'+d.lan_ip+'/" target="_blank" rel="noopener">http://'+d.lan_ip+'/</a>';}
+    else{lanUrl.textContent='-';}
+    var modeBadge=document.getElementById('wifi-mode-badge');
+    if(d.wifi_mode==='LAN_OTA'){modeBadge.textContent='LAN OTA';modeBadge.className='badge ok';}
+    else if(d.wifi_mode==='AP_FALLBACK'){modeBadge.textContent='AP Fallback';modeBadge.className='badge fault';}
+    else{modeBadge.textContent='AP Only';modeBadge.className='badge ok';}
+    var lanBadge=document.getElementById('lan-badge');
+    if(d.sta_connected){lanBadge.textContent='Connected';lanBadge.className='badge ok';}
+    else{lanBadge.textContent='Not Connected';lanBadge.className='badge fault';}
+    var recovery=document.getElementById('ap-recovery');
+    if(d.ap_recovery_in_s>0){recovery.textContent=d.ap_recovery_in_s+' s';}
+    else if(d.wifi_mode==='LAN_OTA'&&d.ap_active){recovery.textContent='Available';}
+    else if(d.wifi_mode==='LAN_OTA'){recovery.textContent='Closed';}
+    else{recovery.textContent='Always available';}
     var sb=document.getElementById('ssid-badge');
     var btn=document.getElementById('ssid-btn');
     if(d.ssid_hidden){sb.textContent='Hidden';sb.className='badge fault';btn.textContent='Show SSID';}
@@ -285,6 +356,7 @@ function poll(){
     setIfUnfocused('clr',d.clear_delay_s);
     setIfUnfocused('sens_ms',d.sensor_interval_ms);
     setIfUnfocused('ar_h',d.auto_restart_hours);
+    setIfUnfocused('sta-ssid',d.sta_ssid||'');
     updateSensHint();
     updateArHint();
     var u=d.uptime_seconds;
@@ -400,9 +472,31 @@ function toggleSsid(){
     else{showMsg('ssid-msg','Error: '+d.error,false);}
   }).catch(function(){showMsg('ssid-msg','Request failed',false);});
 }
+function saveLanConfig(){
+  var ssid=(document.getElementById('sta-ssid').value||'').trim();
+  var password=document.getElementById('sta-pw').value||'';
+  if(!ssid){showMsg('wifi-msg','Enter LAN SSID first',false);return;}
+  fetch('/api/lan-config',{
+    method:'POST',
+    headers:{'Content-Type':'application/json'},
+    body:JSON.stringify({sta_ssid:ssid,sta_password:password})
+  }).then(function(r){return r.json();}).then(function(d){
+    if(d.ok){showMsg('wifi-msg','LAN OTA mode saved. Keep this page open and wait for the LAN link below to appear.',true);}
+    else{showMsg('wifi-msg','Error: '+d.error,false);}
+  }).catch(function(){showMsg('wifi-msg','Request failed',false);});
+}
+function switchToApMode(){
+  if(!confirm('Switch device back to AP-only mode now?'))return;
+  fetch('/api/ap-mode',{method:'POST'}).then(function(r){return r.json();}).then(function(d){
+    if(d.ok){showMsg('wifi-msg','Switching back to AP-only mode. Device is rebooting.',true);setTimeout(function(){location.reload();},5000);}
+    else{showMsg('wifi-msg','Error: '+d.error,false);}
+  }).catch(function(){showMsg('wifi-msg','Request failed',false);});
+}
 function uploadOta(){
   var f=document.getElementById('ota-file').files[0];
   if(!f){showMsg('ota-msg','Select a .bin file first',false);return;}
+  var btn=document.getElementById('ota-upload-btn');
+  if(btn){btn.disabled=true;btn.textContent='Uploading...';}
   var fd=new FormData();
   fd.append('firmware',f);
   var xhr=new XMLHttpRequest();
@@ -414,10 +508,28 @@ function uploadOta(){
     }
   };
   xhr.onload=function(){
-    var ok=xhr.responseText==='OK';
+    var raw=(xhr.responseText||'').trim();
+    var ok=(xhr.status>=200&&xhr.status<300&&raw.indexOf('OK:')===0);
+    var msg=raw;
+    if(ok){msg=raw.replace(/^OK:\s*/,'');}
+    else if(raw.indexOf('ERROR:')===0){msg='Update failed: '+raw.replace(/^ERROR:\s*/,'');}
+    else if(!raw){msg='Update failed';}
+    showMsg('ota-msg',msg,ok);
+    if(!ok){
+      document.getElementById('ota-bar').style.width='0%';
+      document.getElementById('ota-pct').textContent='';
+    }
+    if(btn){btn.disabled=false;btn.textContent='Upload Firmware';}
+    return;
     showMsg('ota-msg',ok?'Update OK — device rebooting…':'Update failed: '+xhr.responseText,ok);
   };
   xhr.onerror=function(){showMsg('ota-msg','Upload error',false);};
+  xhr.onerror=function(){
+    showMsg('ota-msg','Upload error',false);
+    document.getElementById('ota-bar').style.width='0%';
+    document.getElementById('ota-pct').textContent='';
+    if(btn){btn.disabled=false;btn.textContent='Upload Firmware';}
+  };
   xhr.open('POST','/update');
   xhr.send(fd);
 }
@@ -479,11 +591,26 @@ static void handle_api_status() {
     uint32_t restart_in_s = (g_cfg->auto_restart_hours > 0 && now_ms < ar_target_ms)
                             ? (ar_target_ms - now_ms) / 1000UL : 0;
 
-    char j[700];
+    String ap_ip = g_state->ap_active ? WiFi.softAPIP().toString() : "";
+    String lan_ip = g_state->sta_connected ? WiFi.localIP().toString() : "";
+    const char *wifi_mode = "AP_ONLY";
+    if (g_cfg->wifi_mode == FG_WIFI_MODE_STA && g_cfg->sta_ssid[0] != '\0') {
+        wifi_mode = g_state->sta_connected ? "LAN_OTA" : "AP_FALLBACK";
+    }
+
+    char j[1100];
     snprintf(j, sizeof(j),
         "{"
         "\"device_name\":\"%s\","
         "\"ble_id\":\"%s\","
+        "\"wifi_mode\":\"%s\","
+        "\"sta_connected\":%s,"
+        "\"ap_active\":%s,"
+        "\"sta_ssid\":\"%s\","
+        "\"ap_ip\":\"%s\","
+        "\"lan_ip\":\"%s\","
+        "\"ap_recovery_in_s\":%u,"
+        "\"wifi_sleep_enabled\":%s,"
         "\"raw_distance_mm\":%u,"
         "\"zero_distance_mm\":%u,"
         "\"water_level_mm\":%u,"
@@ -506,6 +633,14 @@ static void handle_api_status() {
         "}",
         g_cfg->device_name,
         g_cfg->device_name,
+        wifi_mode,
+        g_state->sta_connected ? "true" : "false",
+        g_state->ap_active ? "true" : "false",
+        g_cfg->sta_ssid,
+        ap_ip.c_str(),
+        lan_ip.c_str(),
+        g_state->ap_recovery_in_s,
+        g_state->sta_connected ? "false" : "true",
         g_state->raw_distance_mm,
         g_cfg->zero_distance_mm,
         g_state->water_level_mm,
@@ -619,6 +754,48 @@ static void handle_api_ssid_hidden() {
     ESP.restart();
 }
 
+static void handle_api_lan_config() {
+    if (!session_valid()) { send_json(403, err_json("Forbidden")); return; }
+
+    String body = server.arg("plain");
+    String ssid = parse_json_string(body, "\"sta_ssid\"");
+    String password = parse_json_string(body, "\"sta_password\"");
+    bool keep_existing_password =
+        password.length() == 0 &&
+        ssid.equals(g_cfg->sta_ssid) &&
+        g_cfg->sta_password[0] != '\0';
+
+    if (ssid.length() == 0 || ssid.length() > 32) {
+        send_json(400, err_json("LAN SSID must be 1-32 characters")); return;
+    }
+    if (password.length() > 64) {
+        send_json(400, err_json("LAN password must be 0-64 characters")); return;
+    }
+
+    strlcpy(g_cfg->sta_ssid, ssid.c_str(), sizeof(g_cfg->sta_ssid));
+    if (!keep_existing_password) {
+        strlcpy(g_cfg->sta_password, password.c_str(), sizeof(g_cfg->sta_password));
+    }
+    g_cfg->wifi_mode = FG_WIFI_MODE_STA;
+    g_cfg->config_version++;
+    storage_save(*g_cfg);
+
+    send_json(200, "{\"ok\":true,\"switching\":true}");
+}
+
+static void handle_api_ap_mode() {
+    if (!session_valid()) { send_json(403, err_json("Forbidden")); return; }
+
+    g_cfg->wifi_mode = FG_WIFI_MODE_AP_ONLY;
+    g_cfg->ssid_hidden = 0;
+    g_cfg->config_version++;
+    storage_save(*g_cfg);
+
+    send_json(200, "{\"ok\":true,\"restarting\":true}");
+    delay(500);
+    ESP.restart();
+}
+
 static void handle_api_change_password() {
     if (!session_valid()) { send_json(403, err_json("Forbidden")); return; }
 
@@ -668,6 +845,8 @@ void webserver_init(DeviceConfig *cfg, AppState *state) {
     server.on("/api/status", HTTP_GET,  handle_api_status);
     server.on("/api/set-zero", HTTP_POST, handle_api_set_zero);
     server.on("/api/config",   HTTP_POST, handle_api_config);
+    server.on("/api/lan-config",       HTTP_POST, handle_api_lan_config);
+    server.on("/api/ap-mode",          HTTP_POST, handle_api_ap_mode);
     server.on("/api/reboot",           HTTP_POST, handle_api_reboot);
     server.on("/api/ssid-hidden",      HTTP_POST, handle_api_ssid_hidden);
     server.on("/api/change-password",  HTTP_POST, handle_api_change_password);
@@ -677,19 +856,51 @@ void webserver_init(DeviceConfig *cfg, AppState *state) {
         []() {
             if (!session_valid()) { server.send(403, "text/plain", "Forbidden"); return; }
             server.sendHeader("Connection", "close");
-            server.send(200, "text/plain", Update.hasError() ? "FAIL" : "OK");
-            delay(1000);
-            ESP.restart();
+            if (g_ota_success && !g_ota_failed) {
+                server.send(200, "text/plain", "OK: Firmware update verified. Device rebooting.");
+                delay(1000);
+                ESP.restart();
+                return;
+            }
+
+            String message = g_ota_status.length() ? g_ota_status : "OTA failed";
+            server.send(500, "text/plain", String("ERROR: ") + message);
         },
         []() {
-            if (!session_valid()) { Update.abort(); return; }
+            if (!session_valid()) {
+                ota_fail("Forbidden");
+                Update.abort();
+                return;
+            }
+
             HTTPUpload &upload = server.upload();
             if (upload.status == UPLOAD_FILE_START) {
-                Update.begin(UPDATE_SIZE_UNKNOWN);
+                ota_reset_state();
+                if (!Update.begin(UPDATE_SIZE_UNKNOWN)) {
+                    ota_fail(ota_error_message("Update begin failed"));
+                    Update.abort();
+                } else {
+                    g_ota_status = "Upload started";
+                }
             } else if (upload.status == UPLOAD_FILE_WRITE) {
-                Update.write(upload.buf, upload.currentSize);
+                if (g_ota_failed) return;
+                size_t written = Update.write(upload.buf, upload.currentSize);
+                g_ota_written_bytes += written;
+                if (written != upload.currentSize) {
+                    ota_fail(ota_error_message("Flash write failed"));
+                    Update.abort();
+                }
             } else if (upload.status == UPLOAD_FILE_END) {
-                Update.end(true);
+                if (g_ota_failed) return;
+                if (!Update.end(true)) {
+                    ota_fail(ota_error_message("Finalize failed"));
+                    return;
+                }
+                g_ota_success = true;
+                g_ota_status = String("Firmware update verified (") + String(g_ota_written_bytes) + " bytes). Device rebooting.";
+            } else if (upload.status == UPLOAD_FILE_ABORTED) {
+                ota_fail("Upload aborted");
+                Update.abort();
             }
         }
     );
