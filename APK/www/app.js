@@ -26,10 +26,10 @@
   const MAX_WIFI_DISCOVERY_HOSTS = 254;
   // Update this object for each shipped APK so users can verify version and release date in-app.
   const APP_RELEASE_INFO = Object.freeze({
-    version: '1.0.1',
-    versionCode: 2,
-    releasedAt: '2026-06-06',
-    releasedLabel: '06 Jun 2026'
+    version: '1.0.7',
+    versionCode: 8,
+    releasedAt: '2026-06-25',
+    releasedLabel: '25 Jun 2026'
   });
 
   const state = {

@@ -17,6 +17,10 @@ export default function ReportsPage() {
   const [rows, setRows] = useState<ReportRow[]>([]);
   const [loading, setLoading] = useState(false);
   const [status, setStatus] = useState('');
+  const formatLocationOption = (loc: (typeof state.locations)[number]) => {
+    const locId = loc.location_id || loc.id;
+    return loc.location_name ? `${locId} | ${loc.location_name}` : locId;
+  };
 
   const [dateFrom, setDateFrom] = useState('');
   const [dateTo, setDateTo] = useState('');
@@ -89,7 +93,7 @@ export default function ReportsPage() {
         <label className="lbl">Location</label>
         <select className="inp" value={locFilter} onChange={(e) => setLocFilter(e.target.value)}>
           <option value="">All Locations</option>
-          {state.locations.map((l) => <option key={l.id} value={l.location_id || l.id}>{l.location_name}</option>)}
+          {state.locations.map((l) => <option key={l.id} value={l.location_id || l.id}>{formatLocationOption(l)}</option>)}
         </select>
         <div className="report-filter-grid">
           <div>

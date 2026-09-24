@@ -40,6 +40,8 @@ export interface DeviceConfig {
   clear_delay_s?: number;
   clear_delay_seconds?: number;
   sensor_mount_height_mm?: number;
+  zero_distance_mm?: number;
+  zero_dist_mm?: number;
   sensor_confirmation_wait_sec?: number;
   rs485_enabled?: boolean;
   rs485_sensor_enabled?: boolean;
@@ -125,6 +127,7 @@ export interface Telemetry {
   hardware_id?: string | null;
   mqtt_route_id?: string | null;
   mqtt_topic_base?: string | null;
+  ssid?: string;
   status?: string;
   water_level_mm?: number;
   distance_mm?: number;
@@ -194,6 +197,7 @@ export interface DashboardData {
     lifecycle_note?: string;
     lifecycle_updated_at?: string;
     local_ip?: string;
+    ssid?: string | null;
     mqtt_connected?: boolean | null;
     wifi_connected?: boolean | null;
     wifi_rssi?: number | null;
@@ -209,6 +213,7 @@ export interface DashboardData {
     details?: {
       current_config_version?: number | null;
       local_ip?: string | null;
+      ssid?: string | null;
       mqtt_connected?: boolean | null;
       wifi_connected?: boolean | null;
       wifi_rssi?: number | null;

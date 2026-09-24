@@ -1,6 +1,6 @@
 {
   "name": "floodguard-android-app",
-  "version": "1.0.5",
+  "version": "1.0.19",
   "private": true,
   "description": "FloodGuard by Jenix Android app (Capacitor + React)",
   "scripts": {

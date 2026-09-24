@@ -1,7 +1,7 @@
 import { useEffect, useState, useCallback } from 'react';
-import { FiUsers, FiRefreshCw, FiUserCheck, FiUserX, FiKey } from 'react-icons/fi';
+import { FiUsers, FiRefreshCw, FiUserCheck, FiUserX, FiKey, FiMapPin } from 'react-icons/fi';
 import { useApp } from '@/context/AppContext';
-import { fetchAdminUsers, createUser, toggleUserAccess, resetUserPassword } from '@/api/users';
+import { fetchAdminUsers, createUser, toggleUserAccess, resetUserPassword, updateUserLocations } from '@/api/users';
 import { AdminUser } from '@/types';
 
 export default function UsersPage() {
@@ -12,6 +12,9 @@ export default function UsersPage() {
   const [statusFilter, setStatusFilter] = useState('');
   const [expandReset, setExpandReset] = useState<string | null>(null);
   const [resetPw, setResetPw] = useState('');
+  const [resetResult, setResetResult] = useState<{ userId: string; loginId: string; password: string } | null>(null);
+  const [expandLocs, setExpandLocs] = useState<string | null>(null);
+  const [editLocs, setEditLocs] = useState<string[]>([]);
   const [createStatus, setCreateStatus] = useState('');
 
   const [uLogin, setULogin] = useState('');
@@ -43,9 +46,30 @@ export default function UsersPage() {
     try { await toggleUserAccess(userId, activate); showToast(`User ${activate ? 'activated' : 'deactivated'}.`); load(); } catch (e: unknown) { showToast(e instanceof Error ? e.message : 'Failed', true); }
   }
 
-  async function handleReset(userId: string) {
+  async function handleSaveLocations(userId: string) {
+    try { await updateUserLocations(userId, editLocs); showToast('Locations updated.'); setExpandLocs(null); setEditLocs([]); load(); } catch (e: unknown) { showToast(e instanceof Error ? e.message : 'Failed', true); }
+  }
+
+  function generatePassword() {
+    const chars = 'ABCDEFGHJKMNPQRSTUVWXYZabcdefghjkmnpqrstuvwxyz23456789';
+    const bytes = new Uint8Array(6);
+    crypto.getRandomValues(bytes);
+    setResetPw('Fg@' + Array.from(bytes, (b) => chars[b % chars.length]).join(''));
+  }
+
+  async function copyText(text: string) {
+    try { await navigator.clipboard.writeText(text); showToast('Copied.'); } catch (_) { showToast('Copy failed — note it down manually.', true); }
+  }
+
+  async function handleReset(u: AdminUser) {
     if (!resetPw || resetPw.length < 6) { showToast('Password must be at least 6 chars.', true); return; }
-    try { await resetUserPassword(userId, resetPw); showToast('Password reset.'); setExpandReset(null); setResetPw(''); } catch (e: unknown) { showToast(e instanceof Error ? e.message : 'Failed', true); }
+    try {
+      const res = await resetUserPassword(u.id, resetPw) as { temporary_password?: string } | undefined;
+      setResetResult({ userId: u.id, loginId: u.login_id, password: res?.temporary_password || resetPw });
+      showToast('Password reset.');
+      setExpandReset(null);
+      setResetPw('');
+    } catch (e: unknown) { showToast(e instanceof Error ? e.message : 'Failed', true); }
   }
 
   const visible = users.filter((u) => {
@@ -99,14 +123,48 @@ export default function UsersPage() {
                 <button className="ghost-btn" style={{ fontSize: 11, padding: '4px 8px' }} onClick={() => handleToggle(u.id, !u.is_active)}>
                   {u.is_active ? <><FiUserX size={11} style={{ marginRight: 3 }} />Deactivate</> : <><FiUserCheck size={11} style={{ marginRight: 3 }} />Activate</>}
                 </button>
-                <button className="ghost-btn" style={{ fontSize: 11, padding: '4px 8px' }} onClick={() => { setExpandReset(expandReset === u.id ? null : u.id); setResetPw(''); }}>
+                <button className="ghost-btn" style={{ fontSize: 11, padding: '4px 8px' }} onClick={() => { setExpandReset(expandReset === u.id ? null : u.id); setResetPw(''); setResetResult(null); }}>
                   <FiKey size={11} style={{ marginRight: 3 }} />Reset PW
                 </button>
+                <button className="ghost-btn" style={{ fontSize: 11, padding: '4px 8px' }} onClick={() => { setExpandLocs(expandLocs === u.id ? null : u.id); setEditLocs(u.assigned_locations ?? []); }}>
+                  <FiMapPin size={11} style={{ marginRight: 3 }} />Locations
+                </button>
               </div>
+              {expandLocs === u.id && (
+                <div className="build-info-panel" style={{ marginTop: 6 }}>
+                  {state.locations.length === 0 && <div className="meta">No locations available.</div>}
+                  {state.locations.map((loc) => {
+                    const locId = loc.location_id || loc.id;
+                    const checked = editLocs.includes(locId);
+                    return (
+                      <label key={locId} className="row" style={{ gap: 8, alignItems: 'center', fontSize: 13, padding: '4px 0' }}>
+                        <input type="checkbox" checked={checked} onChange={() => setEditLocs(checked ? editLocs.filter((x) => x !== locId) : [...editLocs, locId])} />
+                        <span>{loc.location_name || locId} <span style={{ color: '#94a3b8', fontSize: 11 }}>({locId})</span></span>
+                      </label>
+                    );
+                  })}
+                  <button className="control-btn info" style={{ marginTop: 6 }} onClick={() => handleSaveLocations(u.id)}>Save Locations</button>
+                </div>
+              )}
               {expandReset === u.id && (
                 <div className="row" style={{ gap: 6, marginTop: 6 }}>
-                  <input className="inp" type="password" value={resetPw} onChange={(e) => setResetPw(e.target.value)} placeholder="New password (min 6 chars)" style={{ flex: 1 }} />
-                  <button className="control-btn info" style={{ marginTop: 0, padding: '6px 10px' }} onClick={() => handleReset(u.id)}>Set</button>
+                  <input className="inp" type="text" autoCapitalize="none" autoComplete="off" value={resetPw} onChange={(e) => setResetPw(e.target.value)} placeholder="New password (min 6 chars)" style={{ flex: 1, minWidth: 0 }} />
+                  <button className="ghost-btn" style={{ fontSize: 11, padding: '6px 10px', flex: '0 0 auto' }} onClick={generatePassword}>Generate</button>
+                  <button className="control-btn info" style={{ marginTop: 0, padding: '6px 14px', width: 'auto', flex: '0 0 auto' }} onClick={() => handleReset(u)}>Set</button>
+                </div>
+              )}
+              {resetResult?.userId === u.id && (
+                <div className="build-info-panel" style={{ marginTop: 6 }}>
+                  <div style={{ fontSize: 12, color: '#475569' }}>Password reset. Share these login details with the user:</div>
+                  <div className="row between" style={{ marginTop: 6, alignItems: 'center' }}>
+                    <div style={{ fontSize: 13 }}>
+                      <div>Login ID: <b>{resetResult.loginId}</b></div>
+                      <div>Password: <b style={{ fontFamily: 'monospace' }}>{resetResult.password}</b></div>
+                    </div>
+                    <button className="ghost-btn" style={{ fontSize: 11, padding: '4px 8px', flex: '0 0 auto' }} onClick={() => copyText(`Login ID: ${resetResult.loginId}
+Password: ${resetResult.password}`)}>Copy</button>
+                  </div>
+                  <button className="ghost-btn" style={{ fontSize: 11, padding: '4px 8px', marginTop: 6 }} onClick={() => setResetResult(null)}>Done</button>
                 </div>
               )}
             </div>

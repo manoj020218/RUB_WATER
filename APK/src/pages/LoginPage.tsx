@@ -5,6 +5,7 @@ import { useApp } from '@/context/AppContext';
 import { login } from '@/api/auth';
 import { normalizeApiBase, configureClient } from '@/api/client';
 import { APP_RELEASE_INFO, DEFAULT_API_BASE } from '@/constants';
+import { getPushClientDetails } from '@/utils/pushNotifications';
 
 export default function LoginPage() {
   const { dispatch, showToast } = useApp();
@@ -23,7 +24,8 @@ export default function LoginPage() {
     setBusy(true);
     try {
       configureClient({ apiBase: base, token: '' });
-      const res = await login(base, loginId.trim(), password);
+      const clientDetails = getPushClientDetails();
+      const res = await login(base, loginId.trim(), password, clientDetails);
       // Set token on the client immediately so the first auth'd request on /locations
       // doesn't race against the AppContext useEffect that does the same thing async.
       configureClient({ apiBase: base, token: res.token });

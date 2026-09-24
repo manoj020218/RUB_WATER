@@ -11,18 +11,34 @@ function fmtTime(iso?: string) {
   try { return new Date(iso).toLocaleTimeString('en-IN', { timeZone: IST_TIMEZONE, hour: '2-digit', minute: '2-digit', second: '2-digit' }); } catch (_) { return iso; }
 }
 
+// Telemetry floats arrive with float32 noise (e.g. 13.30000019); show a fixed number of decimals.
+function fmtNum(value: unknown, decimals: number) {
+  const num = Number(value);
+  return value == null || value === '' || !Number.isFinite(num) ? '--' : num.toFixed(decimals);
+}
+
 function fmtDT(iso?: string) {
   if (!iso) return '--';
   try { return new Date(iso).toLocaleString('en-IN', { timeZone: IST_TIMEZONE }); } catch (_) { return iso; }
 }
 
 function floodMeta(state: string) {
-  switch ((state || '').toUpperCase()) {
-    case 'DANGER': return { label: 'DANGER', cls: 'danger', color: '#dc2626' };
-    case 'ALERT': return { label: 'ALERT', cls: 'warn', color: '#d97706' };
-    case 'CLEAR': return { label: 'CLEAR', cls: '', color: '#059669' };
-    default: return { label: 'OFFLINE', cls: 'off', color: '#94a3b8' };
+  const normalized = (state || '').toUpperCase();
+  if (normalized === 'DANGER' || normalized.startsWith('DANGER')) {
+    return { label: 'DANGER', cls: 'danger', color: '#dc2626' };
   }
+  if (
+    normalized === 'ALERT'
+    || normalized === 'ORANGE'
+    || normalized.startsWith('ALERT')
+    || normalized === 'SENSOR_FAULT'
+  ) {
+    return { label: 'ALERT', cls: 'warn', color: '#d97706' };
+  }
+  if (normalized === 'CLEAR' || normalized === 'NORMAL' || normalized.startsWith('CLEAR')) {
+    return { label: 'CLEAR', cls: '', color: '#059669' };
+  }
+  return { label: 'OFFLINE', cls: 'off', color: '#94a3b8' };
 }
 
 function sensorModeLabel(mode?: string) {
@@ -185,10 +201,14 @@ export default function DashboardPage() {
   const mountHeight = Number(config?.sensor_mount_height_mm || loc?.mount_height_mm || 1200);
   const waterLevel = Number(latest?.water_level_mm ?? 0);
   const devStatus = (data?.device?.status || data?.location?.device_status || '').toUpperCase();
+  const devIdle = devStatus === 'IDLE';
   const devOnline = devStatus !== '' && devStatus !== 'OFFLINE' && devStatus !== 'UNMAPPED';
   const hasData = !!latest;
   const floodState = latest?.flood_state ?? ((hasData || devOnline) ? 'CLEAR' : 'OFFLINE');
-  const meta = floodMeta(floodState);
+  const alertVisualState = latest?.status || latest?.alert_level || floodState;
+  const meta = floodMeta(alertVisualState);
+  const deviceStatusText = devStatus === 'UNMAPPED' ? 'UNMAPPED' : (devIdle ? 'IDLE' : (devOnline ? 'ONLINE' : 'OFFLINE'));
+  const deviceStatusClass = devStatus === 'ONLINE' ? '' : (devIdle ? 'warn' : 'off');
 
   const alertMm = Number(config?.alert_level_mm ?? 200);
   const dangerMm = Number(config?.danger_level_mm ?? 500);
@@ -205,6 +225,7 @@ export default function DashboardPage() {
 
   const heartbeatAt = data?.heartbeat?.received_at ?? latest?.received_at;
   const deviceLocalIp = latest?.local_ip || data?.device?.local_ip || data?.heartbeat?.details?.local_ip || '--';
+  const deviceSsid = latest?.ssid || data?.device?.ssid || data?.heartbeat?.details?.ssid || '--';
   const mqttConnected = latest?.mqtt_connected ?? data?.device?.mqtt_connected ?? data?.heartbeat?.details?.mqtt_connected ?? false;
   const apiServerValue = latest?.api_server || data?.device?.api_server || '--';
   const mqttServerValue = latest?.mqtt_server || data?.device?.mqtt_server || '--';
@@ -260,10 +281,12 @@ export default function DashboardPage() {
               {([
                 { icon: <FiRadio size={12} />, label: 'Device ID', value: loc?.device_id ?? '--', ok: !!loc?.device_id },
                 { icon: <FiRadio size={12} />, label: 'Hardware ID', value: hardwareId || '--', ok: hardwareId !== '--' },
-                { icon: <FiActivity size={12} />, label: 'Device Status', value: meta.label, ok: meta.cls !== 'off', cls: meta.cls },
-                { icon: <FiWifi size={12} />, label: 'Device Online', value: devOnline ? 'Online' : 'Offline', ok: devOnline },
+                { icon: <FiActivity size={12} />, label: 'Device Status', value: deviceStatusText, ok: devOnline, cls: deviceStatusClass },
+                { icon: <FiAlertTriangle size={12} />, label: 'Alert State', value: meta.label, ok: meta.cls !== 'off', cls: meta.cls },
+                { icon: <FiWifi size={12} />, label: 'Device Online', value: devIdle ? 'Idle' : (devOnline ? 'Online' : 'Offline'), ok: devOnline, cls: devIdle ? 'warn' : undefined },
                 { icon: <FiWifi size={12} />, label: 'Wi-Fi RSSI', value: hasData ? `${latest?.rssi ?? latest?.wifi_rssi ?? '--'} dBm` : '--', ok: hasData && ((latest?.rssi ?? latest?.wifi_rssi ?? 0) as number) > -75 },
                 { icon: <FiServer size={12} />, label: 'Local IP', value: deviceLocalIp, ok: deviceLocalIp !== '--' },
+                { icon: <FiWifi size={12} />, label: 'Wi-Fi SSID', value: deviceSsid, ok: deviceSsid !== '--' },
                 { icon: <FiServer size={12} />, label: 'API Server', value: apiServerValue || '--', ok: apiServerValue !== '--' },
                 { icon: <FiCloud size={12} />, label: 'Cloud API', value: apiOk == null ? 'Checking...' : apiOk ? 'UP' : 'DOWN', ok: apiOk === true },
                 { icon: <FiCloud size={12} />, label: 'MQTT Connected', value: mqttConnected ? 'Connected' : 'Disconnected', ok: !!mqttConnected },
@@ -326,11 +349,11 @@ export default function DashboardPage() {
         <div className="grid">
           <div className="mini-card">
             <div className="mini-label"><FiBattery size={12} style={{ marginRight: 4 }} />Battery Voltage</div>
-            <div className="mini-value">{hasData ? `${latest?.battery_v ?? '--'} V` : '--'}</div>
+            <div className="mini-value">{hasData ? `${fmtNum(latest?.battery_v, 2)} V` : '--'}</div>
           </div>
           <div className="mini-card">
             <div className="mini-label"><FiSun size={12} style={{ marginRight: 4 }} />Battery Current</div>
-            <div className="mini-value">{hasData ? `${latest?.battery_ma ?? '--'} mA` : '--'}</div>
+            <div className="mini-value">{hasData ? `${fmtNum(latest?.battery_ma, 1)} mA` : '--'}</div>
           </div>
           <div className="mini-card">
             <div className="mini-label"><FiWifi size={12} style={{ marginRight: 4 }} />Wi-Fi RSSI</div>

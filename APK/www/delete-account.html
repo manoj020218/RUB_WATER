@@ -1,0 +1,136 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Delete Account — FloodGuard by Jenix Technology</title>
+  <meta name="description" content="How to request deletion of your FloodGuard by Jenix account and associated data, what is deleted and what is retained.">
+  <meta name="robots" content="index, follow">
+  <link rel="canonical" href="https://floodguard.jenix.in/delete-account.html">
+  <link rel="icon" href="./app-icon-192.png" type="image/png">
+  <style>
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+    :root {
+      --blue-900: #1e3a8a;
+      --blue-800: #1e40af;
+      --blue-700: #1d4ed8;
+      --blue-100: #dbeafe;
+      --cyan-500: #06b6d4;
+      --cyan-400: #22d3ee;
+      --text:     #0f172a;
+      --sub:      #475569;
+      --border:   #e2e8f0;
+    }
+    html { scroll-behavior: smooth; }
+    body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; color: var(--text); background: #fff; line-height: 1.7; }
+
+    /* Topbar */
+    .topbar { position: sticky; top: 0; z-index: 100; background: rgba(30,58,138,0.97); backdrop-filter: blur(8px); padding: 0 5%; height: 60px; display: flex; align-items: center; justify-content: space-between; }
+    .topbar-brand { color: #fff; font-size: 18px; font-weight: 800; letter-spacing: -0.02em; text-decoration: none; display: flex; align-items: center; gap: 8px; }
+    .nav-links { display: flex; gap: 6px; align-items: center; }
+    .nav-link { color: rgba(255,255,255,0.8); text-decoration: none; font-size: 13px; padding: 6px 12px; border-radius: 6px; transition: background 0.15s; }
+    .nav-link:hover { background: rgba(255,255,255,0.1); color: #fff; }
+    .nav-cta { background: var(--cyan-500); color: #fff !important; font-weight: 600; border-radius: 8px; padding: 7px 16px !important; }
+
+    /* Page header */
+    .page-header { background: linear-gradient(135deg, var(--blue-900) 0%, #0c1b4a 100%); color: #fff; padding: 56px 5% 48px; }
+    .page-header-inner { max-width: 800px; margin: 0 auto; }
+    .breadcrumb { font-size: 12px; color: rgba(255,255,255,0.5); margin-bottom: 16px; }
+    .breadcrumb a { color: rgba(255,255,255,0.55); text-decoration: none; }
+    .breadcrumb a:hover { color: #fff; }
+    .page-header h1 { font-size: clamp(24px, 4vw, 40px); font-weight: 900; margin-bottom: 12px; }
+    .page-header p { color: rgba(255,255,255,0.7); font-size: 15px; }
+
+    /* Content */
+    .content-wrap { max-width: 800px; margin: 0 auto; padding: 48px 5% 72px; }
+    .update-badge { display: inline-flex; align-items: center; gap: 6px; background: var(--blue-100); color: var(--blue-700); font-size: 12px; font-weight: 600; padding: 4px 12px; border-radius: 20px; margin-bottom: 32px; }
+    h2 { font-size: 20px; font-weight: 800; color: var(--text); margin: 36px 0 12px; padding-top: 8px; border-top: 1px solid var(--border); }
+    h2:first-of-type { border-top: none; margin-top: 0; }
+    h3 { font-size: 15px; font-weight: 700; color: var(--blue-800); margin: 20px 0 8px; }
+    p { font-size: 15px; color: var(--sub); margin-bottom: 14px; }
+    ul, ol { margin: 0 0 14px 20px; }
+    li { font-size: 15px; color: var(--sub); margin-bottom: 6px; }
+    a { color: var(--blue-700); }
+    .highlight-box { background: #f0f9ff; border-left: 4px solid var(--cyan-500); border-radius: 0 8px 8px 0; padding: 16px 20px; margin: 20px 0; }
+    .highlight-box p { margin: 0; color: #0c4a6e; font-size: 14px; }
+    table { width: 100%; border-collapse: collapse; margin: 16px 0 24px; font-size: 14px; }
+    th { background: var(--blue-900); color: #fff; padding: 10px 14px; text-align: left; font-weight: 600; }
+    td { padding: 10px 14px; border-bottom: 1px solid var(--border); color: var(--sub); vertical-align: top; }
+    tr:nth-child(even) td { background: #f8fafc; }
+
+    /* Footer */
+    footer { background: #0f172a; color: rgba(255,255,255,0.5); padding: 32px 5%; }
+    .footer-inner { max-width: 800px; margin: 0 auto; display: flex; justify-content: space-between; flex-wrap: wrap; gap: 12px; font-size: 12px; align-items: center; }
+    .footer-inner a { color: rgba(255,255,255,0.45); text-decoration: none; }
+    .footer-inner a:hover { color: #fff; }
+    .footer-links { display: flex; gap: 16px; flex-wrap: wrap; }
+
+    @media (max-width: 600px) {
+      .nav-links .nav-link:not(.nav-cta) { display: none; }
+      .footer-inner { flex-direction: column; align-items: flex-start; gap: 8px; }
+    }
+  </style>
+</head>
+<body>
+
+<nav class="topbar" role="navigation">
+  <a class="topbar-brand" href="/">🌊 FloodGuard</a>
+  <div class="nav-links">
+    <a class="nav-link" href="/">Home</a>
+    <a class="nav-link" href="/terms.html">Terms</a>
+    <a class="nav-link nav-cta" href="/app">Open App</a>
+  </div>
+</nav>
+
+<div class="page-header">
+  <div class="page-header-inner">
+    <div class="breadcrumb"><a href="/">Home</a> &rsaquo; Delete Account</div>
+    <h1>Delete Your FloodGuard Account</h1>
+    <p>FloodGuard by Jenix — account and data deletion request</p>
+  </div>
+</div>
+
+<div class="content-wrap">
+  <div class="highlight-box">
+    <p>This page explains how users of the <strong>FloodGuard by Jenix</strong> app (developer: Jenix Technology) can request deletion of their account and associated personal data.</p>
+  </div>
+
+  <h2>How to request deletion</h2>
+  <ol>
+    <li>Send an email to <a href="mailto:jenixindia@gmail.com?subject=FloodGuard%20account%20deletion%20request">jenixindia@gmail.com</a> with the subject <strong>"FloodGuard account deletion request"</strong>.</li>
+    <li>Include your <strong>Login ID</strong>, your full name and the organisation that issued your account.</li>
+    <li>Send the email from the address registered with your organisation, or ask your organisation's FloodGuard administrator to confirm the request.</li>
+    <li>We verify the request and confirm by email once the account is deleted — within <strong>30 days</strong>.</li>
+  </ol>
+  <p>Your organisation's FloodGuard administrator can also deactivate your account immediately from the Users section of the app while the deletion request is processed.</p>
+
+  <h2>Data that is deleted</h2>
+  <ul>
+    <li>Account details — login ID, name, role and password hash</li>
+    <li>Push notification (FCM) tokens and active login sessions</li>
+    <li>Location assignments linked to your account</li>
+  </ul>
+
+  <h2>Data that may be retained</h2>
+  <ul>
+    <li><strong>Audit logs</strong> of operational actions (e.g. alarm mute, configuration changes) — kept for up to 365 days for safety and compliance, then deleted</li>
+    <li><strong>Sensor telemetry</strong> from flood monitoring devices is not personal data and belongs to the operating organisation; it is kept for up to 90 days in detailed form</li>
+  </ul>
+  <p>See our <a href="/privacy.html">Privacy Policy</a> for full details.</p>
+</div>
+
+<footer role="contentinfo">
+  <div class="footer-inner">
+    <span>© 2026 Jenix Technology. All rights reserved.</span>
+    <div class="footer-links">
+      <a href="/">Home</a>
+      <a href="/privacy.html">Privacy Policy</a>
+      <a href="/terms.html">Terms &amp; Conditions</a>
+      <a href="/delete-account.html">Delete Account</a>
+      <a href="mailto:jenixindia@gmail.com">Contact</a>
+    </div>
+  </div>
+</footer>
+
+</body>
+</html>

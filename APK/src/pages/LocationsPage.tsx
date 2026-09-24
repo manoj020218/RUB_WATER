@@ -175,6 +175,10 @@ export default function LocationsPage() {
 
   const locations = state.locations;
   const isAdmin = isSuperAdmin();
+  const formatLocationOption = (loc: Location) => {
+    const locId = loc.location_id || loc.id;
+    return loc.location_name ? `${locId} | ${loc.location_name}` : locId;
+  };
 
   return (
     <section className="view active" id="view-locations">
@@ -199,6 +203,7 @@ export default function LocationsPage() {
             const locId = loc.location_id || loc.id;
             const status = (loc.device_status || 'OFFLINE').toUpperCase();
             const isOnline = status === 'ONLINE';
+            const isIdle = status === 'IDLE';
             const lifecycle = (loc.lifecycle_status || '').toUpperCase();
             const isFaulty = lifecycle === 'FAULTY' || lifecycle === 'UNDER_REPLACEMENT';
             const isEditing = editingId === locId;
@@ -234,8 +239,8 @@ export default function LocationsPage() {
                     </div>
                   </div>
                   <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'flex-end', gap: 6, flexShrink: 0 }}>
-                    <span className={`chip ${isOnline ? '' : 'off'}`} style={{ fontSize: 10 }}>
-                      {isOnline ? <FiWifi size={10} style={{ marginRight: 3 }} /> : <FiWifiOff size={10} style={{ marginRight: 3 }} />}
+                    <span className={`chip ${isOnline ? '' : isIdle ? 'warn' : 'off'}`} style={{ fontSize: 10 }}>
+                      {(isOnline || isIdle) ? <FiWifi size={10} style={{ marginRight: 3 }} /> : <FiWifiOff size={10} style={{ marginRight: 3 }} />}
                       {status}
                     </span>
                     {isAdmin && !isEditing && (
@@ -372,7 +377,7 @@ export default function LocationsPage() {
               <input className="inp" value={devAddId} onChange={(e) => setDevAddId(e.target.value)} placeholder="Device ID (e.g. RUB044-CTRL01)" />
               <select className="inp" value={devAddLoc} onChange={(e) => setDevAddLoc(e.target.value)}>
                 <option value="">No location  - bind later</option>
-                {locations.map((l) => <option key={l.id} value={l.location_id || l.id}>{l.location_name}</option>)}
+                {locations.map((l) => <option key={l.id} value={l.location_id || l.id}>{formatLocationOption(l)}</option>)}
               </select>
             </div>
             <button className="control-btn info" style={{ marginTop: 8 }} onClick={handleAddDevice}>Register Device</button>

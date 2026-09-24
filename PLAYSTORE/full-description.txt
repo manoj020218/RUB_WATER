@@ -1,0 +1,43 @@
+FloodGuard by Jenix is the operator app for the FloodGuard water logging alarm system, installed at railway underbridges (RUBs), road underpasses and low-lying roads. It gives field staff, municipal teams and railway authorities a live view of water levels and alarm status at every monitored site, so they can act before a vehicle drives into flooded water.
+
+FloodGuard is used by organisations that have FloodGuard hardware installed. Accounts are issued by your organisation's administrator; there is no public sign-up.
+
+LIVE MONITORING
+• Live water level at each site from RS485 ultrasonic and switch-type level sensors
+• Alarm status at a glance: Normal, Orange (alert) and Danger
+• Device health: online/offline, battery, signal strength and sensor status
+• Live sensor input mode and current configuration of each unit
+
+INSTANT ALERTS
+• Push notifications when a site crosses the Orange or Danger level, and when it clears
+• Alerts only for the locations assigned to you
+
+REMOTE CONTROL
+• Mute or clear on-site sirens and beacons remotely (by role)
+• View the alarm action sheet: which relays switch on at each level, and for how long
+
+SITE CONFIGURATION (ADMIN)
+• Set Orange, Danger and Clear levels, trigger and clear delays
+• Choose sensor input mode: RS485 ultrasonic, switch-type, or both
+• Capture the current RS485 reading as the zero level
+• Save via cloud, or directly over the local network, with confirmation from the device
+
+INSTALLATION TOOLS
+• Find and set up a new FloodGuard unit over Bluetooth or the local Wi-Fi network
+• Register devices and bind them to locations
+
+REPORTS AND ACCOUNTABILITY
+• Alarm history, incident reports and a full audit trail of every action
+• Export reports for review
+• Raise and track complaints for a site
+
+USERS AND ACCESS
+• Role-based access for administrators, operators and viewers
+• Assign locations to users, activate/deactivate accounts and reset passwords
+
+PRIVACY
+FloodGuard does not show ads and does not sell your data. Location and Bluetooth permissions are used only during device installation to find a FloodGuard unit and read the Wi-Fi network name; your location is not recorded or sent to our servers. See our privacy policy at https://floodguard.jenix.in/privacy.html.
+
+Also available as a web dashboard at https://app.floodguard.jenix.in.
+
+FloodGuard is developed by Jenix Technology, India. For demos, support or account requests, contact jenixindia@gmail.com.

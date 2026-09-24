@@ -6,11 +6,18 @@ import android.content.pm.PackageManager;
 import android.net.DhcpInfo;
 import android.net.wifi.WifiInfo;
 import android.net.wifi.WifiManager;
+import android.graphics.Color;
 import android.os.Bundle;
+import android.view.View;
 import android.webkit.JavascriptInterface;
 import android.webkit.WebSettings;
 
 import androidx.core.content.ContextCompat;
+import androidx.core.graphics.Insets;
+import androidx.core.view.ViewCompat;
+import androidx.core.view.WindowCompat;
+import androidx.core.view.WindowInsetsControllerCompat;
+import androidx.core.view.WindowInsetsCompat;
 
 import com.getcapacitor.BridgeActivity;
 
@@ -128,6 +135,20 @@ public class MainActivity extends BridgeActivity {
             WebSettings settings = getBridge().getWebView().getSettings();
             settings.setMixedContentMode(WebSettings.MIXED_CONTENT_ALWAYS_ALLOW);
             getBridge().getWebView().addJavascriptInterface(new FloodGuardBridge(), BRIDGE_NAME);
+
+            // targetSdk 35+ forces edge-to-edge; pad the root content view so the WebView stays clear of the status/nav bars and keyboard.
+            View content = findViewById(android.R.id.content);
+            ViewCompat.setOnApplyWindowInsetsListener(content, (v, windowInsets) -> {
+                Insets bars = windowInsets.getInsets(WindowInsetsCompat.Type.systemBars() | WindowInsetsCompat.Type.displayCutout());
+                Insets ime = windowInsets.getInsets(WindowInsetsCompat.Type.ime());
+                v.setPadding(bars.left, bars.top, bars.right, Math.max(bars.bottom, ime.bottom));
+                return WindowInsetsCompat.CONSUMED;
+            });
+            content.setBackgroundColor(Color.WHITE);
+            WindowInsetsControllerCompat insetsController = WindowCompat.getInsetsController(getWindow(), content);
+            insetsController.setAppearanceLightStatusBars(true);
+            insetsController.setAppearanceLightNavigationBars(true);
+            ViewCompat.requestApplyInsets(content);
         }
     }
 }

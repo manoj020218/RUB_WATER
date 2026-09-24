@@ -1,12 +1,16 @@
 import { apiRequest } from './client';
 import { Location, DashboardData, AuditLog } from '@/types';
 
+function pathId(value: string) {
+  return encodeURIComponent(String(value || '').trim());
+}
+
 export async function fetchLocations() {
   return apiRequest<Location[]>('/locations', { auth: true });
 }
 
 export async function fetchDashboard(locationId: string) {
-  return apiRequest<DashboardData>(`/locations/${locationId}/dashboard`, { auth: true });
+  return apiRequest<DashboardData>(`/locations/${pathId(locationId)}/dashboard`, { auth: true });
 }
 
 export async function fetchAuditLogs(locationId: string) {
@@ -28,11 +32,11 @@ export async function saveLocationDetails(locationId: string, body: {
   description?: string;
   sensor_mount_height_mm?: number;
 }) {
-  return apiRequest<Location>(`/admin/locations/${locationId}`, { method: 'PATCH', auth: true, body });
+  return apiRequest<Location>(`/admin/locations/${pathId(locationId)}`, { method: 'PATCH', auth: true, body });
 }
 
 export async function deleteLocation(locationId: string) {
-  return apiRequest(`/admin/locations/${locationId}`, { method: 'DELETE', auth: true });
+  return apiRequest(`/admin/locations/${pathId(locationId)}`, { method: 'DELETE', auth: true });
 }
 
 export async function addDevice(deviceId: string, locationId?: string) {
@@ -55,7 +59,7 @@ export async function fetchAdminDevices() {
 }
 
 export async function bindDevice(locationId: string, deviceId: string) {
-  return apiRequest(`/admin/locations/${locationId}/bind-device`, {
+  return apiRequest(`/admin/locations/${pathId(locationId)}/bind-device`, {
     method: 'POST',
     auth: true,
     body: { device_id: deviceId },
@@ -63,7 +67,7 @@ export async function bindDevice(locationId: string, deviceId: string) {
 }
 
 export async function unbindDevice(locationId: string) {
-  return apiRequest(`/admin/locations/${locationId}/bind-device`, { method: 'DELETE', auth: true });
+  return apiRequest(`/admin/locations/${pathId(locationId)}/bind-device`, { method: 'DELETE', auth: true });
 }
 
 // No dedicated /unassigned endpoint — filter locally from fetchAdminDevices()
@@ -73,7 +77,7 @@ export async function fetchUnassignedDevices() {
 }
 
 export async function assignDeviceToLocation(deviceId: string, locationId: string, markFaulty?: boolean) {
-  return apiRequest(`/admin/locations/${locationId}/bind-device`, {
+  return apiRequest(`/admin/locations/${pathId(locationId)}/bind-device`, {
     method: 'POST',
     auth: true,
     body: { device_id: deviceId, mark_existing_faulty: markFaulty },

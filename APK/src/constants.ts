@@ -25,12 +25,15 @@ export const DEFAULT_VPS_HEALTH_URL = 'https://api.floodguard.iotsoft.in/health'
 export const WIFI_DISCOVERY_TIMEOUT_MS = 900;
 export const WIFI_DISCOVERY_BATCH_SIZE = 14;
 export const MAX_WIFI_DISCOVERY_HOSTS = 254;
+export const MAX_WIFI_DISCOVERY_SUBNET_ATTEMPTS = 4;
 
 export const APP_RELEASE_INFO = Object.freeze({
-  version: '1.0.7',
-  versionCode: 8,
-  releasedAt: '2026-06-25',
-  releasedLabel: '25 Jun 2026',
+  version: '1.0.19',
+  versionCode: 20,
+  releasedAt: '2026-09-24',
+  releasedLabel: '24 Sept 2026',
 });
 
 export const DEFAULT_API_BASE = 'https://api.floodguard.iotsoft.in/api';
+
+export const PLAY_STORE_URL = 'https://play.google.com/store/apps/details?id=in.jenix.floodguard';

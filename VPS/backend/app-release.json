@@ -1,19 +1,19 @@
 {
   "android": {
-    "version": "1.0.6",
-    "versionCode": 7,
-    "releasedAt": "2026-06-24",
-    "releasedLabel": "24 Jun 2026",
+    "version": "1.0.19",
+    "versionCode": 20,
+    "releasedAt": "2026-09-24",
+    "releasedLabel": "24 Sept 2026",
     "minimumSupportedVersionCode": 1,
     "forceUpdate": false,
-    "fileName": "FloodGuard-v1.0.6-release.apk",
-    "downloadPath": "/downloads/floodguard/android/FloodGuard-v1.0.6-release.apk",
+    "fileName": "FloodGuard-v1.0.19-release.apk",
+    "downloadPath": "/downloads/floodguard/android/FloodGuard-v1.0.19-release.apk",
     "notes": [
-      "Live page data persists when switching tabs — no more blank screen on return.",
-      "Audit timeline now shows timestamps on each event with CSV and TXT download.",
-      "Mute Alarm and Dry Run open RTU/relay selector modals — dispatches MQTT commands directly.",
-      "User isolation fix: each admin only sees users they created.",
-      "Device Status flicker fixed — stable CLEAR/OFFLINE based on telemetry data."
+      "Config page: Save via Cloud works again when the device is online and running the same config version as the server (fixes sensor input mode changes not saving).",
+      "Users page: Reset Password fixed, with a Generate button and the new login details shown after reset.",
+      "Users page: new Locations button to assign sites to existing users.",
+      "Updated for Android 15/16 (target SDK 36): header and bottom menu no longer hidden behind the status and navigation bars.",
+      "Live page: battery voltage and current now shown rounded (e.g. 13.30 V, 121.1 mA)."
     ]
   }
 }

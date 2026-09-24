@@ -2,16 +2,9 @@ import { useState } from 'react';
 import { FiLock, FiDownload, FiRefreshCw, FiInfo } from 'react-icons/fi';
 import { useApp } from '@/context/AppContext';
 import { changePassword, fetchAppRelease } from '@/api/auth';
-import { APP_RELEASE_INFO } from '@/constants';
-
-function cmpVersions(a: string, b: string) {
-  const pa = a.split('.').map(Number), pb = b.split('.').map(Number);
-  for (let i = 0; i < Math.max(pa.length, pb.length); i++) {
-    if ((pa[i] || 0) > (pb[i] || 0)) return 1;
-    if ((pa[i] || 0) < (pb[i] || 0)) return -1;
-  }
-  return 0;
-}
+import { Capacitor } from '@capacitor/core';
+import { APP_RELEASE_INFO, PLAY_STORE_URL } from '@/constants';
+import { isUpdateAvailable } from '@/utils/version';
 
 export default function SettingsPage() {
   const { state, dispatch, showToast } = useApp();
@@ -37,13 +30,26 @@ export default function SettingsPage() {
     try {
       const rel = await fetchAppRelease();
       dispatch({ type: 'SET_APP_RELEASE', latest: rel });
-      const newer = (rel.versionCode ?? 0) > APP_RELEASE_INFO.versionCode || cmpVersions(rel.version ?? '0', APP_RELEASE_INFO.version) > 0;
+      const newer = isUpdateAvailable(rel, APP_RELEASE_INFO.version, APP_RELEASE_INFO.versionCode);
       showToast(newer ? `Update available: v${rel.version}` : 'You are on the latest version.');
     } catch (e: unknown) { showToast(e instanceof Error ? e.message : 'Update check failed', true); } finally { setCheckingUpdate(false); }
   }
 
   const latest = state.appUpdate.latest;
-  const updateAvailable = latest && ((latest.versionCode ?? 0) > APP_RELEASE_INFO.versionCode || cmpVersions(latest.version ?? '0', APP_RELEASE_INFO.version) > 0);
+  const updateAvailable = isUpdateAvailable(latest, APP_RELEASE_INFO.version, APP_RELEASE_INFO.versionCode);
+
+  // Play policy: the native app must update only through Google Play, never by sideloading an APK.
+  const isNative = Capacitor.isNativePlatform();
+
+  function openPlayStore() {
+    const a = document.createElement('a');
+    a.href = PLAY_STORE_URL;
+    a.target = '_blank';
+    a.rel = 'noopener noreferrer';
+    document.body.appendChild(a);
+    a.click();
+    document.body.removeChild(a);
+  }
 
   function download() {
     if (!latest?.downloadUrl) return;
@@ -86,7 +92,7 @@ export default function SettingsPage() {
           <FiRefreshCw size={14} style={{ marginRight: 6, verticalAlign: 'middle' }} />App Updates
         </h3>
         <div className="build-info-panel">
-          <div className="build-info-line"><span className="build-info-label">Update Channel</span><span className="build-info-value">FloodGuard VPS</span></div>
+          <div className="build-info-line"><span className="build-info-label">Update Channel</span><span className="build-info-value">{isNative ? 'Google Play' : 'FloodGuard VPS'}</span></div>
           {latest && <>
             <div className="build-info-line"><span className="build-info-label">Latest Published</span><span className="build-info-value">v{latest.version}</span></div>
             <div className="build-info-line"><span className="build-info-label">Status</span><span className="build-info-value" style={{ color: updateAvailable ? '#d97706' : '#059669' }}>{updateAvailable ? 'Update available' : 'Up to date'}</span></div>
@@ -95,7 +101,12 @@ export default function SettingsPage() {
             <button className="ghost-btn" style={{ flex: 1 }} onClick={checkUpdate} disabled={checkingUpdate}>
               <FiRefreshCw size={12} style={{ marginRight: 5 }} />{checkingUpdate ? 'Checking…' : 'Check for Update'}
             </button>
-            {updateAvailable && latest?.downloadUrl && (
+            {updateAvailable && isNative && (
+              <button className="control-btn info" style={{ marginTop: 0, flex: 1 }} onClick={openPlayStore}>
+                <FiDownload size={12} style={{ marginRight: 5 }} />Update on Play Store
+              </button>
+            )}
+            {updateAvailable && !isNative && latest?.downloadUrl && (
               <button className="control-btn info" style={{ marginTop: 0, flex: 1 }} onClick={download}>
                 <FiDownload size={12} style={{ marginRight: 5 }} />Download Latest APK
               </button>

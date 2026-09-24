@@ -1,8 +1,21 @@
 import { apiRequest } from './client';
 import { AdminUser } from '@/types';
 
-export async function fetchAdminUsers() {
-  return apiRequest<AdminUser[]>('/admin/users', { auth: true });
+// Backend sends user_id / assigned_location_ids; normalize to the AdminUser shape the UI uses.
+type RawAdminUser = Omit<AdminUser, 'id' | 'assigned_locations'> & {
+  id?: string;
+  user_id?: string;
+  assigned_locations?: string[];
+  assigned_location_ids?: string[];
+};
+
+export async function fetchAdminUsers(): Promise<AdminUser[]> {
+  const rows = await apiRequest<RawAdminUser[]>('/admin/users', { auth: true });
+  return (rows ?? []).map(({ user_id, assigned_location_ids, ...u }) => ({
+    ...u,
+    id: u.id ?? user_id ?? '',
+    assigned_locations: u.assigned_locations ?? assigned_location_ids ?? [],
+  }));
 }
 
 export async function createUser(body: {
@@ -20,6 +33,14 @@ export async function toggleUserAccess(userId: string, activate: boolean) {
     method: 'PATCH',
     auth: true,
     body: { is_active: activate },
+  });
+}
+
+export async function updateUserLocations(userId: string, locationIds: string[]) {
+  return apiRequest(`/admin/users/${userId}/locations`, {
+    method: 'PATCH',
+    auth: true,
+    body: { location_ids: locationIds },
   });
 }
 

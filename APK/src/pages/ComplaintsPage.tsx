@@ -13,6 +13,10 @@ function fmtDate(iso?: string) {
 export default function ComplaintsPage() {
   const { state, showToast } = useApp();
   const locations = state.locations;
+  const formatLocationOption = (loc: (typeof locations)[number]) => {
+    const locId = loc.location_id || loc.id;
+    return loc.location_name ? `${locId} | ${loc.location_name}` : locId;
+  };
 
   const [locId, setLocId] = useState(state.selectedLocationId ?? '');
   const [complaints, setComplaints] = useState<Complaint[]>([]);
@@ -64,7 +68,7 @@ export default function ComplaintsPage() {
         <label className="lbl" style={{ marginTop: 8 }}>Select Location</label>
         <select className="inp" value={locId} onChange={(e) => setLocId(e.target.value)}>
           <option value="">Select a location…</option>
-          {locations.map((l) => <option key={l.id} value={l.location_id || l.id}>{l.location_name}</option>)}
+          {locations.map((l) => <option key={l.id} value={l.location_id || l.id}>{formatLocationOption(l)}</option>)}
         </select>
 
         <p className="section-sep">Raise New Complaint</p>
