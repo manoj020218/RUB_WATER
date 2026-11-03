@@ -1,19 +1,17 @@
 {
   "android": {
-    "version": "1.0.19",
-    "versionCode": 20,
-    "releasedAt": "2026-09-24",
-    "releasedLabel": "24 Sept 2026",
+    "version": "1.0.20",
+    "versionCode": 21,
+    "releasedAt": "2026-11-03",
+    "releasedLabel": "3 Nov 2026",
     "minimumSupportedVersionCode": 1,
     "forceUpdate": false,
-    "fileName": "FloodGuard-v1.0.19-release.apk",
-    "downloadPath": "/downloads/floodguard/android/FloodGuard-v1.0.19-release.apk",
+    "fileName": "FloodGuard-v1.0.20-release.apk",
+    "downloadPath": "/downloads/floodguard/android/FloodGuard-v1.0.20-release.apk",
     "notes": [
-      "Config page: Save via Cloud works again when the device is online and running the same config version as the server (fixes sensor input mode changes not saving).",
-      "Users page: Reset Password fixed, with a Generate button and the new login details shown after reset.",
-      "Users page: new Locations button to assign sites to existing users.",
-      "Updated for Android 15/16 (target SDK 36): header and bottom menu no longer hidden behind the status and navigation bars.",
-      "Live page: battery voltage and current now shown rounded (e.g. 13.30 V, 121.1 mA)."
+      "Locations page: changing a Location ID now renames it in place — users keep their site access and all history moves to the new ID.",
+      "Devices that stop reporting are now shown as OFFLINE (instead of IDLE/NORMAL), with an OFFLINE alert and a back-ONLINE alert.",
+      "Reports: the selected end date now includes the whole day, history is kept for 90 days, and siren/relay alert actions are listed."
     ]
   }
 }
