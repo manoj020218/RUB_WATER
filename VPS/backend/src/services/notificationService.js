@@ -27,6 +27,14 @@ const EVENT_MESSAGES = {
     title: 'Flood ALERT (Suspected)',
     body: (loc) => `${loc} - Orange alert with sensor conflict. Please inspect site conditions.`
   },
+  DEVICE_OFFLINE: {
+    title: 'Device OFFLINE',
+    body: (loc) => `${loc} - FloodGuard unit stopped reporting. Flood alarm status unknown — check site power/network.`
+  },
+  DEVICE_RECOVERED: {
+    title: 'Device back ONLINE',
+    body: (loc) => `${loc} - FloodGuard unit is reporting again.`
+  },
   COMPLAINT_RAISED: {
     title: 'Complaint Filed',
     body: (loc) => `${loc} - New complaint submitted.`

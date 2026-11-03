@@ -6,9 +6,13 @@ const { createApp } = require('./app');
 const { startMqttBridge } = require('./mqtt/mqttBridge');
 const { createLiveSocketServer } = require('./services/liveSocketService');
 const { startWebhookDispatcher } = require('./services/headOfficeIntegrationService');
+const { startDeviceOfflineWatchdog } = require('./jobs/deviceOfflineWatchdogJob');
+const telemetryStore = require('./db/telemetryStore');
 
 // Load persisted data before createApp() so seedIfEmpty() sees existing records
 loadFromDisk(dataStore);
+// Telemetry is persisted in daily files (90-day retention); reload the recent window.
+telemetryStore.start(dataStore);
 
 const app = createApp();
 
@@ -18,6 +22,7 @@ const httpServer = http.createServer(app);
 const mqttClient = startMqttBridge();
 const liveSocket = createLiveSocketServer(httpServer);
 const stopWebhookDispatcher = startWebhookDispatcher();
+const stopOfflineWatchdog = startDeviceOfflineWatchdog();
 
 httpServer.listen(env.port, () => {
   // eslint-disable-next-line no-console
@@ -33,6 +38,8 @@ function shutdown(signalName) {
   console.log(`[FloodGuard VPS] shutting down on ${signalName}`);
 
   stopAutoSave();
+  stopOfflineWatchdog();
+  telemetryStore.stop();
   flushSync(dataStore); // Final save before exit
 
   if (mqttClient && typeof mqttClient.end === 'function') {

@@ -6,6 +6,8 @@ const { assertUserLocationAccess, listAccessibleLocationIds } = require('../serv
 const { assertPermission } = require('../services/rbacService');
 const locationRepo = require('../repositories/locationRepository');
 const deviceRepo = require('../repositories/deviceRepository');
+const locationRenameService = require('../services/locationRenameService');
+const auditService = require('../services/auditService');
 const { dataStore } = require('../db/datastore');
 const deviceConfigRepo = require('../repositories/deviceConfigRepository');
 
@@ -177,8 +179,50 @@ function deleteLocation(req, res, next) {
     if (boundDevice) {
       deviceRepo.unbindFromLocation(boundDevice._id);
     }
+    // Older app builds rename a location ID as create-new + move device + delete-old.
+    // Detect that and carry user access + history over instead of orphaning them.
+    const renamedTo = boundDevice ? null : locationRenameService.detectLegacyRenameTarget(locationId);
+    let migrated = null;
+    if (renamedTo) {
+      migrated = locationRenameService.migrateLocationReferences(locationId, renamedTo);
+      const target = locationRepo.findById(renamedTo);
+      if (target) {
+        target.previous_location_ids = [...new Set([...(target.previous_location_ids || []), locationId])];
+      }
+      auditService.writeAuditLog({
+        locationId: renamedTo,
+        eventType: 'LOCATION_ID_RENAMED',
+        performedBy: req.auth.user._id,
+        loginId: req.auth.user.login_id,
+        sessionId: req.auth.session?._id,
+        deviceName: req.auth.session?.device_name,
+        ipAddress: req.ip,
+        details: { previous_location_id: locationId, location_id: renamedTo, migrated, via: 'legacy_create_move_delete' }
+      });
+    }
     locationRepo.remove(locationId);
-    res.json({ ok: true, data: { deleted_location_id: locationId, unbound_device_id: boundDevice?._id || null } });
+    res.json({
+      ok: true,
+      data: {
+        deleted_location_id: locationId,
+        unbound_device_id: boundDevice?._id || null,
+        renamed_to: renamedTo || null,
+        migrated
+      }
+    });
+  } catch (error) { next(error); }
+}
+
+function renameLocation(req, res, next) {
+  try {
+    requireSuperAdmin(req);
+    const data = locationRenameService.renameLocationId({
+      locationId: req.params.locationId,
+      newLocationId: req.body?.new_location_id,
+      authContext: req.auth,
+      ipAddress: req.ip
+    });
+    res.json({ ok: true, data });
   } catch (error) { next(error); }
 }
 
@@ -387,6 +431,7 @@ module.exports = {
   createLocation,
   updateLocation,
   deleteLocation,
+  renameLocation,
   listAllDevices,
   createDevice,
   bindDevice,

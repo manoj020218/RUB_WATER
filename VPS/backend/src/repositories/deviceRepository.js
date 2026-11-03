@@ -372,6 +372,10 @@ function bindToLocation(deviceId, locationId) {
   if (nextLocationId) {
     clearOtherLocationBindings(nextLocationId, device._id);
   }
+  if (device.location_id && device.location_id !== nextLocationId) {
+    device.previous_location_id = device.location_id;
+    device.location_moved_at = new Date().toISOString();
+  }
   device.location_id = nextLocationId;
   device.updated_at = new Date().toISOString();
   return materialize(device);

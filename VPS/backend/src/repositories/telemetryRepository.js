@@ -1,7 +1,9 @@
 ﻿const { dataStore } = require('../db/datastore');
+const telemetryStore = require('../db/telemetryStore');
 
 function insert(record) {
   dataStore.telemetry.push(record);
+  telemetryStore.append(record);
   return record;
 }
 

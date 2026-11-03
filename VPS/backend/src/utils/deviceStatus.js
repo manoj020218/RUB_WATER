@@ -1,5 +1,13 @@
 const STALE_THRESHOLD_MS = 3 * 60 * 1000;
 
+// Firmware heartbeats every 60 s. After this long with no message at all the
+// device is reported OFFLINE regardless of its last-known WiFi/MQTT flags
+// (those flags are a snapshot from the last message and go stale with it).
+const OFFLINE_THRESHOLD_MS = (() => {
+  const sec = Number(process.env.DEVICE_OFFLINE_AFTER_SEC);
+  return Number.isFinite(sec) && sec >= 60 ? sec * 1000 : 5 * 60 * 1000;
+})();
+
 function lastActivityMs(device) {
   if (!device) {
     return 0;
@@ -33,6 +41,10 @@ function computeDeviceStatus(device) {
     return 'IDLE';
   }
 
+  if ((Date.now() - freshest) > OFFLINE_THRESHOLD_MS) {
+    return 'OFFLINE';
+  }
+
   if (
     device.last_mqtt_connected === true
     || device.last_wifi_connected === true
@@ -48,6 +60,7 @@ function computeDeviceStatus(device) {
 
 module.exports = {
   STALE_THRESHOLD_MS,
+  OFFLINE_THRESHOLD_MS,
   lastActivityMs,
   computeDeviceStatus
 };

@@ -37,6 +37,9 @@ function listUserLocations(authContext) {
     let locationStatus;
     if (activeIncident) {
       locationStatus = 'DANGER';
+    } else if (device && devStatus === 'OFFLINE') {
+      // Silent device: the last telemetry status (e.g. NORMAL) is no longer trustworthy.
+      locationStatus = 'OFFLINE';
     } else if (latestTelemetry) {
       locationStatus = latestTelemetry.status;
     } else {

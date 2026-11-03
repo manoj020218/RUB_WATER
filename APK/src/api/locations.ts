@@ -35,6 +35,15 @@ export async function saveLocationDetails(locationId: string, body: {
   return apiRequest<Location>(`/admin/locations/${pathId(locationId)}`, { method: 'PATCH', auth: true, body });
 }
 
+// Renames the location ID in place on the server; users' access, the bound
+// device, config and history all move to the new ID.
+export async function renameLocationId(locationId: string, newLocationId: string) {
+  return apiRequest<{ location_id: string; previous_location_id: string }>(
+    `/admin/locations/${pathId(locationId)}/rename`,
+    { method: 'POST', auth: true, body: { new_location_id: newLocationId } },
+  );
+}
+
 export async function deleteLocation(locationId: string) {
   return apiRequest(`/admin/locations/${pathId(locationId)}`, { method: 'DELETE', auth: true });
 }

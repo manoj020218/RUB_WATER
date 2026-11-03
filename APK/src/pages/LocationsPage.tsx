@@ -2,7 +2,7 @@ import { useEffect, useState, useCallback } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { FiMapPin, FiRefreshCw, FiWifi, FiWifiOff, FiAlertTriangle, FiPlus, FiEdit2, FiTrash2, FiCheck, FiX } from 'react-icons/fi';
 import { useApp } from '@/context/AppContext';
-import { fetchLocations, addLocation, fetchAdminDevices, saveLocationDetails, deleteLocation, bindDevice } from '@/api/locations';
+import { fetchLocations, addLocation, fetchAdminDevices, saveLocationDetails, deleteLocation, bindDevice, renameLocationId } from '@/api/locations';
 import { Location } from '@/types';
 
 function statusColor(status?: string) {
@@ -85,30 +85,19 @@ export default function LocationsPage() {
     setEditSaving(true);
     try {
       const idChanged = newLocId !== locId;
+      let targetId = locId;
       if (idChanged) {
-        // Create new location with the new ID
-        await addLocation({
-          location_id: newLocId,
-          location_name: editName.trim(),
-          description: editDesc.trim() || undefined,
-          mount_height_mm: editMount ? Number(editMount) : undefined,
-        });
-        // Move bound device to new location before deleting old
-        const boundDeviceId = loc.device_id;
-        if (boundDeviceId) {
-          await bindDevice(newLocId, boundDeviceId);
-        }
-        // Delete old location (device already moved, no unbind will happen)
-        await deleteLocation(locId);
-        showToast(`Location renamed to ${newLocId}.`);
-      } else {
-        await saveLocationDetails(locId, {
-          location_name: editName.trim(),
-          description: editDesc.trim() || undefined,
-          sensor_mount_height_mm: editMount ? Number(editMount) : undefined,
-        });
-        showToast('Location updated.');
+        // Rename in place on the server so user access, device binding and
+        // history follow the new ID (never create + delete, which orphans them).
+        await renameLocationId(locId, newLocId);
+        targetId = newLocId;
       }
+      await saveLocationDetails(targetId, {
+        location_name: editName.trim(),
+        description: editDesc.trim() || undefined,
+        sensor_mount_height_mm: editMount ? Number(editMount) : undefined,
+      });
+      showToast(idChanged ? `Location renamed to ${newLocId}.` : 'Location updated.');
       setEditingId(null);
       load();
     } catch (e: unknown) {

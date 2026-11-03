@@ -3,6 +3,16 @@ const locationRepository = require('../repositories/locationRepository');
 const { assertPermission } = require('./rbacService');
 const { listAccessibleLocationIds } = require('./accessService');
 const { badRequest } = require('../utils/errors');
+const telemetryStore = require('../db/telemetryStore');
+
+// Report dates from the app are plain YYYY-MM-DD in India time; treat `from` as
+// the start and `to` as the end of that whole day (it used to cut off at
+// 00:00 UTC, hiding everything on the selected end day).
+const IST_OFFSET = '+05:30';
+const DATE_ONLY_RE = /^\d{4}-\d{2}-\d{2}$/;
+const DEFAULT_LIMIT = 5000;
+const MAX_LIMIT = 50000;
+const DEFAULT_TELEMETRY_WINDOW_MS = 7 * 24 * 60 * 60 * 1000;
 
 function parseIso(value) {
   if (!value) {
@@ -15,6 +25,48 @@ function parseIso(value) {
   return new Date(ms).toISOString();
 }
 
+function parseBound(value, edge) {
+  const text = String(value || '').trim();
+  if (DATE_ONLY_RE.test(text)) {
+    return parseIso(edge === 'end' ? `${text}T23:59:59.999${IST_OFFSET}` : `${text}T00:00:00.000${IST_OFFSET}`);
+  }
+  return parseIso(text);
+}
+
+function parseLimit(value) {
+  const n = Math.floor(Number(value));
+  if (!Number.isFinite(n) || n <= 0) return DEFAULT_LIMIT;
+  return Math.min(n, MAX_LIMIT);
+}
+
+// Location IDs that were renamed map onto the current location.
+function buildLocationAliasMap() {
+  const map = new Map();
+  locationRepository.listAll().forEach((loc) => {
+    (loc.previous_location_ids || []).forEach((oldId) => map.set(oldId, loc._id));
+  });
+  return map;
+}
+
+// Telemetry: recent window from memory plus the durable day files, de-duplicated.
+function collectTelemetry(filters) {
+  const toMs = filters.to ? toTimestamp(filters.to) : Date.now();
+  const fromMs = filters.from ? toTimestamp(filters.from) : toMs - DEFAULT_TELEMETRY_WINDOW_MS;
+  const seen = new Set();
+  const out = [];
+  const add = (item) => {
+    if (!item || (item._id && seen.has(item._id))) return;
+    if (item._id) seen.add(item._id);
+    out.push(item);
+  };
+  telemetryStore.readRange(fromMs, toMs).forEach(add);
+  dataStore.telemetry.forEach((item) => {
+    const ms = toTimestamp(item.timestamp);
+    if (ms >= fromMs && ms <= toMs) add(item);
+  });
+  return out;
+}
+
 function toTimestamp(value) {
   const ms = new Date(value || 0).getTime();
   return Number.isFinite(ms) ? ms : 0;
@@ -22,8 +74,9 @@ function toTimestamp(value) {
 
 function normalizeFilters(raw = {}) {
   return {
-    from: parseIso(raw.from || raw.date_from),
-    to: parseIso(raw.to || raw.date_to),
+    from: parseBound(raw.from || raw.date_from, 'start'),
+    to: parseBound(raw.to || raw.date_to, 'end'),
+    limit: parseLimit(raw.limit),
     location_id: String(raw.location_id || '').trim(),
     device_id: String(raw.device_id || '').trim(),
     event_type: String(raw.event_type || '').trim().toUpperCase(),
@@ -71,7 +124,11 @@ function collectReportRows(filters, authContext) {
   const allowedSet = allowedLocationSet(authContext);
 
   const rows = [];
+  const aliases = buildLocationAliasMap();
   const pushRow = (row) => {
+    if (row.location_id && aliases.has(row.location_id)) {
+      row.location_id = aliases.get(row.location_id);
+    }
     if (!filterLocation(row.location_id || null, allowedSet, filters)) {
       return;
     }
@@ -123,7 +180,7 @@ function collectReportRows(filters, authContext) {
     });
   });
 
-  dataStore.telemetry.forEach((item) => {
+  collectTelemetry(filters).forEach((item) => {
     const moduleName = item.type === 'EVENT' ? 'DEVICE_EVENT' : item.type;
     const level = Number(item.water_level_mm || 0);
     const severity = item.status === 'DANGER'
@@ -192,6 +249,22 @@ function collectReportRows(filters, authContext) {
     });
   });
 
+  dataStore.alertActionLogs.forEach((item) => {
+    const relays = Array.isArray(item.relay_actions_applied) ? item.relay_actions_applied : [];
+    pushRow({
+      module: 'ALERT_ACTION',
+      timestamp: item.timestamp,
+      location_id: item.location_id || null,
+      device_id: item.device_id || null,
+      event_type: `ALERT_${item.alert_level || 'UNKNOWN'}_${item.alert_status || ''}`.replace(/_$/, ''),
+      severity: item.alert_level === 'RED' ? 'CRITICAL' : item.alert_level === 'ORANGE' ? 'HIGH' : 'MEDIUM',
+      login_id: null,
+      performed_by: item.user_id || item.triggered_by || null,
+      reason: `${item.triggered_by || 'AUTO'}; water ${item.water_level_mm ?? '-'} mm; ${relays.length} relay action(s)`,
+      details_json: JSON.stringify(item)
+    });
+  });
+
   dataStore.userSessions.forEach((item) => {
     const user = dataStore.users.find((u) => u._id === item.user_id) || null;
     const locationIds = Array.isArray(user?.assigned_location_ids) ? user.assigned_location_ids : [];
@@ -214,7 +287,8 @@ function collectReportRows(filters, authContext) {
     });
   });
 
-  return rows.sort((a, b) => toTimestamp(b.timestamp) - toTimestamp(a.timestamp));
+  rows.sort((a, b) => toTimestamp(b.timestamp) - toTimestamp(a.timestamp));
+  return rows.slice(0, filters.limit || DEFAULT_LIMIT);
 }
 
 function csvEscape(value) {

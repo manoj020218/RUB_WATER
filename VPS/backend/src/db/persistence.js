@@ -4,8 +4,8 @@ const path = require('path');
 const DATA_DIR = path.resolve(__dirname, '..', '..', 'data');
 const DATA_FILE = path.join(DATA_DIR, 'floodguard_db.json');
 
-// High-volume / ephemeral collections intentionally excluded:
-//   telemetry, auditLogs, commands, integrationDeliveryLogs, deviceLifecycleHistory
+// Excluded: telemetry (high volume — persisted separately by db/telemetryStore.js
+// as daily NDJSON files with retention) and integrationDeliveryLogs (ephemeral).
 const PERSIST_KEYS = [
   'users',
   'userSessions',
@@ -23,7 +23,11 @@ const PERSIST_KEYS = [
   'incidents',
   'complaints',
   'notifications',
-  'integrationSettings'
+  'integrationSettings',
+  // Low-volume logs needed by Reports; previously lost on every restart.
+  'auditLogs',
+  'commands',
+  'deviceLifecycleHistory'
 ];
 
 let _autoSaveTimer = null;
