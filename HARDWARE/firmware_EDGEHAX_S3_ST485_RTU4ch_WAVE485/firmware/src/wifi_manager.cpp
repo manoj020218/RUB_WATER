@@ -5,8 +5,27 @@
 
 #include "device_profile.h"
 
+// Backup WiFi credentials live in a git-ignored local header so the password is
+// never committed. Create src/wifi_backup_secrets.h (see
+// wifi_backup_secrets.example.h) before building production firmware.
+#if __has_include("wifi_backup_secrets.h")
+#include "wifi_backup_secrets.h"
+#endif
+#ifndef BACKUP_WIFI_SSID
+#define BACKUP_WIFI_SSID "FLOODGUARD"
+#endif
+#ifndef BACKUP_WIFI_PASS
+#error "BACKUP_WIFI_PASS not set: create src/wifi_backup_secrets.h (copy wifi_backup_secrets.example.h)"
+#endif
+
 namespace {
 constexpr uint32_t kRetryIntervalMs = 15000UL;
+// Standard backup network (0.2.2): lets any spare router set to
+// FLOODGUARD / <password> replace a damaged site router. Tried ONLY when the
+// saved (primary) network has been unreachable for kPrimaryFailBeforeBackupMs;
+// never while connected, never while a phone is on the setup AP, never saved to NVS.
+constexpr uint32_t kPrimaryFailBeforeBackupMs = 3UL * 60UL * 1000UL;  // 3 min
+constexpr uint32_t kBackupTryWindowMs         = 60UL * 1000UL;        // 60 s
 }
 
 WifiManager& WifiManager::getInstance() {
@@ -59,22 +78,61 @@ void WifiManager::loop() {
         if (!_firstConnectDone) {
             _firstConnectDone = true;
             _lastIpLogMs = now;
-            Serial.printf("[WIFI] Connected! IP=%s  SSID=%s  RSSI=%ddBm\n",
-                          WiFi.localIP().toString().c_str(), _ssid, WiFi.RSSI());
+            Serial.printf("[WIFI] Connected! IP=%s  SSID=%s  RSSI=%ddBm%s\n",
+                          WiFi.localIP().toString().c_str(), activeSsid(), WiFi.RSSI(),
+                          _onBackup ? "  (backup network)" : "");
         } else if ((now - _lastIpLogMs) >= 120000UL) {
             _lastIpLogMs = now;
-            Serial.printf("[WIFI] IP=%s  SSID=%s  RSSI=%ddBm\n",
-                          WiFi.localIP().toString().c_str(), _ssid, WiFi.RSSI());
+            Serial.printf("[WIFI] IP=%s  SSID=%s  RSSI=%ddBm%s\n",
+                          WiFi.localIP().toString().c_str(), activeSsid(), WiFi.RSSI(),
+                          _onBackup ? "  (backup network)" : "");
         }
         _connectTimedOut = false;
+        _primaryDownSinceMs = 0;
         return;
     }
 
     // WiFi just dropped — reset so next reconnect prints the IP again
     if (_firstConnectDone) {
         _firstConnectDone = false;
-        Serial.printf("[WIFI] Disconnected from '%s'\n", _ssid);
+        Serial.printf("[WIFI] Disconnected from '%s'\n", activeSsid());
+        if (_onBackup) {
+            // Backup router gone: go back to the saved network first.
+            _onBackup = false;
+            _lastAttemptMs = 0;
+        }
     }
+
+    if (_onBackup) {
+        // Trying the backup network; give it a fixed window, then back to primary.
+        if ((now - _backupStartMs) >= kBackupTryWindowMs) {
+            Serial.printf("[WIFI] Backup '%s' not reachable — back to '%s'\n", BACKUP_WIFI_SSID, _ssid);
+            _onBackup = false;
+            _primaryDownSinceMs = now;  // full primary window again before next backup try
+            _lastAttemptMs = 0;
+        } else {
+            if ((now - _lastAttemptMs) < kRetryIntervalMs * 2) return;
+            _lastAttemptMs = now;
+            WiFi.begin(BACKUP_WIFI_SSID, BACKUP_WIFI_PASS);
+            return;
+        }
+    }
+
+    if (_primaryDownSinceMs == 0) _primaryDownSinceMs = now;
+    // A technician is connected to the setup AP: don't switch channels under them.
+    const bool apActive = ((WiFi.getMode() & WIFI_MODE_AP) != 0) && WiFi.softAPgetStationNum() > 0;
+    if (!apActive && strcmp(_ssid, BACKUP_WIFI_SSID) != 0 &&
+            (now - _primaryDownSinceMs) >= kPrimaryFailBeforeBackupMs) {
+        Serial.printf("[WIFI] '%s' unreachable for %lus — trying backup '%s'\n", _ssid,
+                      (unsigned long)((now - _primaryDownSinceMs) / 1000UL), BACKUP_WIFI_SSID);
+        _onBackup = true;
+        _backupStartMs = now;
+        _lastAttemptMs = now;
+        WiFi.disconnect(false);
+        WiFi.begin(BACKUP_WIFI_SSID, BACKUP_WIFI_PASS);
+        return;
+    }
+    if (apActive) _primaryDownSinceMs = now;
 
     // Only flag timeout on the initial connect attempt (not transient disconnects)
     if (!_firstConnectDone && !_connectTimedOut && _connectStartMs > 0
@@ -98,6 +156,8 @@ void WifiManager::setCredentials(const char* ssid, const char* password, bool pe
     _ssid[sizeof(_ssid)-1] = '\0';
     _pass[sizeof(_pass)-1] = '\0';
     _hasCredentials   = (strlen(_ssid) > 0);
+    _onBackup         = false;
+    _primaryDownSinceMs = 0;
     _connectStartMs   = millis();
     _connectTimedOut  = false;
     _firstConnectDone = false;
@@ -122,6 +182,8 @@ int32_t WifiManager::rssi() const { return WiFi.RSSI(); }
 String WifiManager::localIp() const { return WiFi.localIP().toString(); }
 String WifiManager::hostname() const { return String(_hostname); }
 String WifiManager::configuredSsid() const { return String(_ssid); }
+bool WifiManager::onBackupNetwork() const { return _onBackup && isConnected(); }
+const char* WifiManager::activeSsid() const { return _onBackup ? BACKUP_WIFI_SSID : _ssid; }
 
 void WifiManager::loadFromNvs() {
     Preferences prefs;

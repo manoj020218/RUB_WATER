@@ -10,6 +10,7 @@
 #include "http_fallback.h"
 #include "internal_flash_fifo.h"
 #include "mqtt_manager.h"
+#include "system_watchdog.h"
 #include "output_controller.h"
 #include "remote_box_manager.h"
 #include "config_manager.h"
@@ -173,6 +174,10 @@ void TelemetryManager::buildTelemetryJson(char* out, size_t outSize) const {
     doc["wifi_rssi"]      = wifi.rssi();
     doc["rssi"]           = wifi.rssi();
     doc["ssid"]           = wifi.configuredSsid();
+    if (wifi.onBackupNetwork()) {
+        doc["wifi_active_ssid"] = wifi.activeSsid();
+        doc["wifi_on_backup"]   = true;
+    }
     doc["local_ip"]       = wifi.localIp();
     doc["device_local_ip"] = wifi.localIp();
     doc["api_server"]     = DEFAULT_HTTP_BASE_URL;
@@ -309,6 +314,10 @@ void TelemetryManager::buildBootConfigJson(char* out, size_t outSize) const {
     doc["hardware_id"] = _hardwareId;
     doc["event_type"] = "DEVICE_BOOTED_CONFIG_REPORT";
     doc["boot_status"] = "BOOTED";
+    // Why the unit restarted (e.g. TASK_WDT = recovered from a hang)
+    doc["reset_reason"] = systemResetReasonStr();
+    if (systemLastSelfRestartCause()[0]) doc["self_restart_cause"] = systemLastSelfRestartCause();
+    doc["conn_watchdog_reboots"] = systemConnWatchdogRebootCount();
     doc["firmware_version"] = FIRMWARE_VERSION;
     doc["current_config_version"] = cfg.configVersion;
     doc["current_action_sheet_version"] = AlertActionSheetManager::getInstance().version();

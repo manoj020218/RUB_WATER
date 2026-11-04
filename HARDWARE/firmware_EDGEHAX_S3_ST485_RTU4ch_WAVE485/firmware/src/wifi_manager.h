@@ -19,8 +19,13 @@ public:
     String localIp() const;
     String hostname() const;
     String configuredSsid() const;
+    bool onBackupNetwork() const;      // connected via the standard FLOODGUARD backup SSID
+    const char* activeSsid() const;
 
 private:
+    bool     _onBackup           = false;
+    uint32_t _backupStartMs      = 0;
+    uint32_t _primaryDownSinceMs = 0;
     WifiManager() = default;
     char     _ssid[64]{};
     char     _pass[64]{};

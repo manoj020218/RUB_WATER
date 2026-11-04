@@ -22,9 +22,13 @@
 #endif
 
 // ── Cloud endpoints (compiled in, unchangeable without re-flash) ─────────────
+#ifndef DEFAULT_MQTT_HOST   // overridable only for isolated bench test builds
 #define DEFAULT_MQTT_HOST        "api.floodguard.iotsoft.in"
+#endif
 #define DEFAULT_MQTT_PORT        1883
+#ifndef DEFAULT_HTTP_BASE_URL
 #define DEFAULT_HTTP_BASE_URL    "http://api.floodguard.iotsoft.in"
+#endif
 #define DEFAULT_OTA_BASE_URL     "http://flash.iotsoft.in"
 #define DEFAULT_OTA_CHANNEL      "stable"
 

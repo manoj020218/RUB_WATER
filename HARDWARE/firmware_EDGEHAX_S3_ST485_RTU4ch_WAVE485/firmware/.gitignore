@@ -1,1 +1,3 @@
 .pio/
+src/wifi_backup_secrets.h
+release/

@@ -22,6 +22,7 @@
 #include "remote_box_manager.h"
 #include "sd_fifo.h"
 #include "status_led.h"
+#include "system_watchdog.h"
 #include "telemetry_manager.h"
 #include "voltage_monitor.h"
 #include "vps_action_sheet_hook.h"
@@ -100,6 +101,9 @@ void setup() {
     Serial.printf("FW=%s  v%s  %s\n", FIRMWARE_NAME, FIRMWARE_VERSION, FIRMWARE_DATE);
     Serial.printf("PID=%s  HW=%s\n", PRODUCT_PID, HARDWARE_VERSION);
 
+    // Arm the task watchdog before anything that could block (see system_watchdog.h)
+    systemWatchdogBegin();
+
     // Relays and RF must be driven OFF before anything else
     OutputController::getInstance().begin();
 
@@ -125,6 +129,8 @@ void setup() {
     // RTU remote buses
     RemoteBoxManager::getInstance().begin();
 #endif
+
+    systemWatchdogFeed();
 
     // Identity: device_id is the editable label, auth_id is the locked fallback
     // MQTT credential. Once auth_id is stored, local renames do not affect it.
@@ -182,6 +188,8 @@ void setup() {
         gApOpenedMs = millis();
     }
 
+    systemWatchdogFeed();
+
     // Cloud services
     MqttManager::getInstance().begin(gDeviceId, gHardwareId, gDeviceToken, gAuthId);
     MqttManager::getInstance().setCommandCallback(onMqttCommand);
@@ -192,12 +200,14 @@ void setup() {
     VpsOtaHook::getInstance().begin(gDeviceId, gHardwareId, gDeviceToken);
 #endif  // SENSOR_TEST_MODE
 
+    systemWatchdogFeed();
     diagnosticsRunBootTests();
     Serial.println("[MAIN] Setup complete");
 }
 
 // ── loop ──────────────────────────────────────────────────────────────────────
 void loop() {
+    systemWatchdogFeed();
 #ifdef SENSOR_TEST_MODE
     // ── Sensor-only path ──────────────────────────────────────────────────
     DypSensor::getInstance().loop();
@@ -310,6 +320,9 @@ void loop() {
 
     // ── Daily scheduled reboot ─────────────────────────────────────────────
     checkDailyReboot();
+
+    // ── Connectivity watchdog (reboot if MQTT stuck down; never in ALERT/DANGER)
+    systemWatchdogLoop();
 
     // ── Diagnostics watermark ──────────────────────────────────────────────
     diagnosticsLoop();

@@ -7,6 +7,7 @@
 
 #include "flood_state_machine.h"
 #include "mqtt_manager.h"
+#include "system_watchdog.h"
 
 OtaManager& OtaManager::getInstance() {
     static OtaManager inst;
@@ -122,11 +123,26 @@ bool OtaManager::beginRemoteOta(const char* url, const char* commandId) {
     uint8_t buf[1024];
     int written = 0;
     uint32_t lastPrint = millis();
+    uint32_t lastDataMs = millis();
     while (http.connected() && (total < 0 || written < total)) {
+        systemWatchdogFeed();
         const int avail = stream->available();
-        if (!avail) { delay(1); continue; }
+        if (!avail) {
+            // Connection open but no data: give up instead of spinning forever.
+            if (millis() - lastDataMs > 30000UL) {
+                _lastRemoteError = "download_stalled";
+                Serial.println("[OTA] Download stalled (30s without data)");
+                http.end();
+                Update.abort();
+                _running = false;
+                return false;
+            }
+            delay(1);
+            continue;
+        }
         const int r = stream->readBytes(buf, min(avail, (int)sizeof(buf)));
         if (r <= 0) break;
+        lastDataMs = millis();
         if (Update.write(buf, (size_t)r) != (size_t)r) {
             _lastRemoteError = String("write_error: ") + Update.errorString();
             Serial.printf("[OTA] Write error: %s\n", Update.errorString());
