@@ -147,7 +147,13 @@ function collectReportRows(filters, authContext) {
     if (!isWithinWindow(row.timestamp, filters)) {
       return;
     }
-    rows.push(row);
+    // App (ReportsPage) reads created_at / user_id; keep both names so already
+    // installed app versions show the time and user.
+    rows.push({
+      ...row,
+      created_at: row.timestamp,
+      user_id: row.performed_by || row.login_id || null
+    });
   };
 
   dataStore.auditLogs.forEach((item) => {

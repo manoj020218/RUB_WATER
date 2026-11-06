@@ -12,6 +12,11 @@ function fmtDT(iso?: string) {
   try { return new Date(iso).toLocaleString('en-IN', { timeZone: IST_TIMEZONE, day: '2-digit', month: 'short', year: '2-digit', hour: '2-digit', minute: '2-digit' }); } catch (_) { return iso; }
 }
 
+// Backend report rows carry `timestamp` and `performed_by`/`login_id`
+// (newer backends also send created_at/user_id aliases).
+const rowTime = (r: ReportRow) => r.created_at ?? r.timestamp;
+const rowUser = (r: ReportRow) => r.user_id ?? r.performed_by ?? r.login_id ?? '';
+
 export default function ReportsPage() {
   const { state, showToast } = useApp();
   const [rows, setRows] = useState<ReportRow[]>([]);
@@ -49,8 +54,8 @@ export default function ReportsPage() {
     if (rows.length === 0) { showToast('No data to export.', true); return; }
     const header = 'Time (IST),Location,Event,Details,User';
     const csv = [header, ...rows.map((r) => [
-      fmtDT(r.created_at), r.location_id ?? '', r.event_type ?? '',
-      JSON.stringify(r.details ?? '').replace(/,/g, ';'), r.user_id ?? ''
+      fmtDT(rowTime(r)), r.location_id ?? '', r.event_type ?? '',
+      (r.details_json ?? JSON.stringify(r.details ?? '')).replace(/,/g, ';'), rowUser(r)
     ].map((v) => `"${String(v).replace(/"/g, '""')}"`).join(','))].join('\n');
     const filename = `fg-report-${new Date().toISOString().slice(0, 10)}.csv`;
     if (!isNativeApp()) {
@@ -144,10 +149,10 @@ export default function ReportsPage() {
                 <tbody>
                   {rows.map((r, i) => (
                     <tr key={i}>
-                      <td>{fmtDT(r.created_at)}</td>
+                      <td>{fmtDT(rowTime(r))}</td>
                       <td>{r.location_id ?? '--'}</td>
                       <td>{r.event_type?.replace(/_/g, ' ')}</td>
-                      <td>{r.user_id ?? '--'}</td>
+                      <td>{rowUser(r) || '--'}</td>
                     </tr>
                   ))}
                 </tbody>

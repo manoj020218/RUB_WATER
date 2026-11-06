@@ -267,8 +267,12 @@ export interface ReportRow {
   location_id?: string;
   device_id?: string;
   created_at?: string;
+  timestamp?: string;
   details?: Record<string, unknown>;
+  details_json?: string;
   user_id?: string;
+  performed_by?: string;
+  login_id?: string;
 }
 
 // ── App release ───────────────────────────────────────────────────────────────
